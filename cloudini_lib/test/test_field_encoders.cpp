@@ -26,8 +26,8 @@ TEST(FieldEncoders, IntField) {
 
   std::vector<uint8_t> buffer(kNumpoints * sizeof(uint32_t));
 
-  FieldEncoderInt<uint32_t> encoder(field_info);
-  FieldDecoderInt<uint32_t> decoder(field_info);
+  FieldEncoderInt<uint32_t> encoder(sizeof(uint32_t));
+  FieldDecoderInt<uint32_t> decoder(sizeof(uint32_t));
 
   //------------- Encode -------------
   {
@@ -37,7 +37,6 @@ TEST(FieldEncoders, IntField) {
     size_t encoded_size = 0;
     for (size_t i = 0; i < kNumpoints; ++i) {
       encoded_size += encoder.encode(input_buffer, buffer_data);
-      input_buffer.advance(sizeof(uint32_t));
     }
     buffer.resize(encoded_size);
 
@@ -79,8 +78,8 @@ TEST(FieldEncoders, FloatLossy) {
 
   std::vector<uint8_t> buffer(kNumpoints * sizeof(float));
 
-  FieldEncoderFloatLossy encoder(field_info);
-  FieldDecoderFloatLossy decoder(field_info);
+  FieldEncoderFloatLossy encoder(sizeof(float), kResolution);
+  FieldDecoderFloatLossy decoder(sizeof(float), kResolution);
   //------------- Encode -------------
   {
     ConstBufferView input_buffer = {reinterpret_cast<const uint8_t*>(input_data.data()), kBufferSize};
@@ -89,7 +88,6 @@ TEST(FieldEncoders, FloatLossy) {
     size_t encoded_size = 0;
     for (size_t i = 0; i < kNumpoints; ++i) {
       encoded_size += encoder.encode(input_buffer, buffer_data);
-      input_buffer.advance(sizeof(float));
     }
     buffer.resize(encoded_size);
 

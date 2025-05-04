@@ -9,7 +9,7 @@ namespace Cloudini {
 
 class FieldDecoder {
  public:
-  FieldDecoder(PointField field_info) : info_(field_info) {}
+  FieldDecoder() = default;
 
   virtual ~FieldDecoder() = default;
 
@@ -18,14 +18,6 @@ class FieldDecoder {
    * Both buffers will be advanced.
    */
   virtual void decode(ConstBufferView& input, BufferView& output) = 0;
-
- protected:
-  const PointField& info() const {
-    return info_;
-  }
-
- private:
-  PointField info_;
 };
 
 //------------------------------------------------------------------------------------------
@@ -33,23 +25,25 @@ class FieldDecoder {
 template <typename IntType>
 class FieldDecoderInt : public FieldDecoder {
  public:
-  FieldDecoderInt(PointField field_info) : FieldDecoder(field_info) {
+  FieldDecoderInt(size_t output_advance) : output_advance_(output_advance) {
     static_assert(std::is_integral<IntType>::value, "FieldDecoderInt requires an integral type");
   }
 
   void decode(ConstBufferView& input, BufferView& output) override {
     int64_t diff = 0;
     auto offset = decodeVarint(input.data, diff);
-    input.advance(offset);
 
     IntType value = prev_value_ + diff;
     prev_value_ = value;
 
     memcpy(output.data, &value, sizeof(IntType));
-    output.advance(sizeof(value));
+
+    input.advance(offset);
+    output.advance(output_advance_);
   }
 
  private:
+  size_t output_advance_ = 0;
   int64_t prev_value_ = 0;
 };
 
@@ -57,23 +51,31 @@ class FieldDecoderInt : public FieldDecoder {
 // Specialization for floating point types and lossy compression
 class FieldDecoderFloatLossy : public FieldDecoder {
  public:
-  FieldDecoderFloatLossy(PointField field_info);
+  FieldDecoderFloatLossy(size_t output_advance, float resolution)
+      : output_advance_(output_advance), resolution_(resolution) {
+    if (resolution <= 0.0) {
+      throw std::runtime_error("FieldDecoder(Float/Lossy) requires a resolution with value > 0.0");
+    }
+  }
+
   void decode(ConstBufferView& input, BufferView& output) override;
 
  private:
-  int64_t prev_value_ = 00;
+  size_t output_advance_ = 0;
   float resolution_ = 0.0;
+  int64_t prev_value_ = 00;
 };
 
 //------------------------------------------------------------------------------------------
 // Specialization for floating point types and lossless compression
 class FieldDecoderFloatXOR : public FieldDecoder {
  public:
-  FieldDecoderFloatXOR(PointField field_info);
+  FieldDecoderFloatXOR(size_t output_advance) : output_advance_(output_advance) {}
 
   void decode(ConstBufferView& input, BufferView& output) override;
 
  private:
+  size_t output_advance_ = 0;
   uint32_t prev_value_bits_ = 0;
 };
 
