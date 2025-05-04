@@ -2,8 +2,8 @@
 
 #include <stdexcept>
 
-#include "cloudini/cloudini.hpp"
 #include "cloudini/encoding_utils.hpp"
+#include "cloudini/intrinsics.hpp"
 
 namespace Cloudini {
 
@@ -47,9 +47,9 @@ class FieldEncoderInt : public FieldEncoder {
 
 //------------------------------------------------------------------------------------------
 // Specialization for floating point types and lossy compression
-class FieldEncoderFloatLossy : public FieldEncoder {
+class FieldEncoderFloat_Lossy : public FieldEncoder {
  public:
-  FieldEncoderFloatLossy(size_t input_advance, float resolution)
+  FieldEncoderFloat_Lossy(size_t input_advance, float resolution)
       : input_advance_(input_advance), resolution_inv_(1.0f / resolution) {
     if (resolution <= 0.0) {
       throw std::runtime_error("FieldEncoder(Float/Lossy) requires a resolution with value > 0.0");
@@ -66,15 +66,52 @@ class FieldEncoderFloatLossy : public FieldEncoder {
 
 //------------------------------------------------------------------------------------------
 // Specialization for floating point types and lossless compression
-class FieldEncoderFloatXOR : public FieldEncoder {
+class FieldEncoderFloat_XOR : public FieldEncoder {
  public:
-  FieldEncoderFloatXOR(size_t input_advance) : input_advance_(input_advance) {}
+  FieldEncoderFloat_XOR(size_t input_advance) : input_advance_(input_advance) {}
 
   size_t encode(ConstBufferView& input, BufferView& output) override;
 
  private:
   size_t input_advance_ = 0;
   uint32_t prev_value_bits_ = 0;
+};
+
+//------------------------------------------------------------------------------------------
+// Specialization for POSITION_XYZ
+class FieldEncoderXYZ_Lossy : public FieldEncoder {
+ public:
+  FieldEncoderXYZ_Lossy(size_t input_advance, float resolution)
+      : input_advance_(input_advance),
+        resolution_inv_(1.0f / resolution),
+        multiplier_({resolution_inv_, resolution_inv_, resolution_inv_, 1.0}) {
+    if (resolution <= 0.0) {
+      throw std::runtime_error("FieldEncoder(XYZ/Lossy) requires a resolution with value > 0.0");
+    }
+  }
+
+  size_t encode(ConstBufferView& input, BufferView& output) override;
+
+ private:
+  size_t input_advance_ = 0;
+  Vector4l prev_vect_ = Vector4l(0, 0, 0, 0);
+  float resolution_inv_ = 0.0;
+  Vector4f multiplier_ = Vector4f(0, 0, 0, 0);
+};
+
+//------------------------------------------------------------------------------------------
+// Specialization for floating point types and lossless compression
+class FieldEncoderXYZI_Lossy : public FieldEncoder {
+ public:
+  FieldEncoderXYZI_Lossy(size_t input_advance, const Vector4f& multiplier)
+      : input_advance_(input_advance), multiplier_(multiplier) {}
+
+  size_t encode(ConstBufferView& input, BufferView& output) override;
+
+ private:
+  size_t input_advance_ = 0;
+  Vector4l prev_vect_ = Vector4l(0, 0, 0, 0);
+  Vector4f multiplier_ = Vector4f(0, 0, 0, 0);
 };
 
 }  // namespace Cloudini

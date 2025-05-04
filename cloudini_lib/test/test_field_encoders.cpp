@@ -65,8 +65,7 @@ TEST(FieldEncoders, FloatLossy) {
   const size_t kBufferSize = kNumpoints * sizeof(float);
 
   // create a sequence of random numbers
-  std::generate(
-      input_data.begin(), input_data.end(), []() { return 0.001 * static_cast<double>(std::rand() % 10000); });
+  std::generate(input_data.begin(), input_data.end(), []() { return 0.001 * static_cast<float>(std::rand() % 10000); });
 
   using namespace Cloudini;
 
@@ -78,8 +77,8 @@ TEST(FieldEncoders, FloatLossy) {
 
   std::vector<uint8_t> buffer(kNumpoints * sizeof(float));
 
-  FieldEncoderFloatLossy encoder(sizeof(float), kResolution);
-  FieldDecoderFloatLossy decoder(sizeof(float), kResolution);
+  FieldEncoderFloat_Lossy encoder(sizeof(float), kResolution);
+  FieldDecoderFloat_Lossy decoder(sizeof(float), kResolution);
   //------------- Encode -------------
   {
     ConstBufferView input_buffer = {reinterpret_cast<const uint8_t*>(input_data.data()), kBufferSize};
@@ -112,5 +111,68 @@ TEST(FieldEncoders, FloatLossy) {
       ASSERT_NEAR(input_data[i], output_data[i], kTolerance) << "Mismatch at index " << i;
     }
     std::cout << "Max difference: " << max_difference << std::endl;
+  }
+}
+
+TEST(FieldEncoders, XYZLossy) {
+  const size_t kNumpoints = 1000000;
+  const double kResolution = 0.01F;
+
+  struct PointXYZ {
+    float x = 0;
+    float y = 0;
+    float z = 0;
+  };
+
+  std::vector<PointXYZ> input_data(kNumpoints);
+  std::vector<PointXYZ> output_data(kNumpoints);
+
+  const size_t kBufferSize = kNumpoints * sizeof(PointXYZ);
+
+  // create a sequence of random numbers
+  std::generate(input_data.begin(), input_data.end(), []() -> PointXYZ {
+    return {
+        0.001F * static_cast<float>(std::rand() % 10000),  //
+        0.001F * static_cast<float>(std::rand() % 10000),  //
+        0.001F * static_cast<float>(std::rand() % 10000)};
+  });
+
+  using namespace Cloudini;
+
+  PointField field_info;
+  field_info.name = "the_float";
+  field_info.offset = 0;
+  field_info.type = FieldType::FLOAT32;
+  field_info.resolution = kResolution;
+
+  std::vector<uint8_t> buffer(kNumpoints * sizeof(PointXYZ));
+
+  FieldEncoderXYZ_Lossy encoder(sizeof(PointXYZ), kResolution);
+  FieldDecoderXYZ_Lossy decoder(sizeof(PointXYZ), kResolution);
+  //------------- Encode -------------
+  {
+    ConstBufferView input_buffer = {reinterpret_cast<const uint8_t*>(input_data.data()), kBufferSize};
+    BufferView buffer_data = {buffer.data(), buffer.size()};
+
+    size_t encoded_size = 0;
+    for (size_t i = 0; i < kNumpoints; ++i) {
+      encoded_size += encoder.encode(input_buffer, buffer_data);
+    }
+    buffer.resize(encoded_size);
+    std::cout << "Original size: " << kBufferSize << "   encoded size: " << encoded_size << std::endl;
+  }
+  //------------- Decode -------------
+  {
+    ConstBufferView buffer_data = {buffer.data(), buffer.size()};
+    BufferView output_buffer = {reinterpret_cast<uint8_t*>(output_data.data()), kBufferSize};
+
+    const float kTolerance = static_cast<float>(kResolution * 1.0001);
+
+    for (size_t i = 0; i < kNumpoints; ++i) {
+      decoder.decode(buffer_data, output_buffer);
+      ASSERT_NEAR(input_data[i].x, output_data[i].x, kTolerance) << "Mismatch at index " << i;
+      ASSERT_NEAR(input_data[i].y, output_data[i].y, kTolerance) << "Mismatch at index " << i;
+      ASSERT_NEAR(input_data[i].z, output_data[i].z, kTolerance) << "Mismatch at index " << i;
+    }
   }
 }
