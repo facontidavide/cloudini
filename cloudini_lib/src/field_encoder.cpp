@@ -17,10 +17,12 @@ FieldEncoderFloatLossy::FieldEncoderFloatLossy(PointField field_info) : FieldEnc
 }
 
 size_t FieldEncoderFloatLossy::encode(const ConstBufferView& input, BufferView& output) {
-  float value = *(reinterpret_cast<const float*>(input.data));
-  float diff = value - prev_value_;
+  float value_real = *(reinterpret_cast<const float*>(input.data));
+  int64_t value = static_cast<int64_t>(value_real * resolution_inv_);
+
+  int64_t delta = value - prev_value_;
   prev_value_ = value;
-  auto offset = encodeVarint(static_cast<int64_t>(diff * resolution_inv_), output.data);
+  auto offset = encodeVarint(delta, output.data);
 
   output.advance(offset);
   return offset;

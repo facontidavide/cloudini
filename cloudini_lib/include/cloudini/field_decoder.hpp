@@ -61,8 +61,8 @@ class FieldDecoderFloatLossy : public FieldDecoder {
   void decode(ConstBufferView& input, BufferView& output) override;
 
  private:
-  float prev_value_ = 0.0;
-  float resolution_inv_ = 0.0;
+  int64_t prev_value_ = 00;
+  float resolution_ = 0.0;
 };
 
 //------------------------------------------------------------------------------------------

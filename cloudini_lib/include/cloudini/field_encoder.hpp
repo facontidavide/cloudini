@@ -58,7 +58,7 @@ class FieldEncoderFloatLossy : public FieldEncoder {
   size_t encode(const ConstBufferView& input, BufferView& output) override;
 
  private:
-  float prev_value_ = 0.0;
+  int64_t prev_value_ = 0.0;
   float resolution_inv_ = 0.0;
 };
 
