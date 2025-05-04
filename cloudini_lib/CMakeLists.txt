@@ -59,15 +59,18 @@ else()
     set(ZSTD_LIBRARY zstd)
   endif()
 endif()
+
 ##################################################################################
 
 add_library(cloudini_lib STATIC
   src/cloudini.cpp
+  src/field_encoder.cpp
+  src/field_decoder.cpp
 )
 
 target_compile_features(cloudini_lib
   PUBLIC
-    cxx_std_17
+    cxx_std_20
 )
 
 target_include_directories(cloudini_lib
@@ -89,3 +92,8 @@ target_link_libraries(cloudini_lib
     ${LZ4_LIBRARY}
 )
 
+include(CTest)
+message( STATUS "BUILD_TESTING:   ${BUILD_TESTING} " )
+if (BUILD_TESTING)
+  add_subdirectory(test)
+endif()

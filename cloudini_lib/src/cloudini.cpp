@@ -3,7 +3,10 @@
 #include <stdexcept>
 
 #include "cloudini/encoding_utils.hpp"
+#include "cloudini/field_decoder.hpp"
+#include "cloudini/field_encoder.hpp"
 #include "lz4.h"
+#include "zstd.h"
 
 namespace Cloudini {
 
@@ -12,6 +15,8 @@ size_t ComputeHeaderSize(const std::vector<PointField>& fields) {
   header_size += sizeof(uint64_t);                   // decoded size
   header_size += sizeof(uint8_t) + sizeof(uint8_t);  // first and second stage options
   header_size += sizeof(uint16_t);                   // fields count
+  header_size += sizeof(uint32_t);                   // point size
+  header_size += sizeof(uint64_t);                   // points count
   for (const auto& field : fields) {
     header_size += field.name.size() + sizeof(uint16_t);  // name
     header_size += sizeof(uint32_t);                      // offset
@@ -28,7 +33,8 @@ void EncodeHeader(const EncodingInfo& header, BufferView& output) {
   memcpy(buff, magic_header, magic_length);
   buff += magic_length;
 
-  encode(header.decoded_size, output);
+  encode(header.points_count, output);
+  encode(header.point_size, output);
 
   encode(static_cast<uint8_t>(header.firts_stage), output);
   encode(static_cast<uint8_t>(header.second_stage), output);
@@ -48,9 +54,9 @@ void EncodeHeader(const EncodingInfo& header, BufferView& output) {
   }
 }
 
-EncodingInfo DecodeHeader(BufferView& input) {
+EncodingInfo DecodeHeader(ConstBufferView& input) {
   EncodingInfo header;
-  uint8_t* buff = input.data;
+  const uint8_t* buff = input.data;
 
   // check the magic header
   if (memcmp(buff, magic_header, strlen(magic_header)) != 0) {
@@ -58,7 +64,8 @@ EncodingInfo DecodeHeader(BufferView& input) {
   }
   buff += strlen(magic_header);
 
-  decode(input, header.decoded_size);
+  decode(input, header.points_count);
+  decode(input, header.point_size);
 
   uint8_t stage;
   decode(input, stage);

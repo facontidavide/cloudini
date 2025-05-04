@@ -1,5 +1,7 @@
 #pragma once
 
+#include <iostream>
+
 #include "cloudini/encoding_utils.hpp"
 
 namespace Cloudini {
@@ -23,12 +25,18 @@ enum class SecondStageOpt : uint8_t {
 struct EncodingInfo {
   // Fields in the point cloud
   std::vector<PointField> fields;
+
+  // the number of points in the point cloud
+  uint64_t points_count = 0;
+
+  // the size in bytes of a single point
+  uint32_t point_size = 0;
+
   // the fist step of the encoding
   FirstStageOpt firts_stage = FirstStageOpt::LOSSY;
+
   // the second step of the encoding (general purpose compression)
   SecondStageOpt second_stage = SecondStageOpt::ZSTD;
-  // the size of the decoded data
-  uint64_t decoded_size = 0;
 };
 
 constexpr const char* magic_header = "CLOUDINI_V01";
@@ -51,7 +59,7 @@ void EncodeHeader(const EncodingInfo& header, BufferView& output);
  * @param info The encoding information.
  * @return HeaderInfo The decoded header information.
  */
-EncodingInfo DecodeHeader(BufferView& input);
+EncodingInfo DecodeHeader(ConstBufferView& input);
 
 size_t PointcloudEncode(const EncodingInfo& info, BufferView input_cloud, BufferView output_cloud);
 
