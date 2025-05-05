@@ -62,10 +62,23 @@ endif()
 
 ##################################################################################
 
+find_package(PCL QUIET)
+
+if(PCL_FOUND)
+  message(STATUS "PCL found")
+  add_definitions(${PCL_DEFINITIONS})
+  link_directories(${PCL_LIBRARY_DIRS})
+  set(PCL_SRC src/pcl_conversion.cpp)
+else()
+  message(STATUS "PCL NOT found")
+endif()
+
+
 add_library(cloudini_lib STATIC
   src/cloudini.cpp
   src/field_encoder.cpp
   src/field_decoder.cpp
+  ${PCL_SRC}
 )
 
 target_compile_features(cloudini_lib
@@ -73,10 +86,15 @@ target_compile_features(cloudini_lib
     cxx_std_20
 )
 
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  target_compile_options(cloudini_lib PRIVATE -Wall -Wextra)
+endif()
+
 target_include_directories(cloudini_lib
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
+    ${PCL_INCLUDE_DIRS}
   PRIVATE
     $<BUILD_INTERFACE:${LZ4_INCLUDE_DIRS}>
 )
@@ -85,12 +103,9 @@ target_include_directories(cloudini_lib
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
+    ${PCL_LIBRARIES}
 )
 
-target_link_libraries(cloudini_lib
-  PRIVATE
-    ${LZ4_LIBRARY}
-)
 
 include(CTest)
 message( STATUS "BUILD_TESTING:   ${BUILD_TESTING} " )

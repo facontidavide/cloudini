@@ -26,17 +26,21 @@ struct EncodingInfo {
   // Fields in the point cloud
   std::vector<PointField> fields;
 
-  // the number of points in the point cloud
-  uint64_t points_count = 0;
+  uint32_t width = 0;
+
+  // clouds that are not organized have height equal to 1
+  uint32_t height = 1;
 
   // the size in bytes of a single point
-  uint32_t point_size = 0;
+  uint32_t point_step = 0;
 
   // the fist step of the encoding
   FirstStageOpt firts_stage = FirstStageOpt::LOSSY;
 
   // the second step of the encoding (general purpose compression)
   SecondStageOpt second_stage = SecondStageOpt::ZSTD;
+
+  uint32_t decoded_size = 0;
 };
 
 constexpr const char* magic_header = "CLOUDINI_V01";
@@ -61,6 +65,8 @@ void EncodeHeader(const EncodingInfo& header, BufferView& output);
  */
 EncodingInfo DecodeHeader(ConstBufferView& input);
 
-size_t PointcloudEncode(const EncodingInfo& info, BufferView input_cloud, BufferView output_cloud);
+size_t PointcloudEncode(const EncodingInfo& info, ConstBufferView cloud_data, BufferView serialized_cloud);
+
+size_t PointcloudDecode(ConstBufferView serialized_cloud, BufferView cloud_data);
 
 }  // namespace Cloudini

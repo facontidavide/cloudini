@@ -12,11 +12,13 @@ namespace Cloudini {
 
 size_t ComputeHeaderSize(const std::vector<PointField>& fields) {
   size_t header_size = strlen(magic_header);
+  header_size += sizeof(uint32_t);                   // width
+  header_size += sizeof(uint32_t);                   // height
+  header_size += sizeof(uint32_t);                   // point_step
   header_size += sizeof(uint64_t);                   // decoded size
   header_size += sizeof(uint8_t) + sizeof(uint8_t);  // first and second stage options
   header_size += sizeof(uint16_t);                   // fields count
-  header_size += sizeof(uint32_t);                   // point size
-  header_size += sizeof(uint64_t);                   // points count
+
   for (const auto& field : fields) {
     header_size += field.name.size() + sizeof(uint16_t);  // name
     header_size += sizeof(uint32_t);                      // offset
@@ -33,11 +35,13 @@ void EncodeHeader(const EncodingInfo& header, BufferView& output) {
   memcpy(buff, magic_header, magic_length);
   buff += magic_length;
 
-  encode(header.points_count, output);
-  encode(header.point_size, output);
+  encode(header.width, output);
+  encode(header.height, output);
+  encode(header.point_step, output);
 
   encode(static_cast<uint8_t>(header.firts_stage), output);
   encode(static_cast<uint8_t>(header.second_stage), output);
+  encode(header.decoded_size, output);
 
   encode(static_cast<uint16_t>(header.fields.size()), output);
 
@@ -64,8 +68,9 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
   }
   buff += strlen(magic_header);
 
-  decode(input, header.points_count);
-  decode(input, header.point_size);
+  decode(input, header.width);
+  decode(input, header.height);
+  decode(input, header.point_step);
 
   uint8_t stage;
   decode(input, stage);
@@ -73,6 +78,8 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
 
   decode(input, stage);
   header.second_stage = static_cast<SecondStageOpt>(stage);
+
+  decode(input, header.decoded_size);
 
   uint16_t fields_count = 0;
   decode(input, fields_count);

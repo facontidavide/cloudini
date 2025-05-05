@@ -31,12 +31,6 @@ enum class FieldType : uint8_t {
   // Common in LIDAR messages
   POINT_XYZI = 10,
 
-  // color packed in INT32
-  COLOR_RGBA = 11,
-
-  // a pack of 3 FLOAT32 (normal vector, magnitude 1.0)
-  NORMAL = 12,
-
 };
 
 struct PointField {
@@ -66,10 +60,6 @@ inline int constexpr SizeOf(const FieldType& type) {
       return 3 * 4;
     case FieldType::POINT_XYZI:
       return 4 * 4;
-    case FieldType::COLOR_RGBA:
-      return 4;
-    case FieldType::NORMAL:
-      return 3 * 4;
     default:
       return 0;
   }
