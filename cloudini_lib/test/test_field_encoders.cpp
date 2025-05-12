@@ -31,7 +31,7 @@ TEST(FieldEncoders, IntField) {
 
   //------------- Encode -------------
   {
-    ConstBufferView input_buffer = {reinterpret_cast<const uint8_t*>(input_data.data()), kBufferSize};
+    ConstBufferView input_buffer(input_data.data(), kBufferSize);
     BufferView buffer_data = {buffer.data(), buffer.size()};
 
     size_t encoded_size = 0;
@@ -46,7 +46,7 @@ TEST(FieldEncoders, IntField) {
   //------------- Decode -------------
   {
     ConstBufferView buffer_data = {buffer.data(), buffer.size()};
-    BufferView output_buffer = {reinterpret_cast<uint8_t*>(output_data.data()), kBufferSize};
+    BufferView output_buffer(output_data.data(), kBufferSize);
 
     for (size_t i = 0; i < kNumpoints; ++i) {
       decoder.decode(buffer_data, output_buffer);
@@ -81,7 +81,7 @@ TEST(FieldEncoders, FloatLossy) {
   FieldDecoderFloat_Lossy decoder(sizeof(float), kResolution);
   //------------- Encode -------------
   {
-    ConstBufferView input_buffer = {reinterpret_cast<const uint8_t*>(input_data.data()), kBufferSize};
+    ConstBufferView input_buffer(input_data.data(), kBufferSize);
     BufferView buffer_data = {buffer.data(), buffer.size()};
 
     size_t encoded_size = 0;
@@ -96,7 +96,7 @@ TEST(FieldEncoders, FloatLossy) {
   //------------- Decode -------------
   {
     ConstBufferView buffer_data = {buffer.data(), buffer.size()};
-    BufferView output_buffer = {reinterpret_cast<uint8_t*>(output_data.data()), kBufferSize};
+    BufferView output_buffer(output_data.data(), kBufferSize);
 
     const float kTolerance = static_cast<float>(kResolution * 1.0001);
 
@@ -151,7 +151,7 @@ TEST(FieldEncoders, XYZLossy) {
   FieldDecoderXYZ_Lossy decoder(sizeof(PointXYZ), kResolution);
   //------------- Encode -------------
   {
-    ConstBufferView input_buffer = {reinterpret_cast<const uint8_t*>(input_data.data()), kBufferSize};
+    ConstBufferView input_buffer(input_data.data(), kBufferSize);
     BufferView buffer_data = {buffer.data(), buffer.size()};
 
     size_t encoded_size = 0;
@@ -164,7 +164,7 @@ TEST(FieldEncoders, XYZLossy) {
   //------------- Decode -------------
   {
     ConstBufferView buffer_data = {buffer.data(), buffer.size()};
-    BufferView output_buffer = {reinterpret_cast<uint8_t*>(output_data.data()), kBufferSize};
+    BufferView output_buffer(output_data.data(), kBufferSize);
 
     const float kTolerance = static_cast<float>(kResolution * 1.0001);
 

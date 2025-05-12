@@ -18,6 +18,8 @@ class FieldEncoder {
    * Both buffers will be advanced.
    */
   virtual size_t encode(ConstBufferView& input, BufferView& output) = 0;
+
+  virtual void clear() = 0;
 };
 
 //------------------------------------------------------------------------------------------
@@ -40,6 +42,11 @@ class FieldEncoderInt : public FieldEncoder {
     return offset;
   }
 
+  void clear() override {
+    prev_value_ = 0;
+    input_advance_ = 0;
+  }
+
  private:
   int64_t prev_value_ = 0;
   size_t input_advance_ = 0;
@@ -58,6 +65,11 @@ class FieldEncoderFloat_Lossy : public FieldEncoder {
 
   size_t encode(ConstBufferView& input, BufferView& output) override;
 
+  void clear() override {
+    prev_value_ = 0.0;
+    input_advance_ = 0;
+  }
+
  private:
   int64_t prev_value_ = 0.0;
   size_t input_advance_ = 0;
@@ -71,6 +83,11 @@ class FieldEncoderFloat_XOR : public FieldEncoder {
   FieldEncoderFloat_XOR(size_t input_advance) : input_advance_(input_advance) {}
 
   size_t encode(ConstBufferView& input, BufferView& output) override;
+
+  void clear() override {
+    prev_value_bits_ = 0.0;
+    input_advance_ = 0;
+  }
 
  private:
   size_t input_advance_ = 0;
@@ -92,9 +109,14 @@ class FieldEncoderXYZ_Lossy : public FieldEncoder {
 
   size_t encode(ConstBufferView& input, BufferView& output) override;
 
+  void clear() override {
+    prev_vect_ = Vector4i(0, 0, 0, 0);
+    input_advance_ = 0;
+  }
+
  private:
   size_t input_advance_ = 0;
-  Vector4l prev_vect_ = Vector4l(0, 0, 0, 0);
+  Vector4i prev_vect_ = Vector4i(0, 0, 0, 0);
   float resolution_inv_ = 0.0;
   Vector4f multiplier_ = Vector4f(0, 0, 0, 0);
 };
@@ -108,9 +130,14 @@ class FieldEncoderXYZI_Lossy : public FieldEncoder {
 
   size_t encode(ConstBufferView& input, BufferView& output) override;
 
+  void clear() override {
+    prev_vect_ = Vector4i(0, 0, 0, 0);
+    input_advance_ = 0;
+  }
+
  private:
   size_t input_advance_ = 0;
-  Vector4l prev_vect_ = Vector4l(0, 0, 0, 0);
+  Vector4i prev_vect_ = Vector4i(0, 0, 0, 0);
   Vector4f multiplier_ = Vector4f(0, 0, 0, 0);
 };
 

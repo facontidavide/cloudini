@@ -3,27 +3,32 @@
 #include <cstddef>
 #include <cstdint>
 
+// --- Architecture Detection & Native Types ---
+
 // --- x86/x64 (SSE/AVX) ---
-#if defined(__SSE__) || defined(__AVX__)  // Check for SSE or AVX support
+// __AVX__ implies __SSE__, __SSE2__, __SSE3__, __SSSE3__, __SSE4_1__, __SSE4_2__
+#if defined(__AVX__) || defined(__SSE__)
 #include <immintrin.h>
-#define ARCH_X86_SSE 1
+#undef ARCH_SCALAR
+#define ARCH_X86_SSE 1  // General flag for 128-bit SSE/AVX capabilities
 using Native4f = __m128;
+using Native4i = __m128i;  // Requires SSE2 for the type itself
 
 // --- ARM (NEON) ---
-#elif defined(__ARM_NEON) || defined(__aarch64__)  // Check for ARM NEON (32-bit or 64-bit)
+#elif defined(__ARM_NEON) || defined(__aarch64__)
 #include <arm_neon.h>
+#undef ARCH_SCALAR
 #define ARCH_ARM_NEON 1
 using Native4f = float32x4_t;
-// --- Fallback (Scalar) ---
+using Native4i = int32x4_t;
+
 #else
 #define ARCH_SCALAR 1
 #endif
 
-#if defined(__AVX2__)
-#define ARCH_X86_AVX2 1
-using Native4l = __m256i;
-#endif
-
+//-----------------------------------------------------------------------
+// Float vector (4 x floats)
+//-----------------------------------------------------------------------
 struct alignas(16) Vector4f {
   // Conditionally include the native SIMD type
 
@@ -116,10 +121,12 @@ struct alignas(16) Vector4f {
 
   // --- Accessors ---
   float& operator[](size_t index) {
+    assert(index < 4);
     return data.v[index];
   }
 
   const float& operator[](size_t index) const {
+    assert(index < 4);
     return data.v[index];
   }
 };
@@ -138,23 +145,26 @@ inline Vector4f ZeroVector4f() {
 static const Vector4f kVectorZero = ZeroVector4f();
 
 //-----------------------------------------------------------------------
-struct alignas(32) Vector4l {
-  union alignas(32) {
-#if defined(ARCH_X86_AVX2)
-    Native4l m;  // Native 256-bit type (AVX2 only)
+// Integers vector (4x int32_t)
+//-----------------------------------------------------------------------
+
+struct alignas(16) Vector4i {
+  union alignas(16) {
+#if defined(ARCH_X86_SSE) || defined(ARCH_ARM_NEON)
+    Native4i m;  // Native 128-bit type
 #endif
-    int64_t v[4];   // Scalar representation
-    uint8_t u[32];  // Byte representation
+    int32_t v[4];   // Scalar representation
+    uint8_t u[16];  // Byte representation
   } data;
 
   // --- Constructors ---
-  Vector4l() = default;
-  Vector4l(const Vector4l& other) = default;
-  Vector4l& operator=(const Vector4l& other) = default;
-  Vector4l(Vector4l&& other) = default;
-  Vector4l& operator=(Vector4l&& other) = default;
+  Vector4i() = default;
+  Vector4i(const Vector4i& other) = default;
+  Vector4i& operator=(const Vector4i& other) = default;
+  Vector4i(Vector4i&& other) = default;
+  Vector4i& operator=(Vector4i&& other) = default;
 
-  Vector4l(int64_t x, int64_t y, int64_t z, int64_t w) {
+  Vector4i(int32_t x, int32_t y, int32_t z, int32_t w) {
     data.v[0] = x;
     data.v[1] = y;
     data.v[2] = z;
@@ -165,17 +175,18 @@ struct alignas(32) Vector4l {
     return 32;
   }
 
-#if defined(ARCH_X86_AVX2)
-  Vector4l(const Native4f& native) : data{native} {}
+// Constructor from native SIMD type
+#if defined(ARCH_X86_SSE) || defined(ARCH_ARM_NEON)
+  Vector4i(const Native4i& native) : data{native} {}
 #endif
 
-  Vector4l operator+(const Vector4l& other) const {
-#if defined(ARCH_X86_AVX2)
-    return Vector4l(_mm256_add_epi64(data.m, other.data.m));
+  Vector4i operator+(const Vector4i& other) const {
+#if defined(ARCH_X86_SSE)
+    return Vector4i(_mm_add_epi32(data.m, other.data.m));
 #elif defined(ARCH_ARM_NEON)
-    return Vector4l(vaddq_s64(data.m, other.data.m));
-#else  // Scalar
-    return Vector4l(
+    return Vector4i(vaddq_s32(data.m, other.data.m));
+#else  // Scalar fallback
+    return Vector4i(
         data.v[0] + other.data.v[0],  //
         data.v[1] + other.data.v[1],  //
         data.v[2] + other.data.v[2],  //
@@ -183,13 +194,13 @@ struct alignas(32) Vector4l {
 #endif
   }
 
-  Vector4l operator-(const Vector4l& other) const {
-#if defined(ARCH_X86_AVX2)
-    return Vector4l(_mm256_sub_epi64(data.m, other.data.m));
+  Vector4i operator-(const Vector4i& other) const {
+#if defined(ARCH_X86_SSE)
+    return Vector4i(_mm_sub_epi32(data.m, other.data.m));
 #elif defined(ARCH_ARM_NEON)
-    return Vector4l(vsubq_s64(data.m, other.data.m));
-#else  // Scalar
-    return Vector4l(
+    return Vector4i(vsubq_s32(data.m, other.data.m))
+#else  // Scalar fallback
+    return Vector4i(
         data.v[0] - other.data.v[0],  //
         data.v[1] - other.data.v[1],  //
         data.v[2] - other.data.v[2],  //
@@ -197,13 +208,13 @@ struct alignas(32) Vector4l {
 #endif
   }
 
-  Vector4l operator*(const Vector4l& other) const {
-#if defined(ARCH_X86_AVX2)
-    return Vector4l(_mm256_mullo_epi64(data.m, other.data.m));
+  Vector4i operator*(const Vector4i& other) const {
+#if defined(__SSE4_1__)                                      // Requires SSE4.1
+    return Vector4i(_mm_mullo_epi32(data.m, other.data.m));  // SSE4.1 intrinsic
 #elif defined(ARCH_ARM_NEON)
-    return Vector4l(vmulq_s64(data.m, other.data.m));
+    return Vector4i(vmulq_s32(data.m, other.data.m));
 #else  // Scalar
-    return Vector4l(
+    return Vector4i(
         data.v[0] * other.data.v[0],  //
         data.v[1] * other.data.v[1],  //
         data.v[2] * other.data.v[2],  //
@@ -211,45 +222,43 @@ struct alignas(32) Vector4l {
 #endif
   }
 
-  Vector4l operator/(const Vector4l& other) const {
-#if defined(ARCH_X86_AVX2)
-    return Vector4l(_mm256_div_epi64(data.m, other.data.m));
-#elif defined(ARCH_ARM_NEON)
-    return Vector4l(vdivq_s64(data.m, other.data.m));
-#else  // Scalar
-    return Vector4l(
+  Vector4i operator/(const Vector4i& other) const {
+    return Vector4i(
         data.v[0] / other.data.v[0],  //
         data.v[1] / other.data.v[1],  //
         data.v[2] / other.data.v[2],  //
         data.v[3] / other.data.v[3]);
-#endif
   }
 
   // --- Accessors ---
-  int64_t& operator[](size_t index) {
+  int32_t& operator[](size_t index) {
+    assert(index < 4);
     return data.v[index];
   }
 
-  const int64_t& operator[](size_t index) const {
+  const int32_t& operator[](size_t index) const {
+    assert(index < 4);
     return data.v[index];
   }
 };
 
-inline Vector4l cast_vector4f_to_Vector4l(const Vector4f& vec) {
-#if defined(ARCH_X86_AVX2)
-  // Convert four floats (__m128) to four 32-bit integers (__m128i).
-  // Uses truncation. Use _mm_cvtroundps_epi32 for other rounding modes.
-  __m128i temp_si128 = _mm_cvtps_epi32(vec.data.m);  // SSE2
+//-----------------------------------------------------------------------
+// Casting
+//-----------------------------------------------------------------------
 
-  // Place the 128-bit integer data (containing 4x int32_t) into the lower lane,
-  //  zeroing the upper 128 bits.
-  __m256i result = _mm256_castsi128_si256(ints_si128);  // Requires AVX
-  return Vector4l(result);
-#else  // Scalar
-  return Vector4l(
-      static_cast<int64_t>(vec.data.v[0]),  //
-      static_cast<int64_t>(vec.data.v[1]),  //
-      static_cast<int64_t>(vec.data.v[2]),  //
-      static_cast<int64_t>(vec.data.v[3]));
+// Cast Vector4f (float) to Vector4i (int32_t) using truncation
+inline Vector4i cast_vector4f_to_Vector4i(const Vector4f& vec) {
+#if defined(ARCH_X86_SSE)  // Requires SSE2
+  // Converts four floats (__m128) to four 32-bit signed integers (__m128i)
+  // using truncation (round towards zero).
+  return Vector4i(_mm_cvtps_epi32(vec.data.m));
+#elif defined(ARCH_ARM_NEON)
+  // Converts four floats (float32x4_t) to four 32-bit signed integers (int32x4_t)
+  // using truncation (round towards zero).
+  return Vector4i(vcvtq_s32_f32(vec.data.m));
+#else  // Scalar fallback
+  return Vector4i(
+      static_cast<int32_t>(vec.data.v[0]), static_cast<int32_t>(vec.data.v[1]), static_cast<int32_t>(vec.data.v[2]),
+      static_cast<int32_t>(vec.data.v[3]));
 #endif
 }

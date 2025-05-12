@@ -30,7 +30,7 @@ class FieldDecoderInt : public FieldDecoder {
   }
 
   void decode(ConstBufferView& input, BufferView& output) override {
-    int64_t diff = 0;
+    int32_t diff = 0;
     auto offset = decodeVarint(input.data, diff);
 
     IntType value = prev_value_ + diff;
@@ -44,7 +44,7 @@ class FieldDecoderInt : public FieldDecoder {
 
  private:
   size_t output_advance_ = 0;
-  int64_t prev_value_ = 0;
+  int32_t prev_value_ = 0;
 };
 
 //------------------------------------------------------------------------------------------
@@ -63,7 +63,7 @@ class FieldDecoderFloat_Lossy : public FieldDecoder {
  private:
   size_t output_advance_ = 0;
   float resolution_ = 0.0;
-  int64_t prev_value_ = 00;
+  int32_t prev_value_ = 0;
 };
 
 //------------------------------------------------------------------------------------------
@@ -85,7 +85,7 @@ class FieldDecoderXYZ_Lossy : public FieldDecoder {
   size_t output_advance_ = 0;
   float resolution_ = 0.0;
   Vector4f multiplier_ = Vector4f(0, 0, 0, 0);
-  Vector4l prev_vect_ = Vector4l(0, 0, 0, 0);
+  Vector4i prev_vect_ = Vector4i(0, 0, 0, 0);
 };
 
 //------------------------------------------------------------------------------------------
@@ -100,7 +100,7 @@ class FieldDecoderXYZI_Lossy : public FieldDecoder {
  private:
   size_t output_advance_ = 0;
   Vector4f multiplier_ = Vector4f(0, 0, 0, 0);
-  Vector4l prev_vect_ = Vector4l(0, 0, 0, 0);
+  Vector4i prev_vect_ = Vector4i(0, 0, 0, 0);
 };
 
 //------------------------------------------------------------------------------------------

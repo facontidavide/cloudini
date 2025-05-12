@@ -73,7 +73,6 @@ else()
   message(STATUS "PCL NOT found")
 endif()
 
-
 add_library(cloudini_lib STATIC
   src/cloudini.cpp
   src/field_encoder.cpp
@@ -97,14 +96,21 @@ target_include_directories(cloudini_lib
     ${PCL_INCLUDE_DIRS}
   PRIVATE
     $<BUILD_INTERFACE:${LZ4_INCLUDE_DIRS}>
+    $<BUILD_INTERFACE:${ZSTD_INCLUDE_DIRS}>
 )
 
-target_include_directories(cloudini_lib
+target_link_libraries(cloudini_lib
+  PRIVATE
+    lz4
+    zstd
   PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
     ${PCL_LIBRARIES}
 )
+
+
+if(CLOUDINI_BUILD_BENCHMARKS)
+  add_subdirectory(benchmarks)
+endif()
 
 
 include(CTest)

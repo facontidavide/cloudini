@@ -1,6 +1,8 @@
 #pragma once
 
 #include <bit>
+#include <cassert>
+#include <limits>
 
 #include "cloudini/basic_types.hpp"
 
@@ -9,6 +11,15 @@ namespace Cloudini {
 struct ConstBufferView {
   const uint8_t* data = nullptr;
   size_t size = 0;
+
+  ConstBufferView() = default;
+
+  ConstBufferView(const ConstBufferView& other) = default;
+  ConstBufferView(ConstBufferView&& other) = default;
+  ConstBufferView& operator=(const ConstBufferView& other) = default;
+  ConstBufferView& operator=(ConstBufferView&& other) = default;
+
+  ConstBufferView(const void* data, size_t size) : data(reinterpret_cast<const uint8_t*>(data)), size(size) {}
 
   void advance(size_t bytes) {
     data += bytes;
@@ -20,6 +31,15 @@ struct ConstBufferView {
 struct BufferView {
   uint8_t* data = nullptr;
   size_t size = 0;
+
+  BufferView() = default;
+
+  BufferView(const BufferView& other) = default;
+  BufferView(BufferView&& other) = default;
+  BufferView& operator=(const BufferView& other) = default;
+  BufferView& operator=(BufferView&& other) = default;
+
+  BufferView(void* data, size_t size) : data(reinterpret_cast<uint8_t*>(data)), size(size) {}
 
   void advance(size_t bytes) {
     data += bytes;
@@ -43,9 +63,19 @@ inline void encode(const std::string& str, BufferView& buff) {
   buff.advance(sizeof(len));
 }
 
-inline uint64_t encodeVarint(int64_t val, uint8_t* buf) {
-  auto tmp = static_cast<uint64_t>(val);
-  auto uval = static_cast<uint64_t>((tmp << 1) ^ (val >> 63));
+template <typename IntType>
+inline size_t encodeVarint(const IntType& val, uint8_t* buf) {
+  static_assert(
+      std::is_same_v<IntType, int64_t> || std::is_same_v<IntType, int32_t>, "encodeVarint requires int64_t or int32_t");
+
+  // Perform zigzag encoding to handle negative values efficiently.
+  // Zigzag encoding maps signed integers to unsigned integers such that
+  // small absolute values (both positive and negative) have small encoded values.
+  auto tmp = static_cast<IntType>(val);
+  constexpr auto bits_shift = (sizeof(IntType) * 8 - 1);
+  auto uval = static_cast<IntType>((tmp << 1) ^ (val >> bits_shift));
+
+  // Encode the value using variable-length encoding.
   uint8_t* ptr = buf;
   while (uval >= 128) {
     *ptr = 0x80 | (uval & 0x7f);
@@ -54,7 +84,8 @@ inline uint64_t encodeVarint(int64_t val, uint8_t* buf) {
   }
   *ptr = uint8_t(uval);
   ptr++;
-  return uint64_t(ptr - buf);
+  assert((ptr - buf) <= sizeof(IntType));
+  return static_cast<size_t>(ptr - buf);
 }
 
 template <typename T>
@@ -80,8 +111,12 @@ inline void decode(ConstBufferView& buff, std::string& str) {
   buff.advance(len);
 };
 
-inline size_t decodeVarint(const uint8_t* buf, int64_t& val) {
-  uint64_t uval = 0;
+template <typename IntType>
+inline size_t decodeVarint(const uint8_t* buf, IntType& val) {
+  static_assert(
+      std::is_same_v<IntType, int64_t> || std::is_same_v<IntType, int32_t>, "decodeVarint requires int64_t or int32_t");
+
+  IntType uval = 0;
   uint8_t shift = 0;
   const uint8_t* ptr = buf;
   while (true) {
@@ -93,8 +128,10 @@ inline size_t decodeVarint(const uint8_t* buf, int64_t& val) {
       break;
     }
   }
-  val = static_cast<int64_t>((uval >> 1) ^ -(uval & 1));
-  return uint64_t(ptr - buf);
+  // Perform zigzag decoding to retrieve the original signed value.
+  val = static_cast<IntType>((uval >> 1) ^ -(uval & 1));
+  assert((ptr - buf) <= sizeof(IntType));
+  return static_cast<size_t>(ptr - buf);
 }
 
 }  // namespace Cloudini

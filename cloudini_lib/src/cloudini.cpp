@@ -1,5 +1,8 @@
 #include "cloudini/cloudini.hpp"
 
+#include <iostream>
+#include <limits>
+#include <memory>
 #include <stdexcept>
 
 #include "cloudini/encoding_utils.hpp"
@@ -28,9 +31,11 @@ size_t ComputeHeaderSize(const std::vector<PointField>& fields) {
   return header_size;
 }
 
-void EncodeHeader(const EncodingInfo& header, BufferView& output) {
+size_t EncodeHeader(const EncodingInfo& header, BufferView& output) {
   static uint8_t magic_length = strlen(magic_header);
   uint8_t* buff = output.data;
+
+  const size_t prev_size = output.size;
 
   memcpy(buff, magic_header, magic_length);
   buff += magic_length;
@@ -56,6 +61,7 @@ void EncodeHeader(const EncodingInfo& header, BufferView& output) {
       encode(res, output);
     }
   }
+  return output.size - prev_size;
 }
 
 EncodingInfo DecodeHeader(ConstBufferView& input) {
@@ -97,6 +103,99 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
     header.fields.push_back(std::move(field));
   }
   return header;
+}
+
+PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
+  for (const auto& field : info_.fields) {
+    // sanity check
+    if ((field.type == FieldType::POSITION_XYZ || field.type == FieldType::POINT_XYZI) &&
+        !field.resolution.has_value()) {
+      throw std::runtime_error("FieldEncoder(XYZ) requires a resolution with value > 0.0");
+    }
+
+    if (field.type == FieldType::POSITION_XYZ) {
+      encoders_.push_back(std::make_unique<FieldEncoderXYZ_Lossy>(field.offset, field.resolution.value()));
+    } else if (field.type == FieldType::POINT_XYZI) {
+      const float mult = static_cast<float>(1.0 / field.resolution.value());
+      encoders_.push_back(std::make_unique<FieldEncoderXYZI_Lossy>(field.offset, Vector4f{mult, mult, mult, 1.0f}));
+    } else if (field.type == FieldType::FLOAT32) {
+      encoders_.push_back(std::make_unique<FieldEncoderFloat_Lossy>(field.offset, *field.resolution));
+    } else if (field.type == FieldType::INT16) {
+      encoders_.push_back(std::make_unique<FieldEncoderInt<uint16_t>>(field.offset));
+    } else if (field.type == FieldType::INT32) {
+      encoders_.push_back(std::make_unique<FieldEncoderInt<uint32_t>>(field.offset));
+    } else if (field.type == FieldType::UINT16) {
+      encoders_.push_back(std::make_unique<FieldEncoderInt<uint16_t>>(field.offset));
+    } else if (field.type == FieldType::UINT32) {
+      encoders_.push_back(std::make_unique<FieldEncoderInt<uint32_t>>(field.offset));
+    } else {
+      throw std::runtime_error("Unsupported field type");
+    }
+  }
+
+  header_.resize(ComputeHeaderSize(info_.fields));
+  BufferView buffer_view(header_.data(), header_.size());
+  EncodeHeader(info_, buffer_view);
+}
+
+size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t>& output) {
+  buffer_.resize(cloud_data.size);
+  output.resize(header_.size() + cloud_data.size);
+
+  //----------------------------------------------
+  // first stage compression. Result is stored in buffer_
+  if (info_.firts_stage != FirstStageOpt::NONE) {
+    BufferView buffer_view(buffer_.data(), buffer_.size());
+    size_t serialized_size = 0;
+    while (cloud_data.size > 0) {
+      for (size_t f = 0; f < info_.fields.size(); ++f) {
+        const auto& field = info_.fields[f];
+        const auto& encoder = encoders_[f];
+        ConstBufferView field_view(cloud_data.data + field.offset, cloud_data.size - field.offset);
+        serialized_size += encoder->encode(field_view, buffer_view);
+      }
+      cloud_data.advance(info_.point_step);
+    }
+    buffer_.resize(serialized_size);
+  }
+
+  //----------------------------------------------
+  // copy the header at the beginning of the output
+  memcpy(output.data(), header_.data(), header_.size());
+
+  const bool has_fist_stage = info_.firts_stage != FirstStageOpt::NONE;
+  const auto buffer_view = has_fist_stage ? ConstBufferView{buffer_.data(), buffer_.size()} : cloud_data;
+
+  const char* src_ptr = reinterpret_cast<const char*>(buffer_view.data);
+  const size_t src_size = buffer_view.size;
+  char* dest_ptr = reinterpret_cast<char*>(output.data() + header_.size());
+  const size_t dest_capacity = output.size() - header_.size();
+  //----------------------------------------------
+  // second stage compression. Data in _buffer will be compressed into output
+  switch (info_.second_stage) {
+    case SecondStageOpt::LZ4: {
+      int compressed_size = LZ4_compress_default(src_ptr, dest_ptr, src_size, dest_capacity);
+      if (compressed_size <= 0) {
+        throw std::runtime_error("LZ4 compression failed");
+      }
+      output.resize(compressed_size + header_.size());
+    } break;
+
+    case SecondStageOpt::ZSTD: {
+      size_t compressed_size = ZSTD_compress(dest_ptr, dest_capacity, src_ptr, src_size, 1);
+      if (ZSTD_isError(compressed_size)) {
+        throw std::runtime_error("ZSTD compression failed");
+      }
+      output.resize(compressed_size + header_.size());
+    } break;
+
+    case SecondStageOpt::NONE: {
+      memcpy(dest_ptr, src_ptr, src_size);
+      output.resize(src_size + header_.size());
+    } break;
+  }
+
+  return output.size();
 }
 
 }  // namespace Cloudini

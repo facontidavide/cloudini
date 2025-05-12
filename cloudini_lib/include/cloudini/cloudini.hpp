@@ -1,8 +1,9 @@
 #pragma once
 
-#include <iostream>
+#include <memory>
 
 #include "cloudini/encoding_utils.hpp"
+#include "cloudini/field_encoder.hpp"
 
 namespace Cloudini {
 
@@ -13,7 +14,9 @@ enum class FirstStageOpt : uint8_t {
   // (e.g. position, normals, doubles)
   LOSSY = 1,
   // Lossless compression (e.g. XoR for doubles)
-  LOSSLES = 2
+  LOSSLES = 2,
+  // Do nothing. Compression is done in the second stage
+  NONE = 3,
 };
 
 enum class SecondStageOpt : uint8_t {
@@ -55,7 +58,7 @@ size_t ComputeHeaderSize(const std::vector<PointField>& fields);
  * @param output The output buffer to write the encoded header data. Will be modified to point to the next data after
  * the header.
  */
-void EncodeHeader(const EncodingInfo& header, BufferView& output);
+size_t EncodeHeader(const EncodingInfo& header, BufferView& output);
 
 /**
  * @brief Decode the header from the input buffer.
@@ -65,7 +68,20 @@ void EncodeHeader(const EncodingInfo& header, BufferView& output);
  */
 EncodingInfo DecodeHeader(ConstBufferView& input);
 
-size_t PointcloudEncode(const EncodingInfo& info, ConstBufferView cloud_data, BufferView serialized_cloud);
+class PointcloudEncoder {
+ public:
+  PointcloudEncoder(const EncodingInfo& info);
+
+  size_t encode(ConstBufferView cloud_data, std::vector<uint8_t>& output);
+
+  void clear();
+
+ private:
+  EncodingInfo info_;
+  std::vector<std::unique_ptr<FieldEncoder>> encoders_;
+  std::vector<uint8_t> buffer_;
+  std::vector<uint8_t> header_;
+};
 
 size_t PointcloudDecode(ConstBufferView serialized_cloud, BufferView cloud_data);
 

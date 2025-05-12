@@ -3,9 +3,9 @@
 namespace Cloudini {
 
 void FieldDecoderFloat_Lossy::decode(ConstBufferView& input, BufferView& output) {
-  int64_t diff = 0;
+  int32_t diff = 0;
   auto offset = decodeVarint(input.data, diff);
-  int64_t value = prev_value_ + diff;
+  int32_t value = prev_value_ + diff;
   float value_real = static_cast<float>(value) * resolution_;
   prev_value_ = value;
 
@@ -16,13 +16,13 @@ void FieldDecoderFloat_Lossy::decode(ConstBufferView& input, BufferView& output)
 //------------------------------------------------------------------------------------------
 
 void FieldDecoderXYZ_Lossy::decode(ConstBufferView& input, BufferView& output) {
-  Vector4l diff_vect;
+  Vector4i diff_vect(0, 0, 0, 0);
   auto ptr_out = input.data;
   ptr_out += decodeVarint(ptr_out, diff_vect[0]);
   ptr_out += decodeVarint(ptr_out, diff_vect[1]);
   ptr_out += decodeVarint(ptr_out, diff_vect[2]);
 
-  Vector4l vect_int = diff_vect + prev_vect_;
+  Vector4i vect_int = diff_vect + prev_vect_;
   prev_vect_ = vect_int;
 
   Vector4f vect_real(vect_int[0], vect_int[1], vect_int[2], 0);
@@ -37,14 +37,14 @@ void FieldDecoderXYZ_Lossy::decode(ConstBufferView& input, BufferView& output) {
 //------------------------------------------------------------------------------------------
 
 void FieldDecoderXYZI_Lossy::decode(ConstBufferView& input, BufferView& output) {
-  Vector4l diff_vect;
+  Vector4i diff_vect;
   auto ptr_out = input.data;
   ptr_out += decodeVarint(ptr_out, diff_vect[0]);
   ptr_out += decodeVarint(ptr_out, diff_vect[1]);
   ptr_out += decodeVarint(ptr_out, diff_vect[2]);
   ptr_out += decodeVarint(ptr_out, diff_vect[3]);
 
-  Vector4l vect_int = diff_vect + prev_vect_;
+  Vector4i vect_int = diff_vect + prev_vect_;
   prev_vect_ = vect_int;
 
   Vector4f vect_real(vect_int[0], vect_int[1], vect_int[2], vect_int[3]);

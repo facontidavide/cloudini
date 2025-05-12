@@ -30,7 +30,6 @@ enum class FieldType : uint8_t {
   // Contains 3 FLOAT32 (x,y,z) and 1 UINT32 (intensity)
   // Common in LIDAR messages
   POINT_XYZI = 10,
-
 };
 
 struct PointField {

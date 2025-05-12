@@ -4,3 +4,4 @@
 /codec/codec.cpp
 /codec/CMakeLists.txt.user
 /build/*
+/.cache

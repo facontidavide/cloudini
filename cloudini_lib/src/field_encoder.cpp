@@ -25,8 +25,8 @@ size_t FieldEncoderXYZ_Lossy::encode(ConstBufferView& input, BufferView& output)
 
   Vector4f normalized_vect = vect_real * multiplier_;
 
-  Vector4l vect_int = cast_vector4f_to_Vector4l(normalized_vect);
-  Vector4l delta = vect_int - prev_vect_;
+  Vector4i vect_int = cast_vector4f_to_Vector4i(normalized_vect);
+  Vector4i delta = vect_int - prev_vect_;
   prev_vect_ = vect_int;
 
   auto ptr_out = output.data;
@@ -46,8 +46,8 @@ size_t FieldEncoderXYZI_Lossy::encode(ConstBufferView& input, BufferView& output
   Vector4f vect_real;
   memcpy(vect_real.data.u, input.data, 16);
 
-  Vector4l vect_int = cast_vector4f_to_Vector4l(vect_real * multiplier_);
-  Vector4l delta = vect_int - prev_vect_;
+  Vector4i vect_int = cast_vector4f_to_Vector4i(vect_real * multiplier_);
+  Vector4i delta = vect_int - prev_vect_;
   prev_vect_ = vect_int;
 
   auto ptr_out = output.data;
