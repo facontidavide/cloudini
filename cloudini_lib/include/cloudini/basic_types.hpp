@@ -23,13 +23,6 @@ enum class FieldType : uint8_t {
 
   FLOAT32 = 7,
   FLOAT64 = 8,
-
-  // a pack of 3 FLOAT32 (x,y,z)
-  POSITION_XYZ = 9,
-
-  // Contains 3 FLOAT32 (x,y,z) and 1 UINT32 (intensity)
-  // Common in LIDAR messages
-  POINT_XYZI = 10,
 };
 
 struct PointField {
@@ -55,10 +48,6 @@ inline int constexpr SizeOf(const FieldType& type) {
       return 4;
     case FieldType::FLOAT64:
       return 8;
-    case FieldType::POSITION_XYZ:
-      return 3 * 4;
-    case FieldType::POINT_XYZI:
-      return 4 * 4;
     default:
       return 0;
   }

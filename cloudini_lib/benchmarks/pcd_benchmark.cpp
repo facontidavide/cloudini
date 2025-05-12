@@ -23,7 +23,12 @@ static Cloudini::EncodingInfo defaultEncodingInfo(const pcl::PointCloud<pcl::Poi
   info.firts_stage = Cloudini::FirstStageOpt::LOSSY;
   info.second_stage = Cloudini::SecondStageOpt::ZSTD;
   info.point_step = sizeof(pcl::PointXYZI);
-  info.fields.push_back(Cloudini::PointField{"xyzi", 0, Cloudini::FieldType::POINT_XYZI, 0.001});
+  info.fields.push_back(Cloudini::PointField{"x", 0, Cloudini::FieldType::FLOAT32, 0.001});
+  info.fields.push_back(Cloudini::PointField{"y", 4, Cloudini::FieldType::FLOAT32, 0.001});
+  info.fields.push_back(Cloudini::PointField{"z", 8, Cloudini::FieldType::FLOAT32, 0.001});
+  pcl::PointXYZI p;
+  uint32_t intensity_offset = reinterpret_cast<const uint8_t*>(&p.intensity) - reinterpret_cast<const uint8_t*>(&p);
+  info.fields.push_back(Cloudini::PointField{"intensity", intensity_offset, Cloudini::FieldType::FLOAT32, 0.001});
   return info;
 }
 
@@ -31,6 +36,7 @@ static void PCD_Encode(benchmark::State& state) {
   using namespace Cloudini;
 
   auto cloud = loadCloud();
+
   EncodingInfo info = defaultEncodingInfo(cloud);
   PointcloudEncoder encoder(info);
 
