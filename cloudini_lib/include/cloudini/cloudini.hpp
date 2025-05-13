@@ -74,7 +74,7 @@ class PointcloudEncoder {
 
   size_t encode(ConstBufferView cloud_data, std::vector<uint8_t>& output);
 
-  void clear();
+  void reset();
 
  private:
   EncodingInfo info_;

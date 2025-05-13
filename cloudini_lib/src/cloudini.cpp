@@ -106,23 +106,25 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
 }
 
 PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
-  auto next_is_float = [this](size_t index) -> bool {
-    return (index + 1) < info_.fields.size() && info_.fields[index + 1].type == FieldType::FLOAT32;
-  };
-
   for (size_t i = 0; i < info_.fields.size(); ++i) {
-    const auto& field = info_.fields[i];
+    auto& field = info_.fields[i];
 
     if (field.resolution && *field.resolution <= 0.0) {
       throw std::runtime_error("Field resolution must be greater than 0");
     }
     // special case: consecutive FLOAT32 fields
+    auto next_is_float = [this](size_t index) -> bool {
+      return (index + 1) < info_.fields.size() && info_.fields[index + 1].type == FieldType::FLOAT32;
+    };
+
     if (field.type == FieldType::FLOAT32 && next_is_float(i)) {
       std::vector<FieldEncoderFloatN_Lossy::FieldData> field_data;
-      field_data.emplace_back(field.offset, *field.resolution);
-      while (next_is_float(i) && field_data.size() < 4) {
-        ++i;
-        field_data.emplace_back(info_.fields[i].offset, *info_.fields[i].resolution);
+      while (field_data.size() < 4) {
+        field_data.emplace_back(field.offset, *field.resolution);
+        if (!next_is_float(i)) {
+          break;
+        }
+        field = info_.fields[++i];
       }
       encoders_.push_back(std::make_unique<FieldEncoderFloatN_Lossy>(field_data));
       continue;
@@ -157,7 +159,7 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t
   //----------------------------------------------
   // reset the state of the encoders
   for (auto& encoder : encoders_) {
-    encoder->clear();
+    encoder->reset();
   }
   //----------------------------------------------
   // first stage compression. Result is stored in buffer_

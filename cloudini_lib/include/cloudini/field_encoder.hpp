@@ -16,11 +16,14 @@ class FieldEncoder {
 
   /**
    * @brief Encode the field data from the input buffer to the output buffer.
-   * Both buffers will be advanced.
+   *
+   * @param point_view The input buffer containing the pointer to the current point.
+   * @param output The output buffer to write the encoded data. It will be advanced.
+   * @return The number of bytes written to the output buffer.
    */
   virtual size_t encode(const ConstBufferView& point_view, BufferView& output) = 0;
 
-  virtual void clear() = 0;
+  virtual void reset() = 0;
 };
 
 //------------------------------------------------------------------------------------------
@@ -35,7 +38,7 @@ class FieldEncoderCopy : public FieldEncoder {
     return field_size_;
   }
 
-  void clear() override {}
+  void reset() override {}
 
  private:
   size_t offset_;
@@ -47,12 +50,12 @@ class FieldEncoderCopy : public FieldEncoder {
 template <typename IntType>
 class FieldEncoderInt : public FieldEncoder {
  public:
-  FieldEncoderInt(size_t field_offset) : field_offset_(field_offset) {
+  FieldEncoderInt(size_t field_offset) : offset_(field_offset) {
     static_assert(std::is_integral<IntType>::value, "FieldEncoderInt requires an integral type");
   }
 
   size_t encode(const ConstBufferView& point_view, BufferView& output) override {
-    auto value = ToInt64<IntType>(point_view.data);
+    auto value = ToInt64<IntType>(point_view.data + offset_);
     auto diff = value - prev_value_;
     prev_value_ = value;
     auto var_size = encodeVarint(diff, output.data);
@@ -60,13 +63,13 @@ class FieldEncoderInt : public FieldEncoder {
     return var_size;
   }
 
-  void clear() override {
+  void reset() override {
     prev_value_ = 0;
   }
 
  private:
   int64_t prev_value_ = 0;
-  size_t field_offset_ = 0;
+  size_t offset_ = 0;
 };
 
 //------------------------------------------------------------------------------------------
@@ -74,7 +77,7 @@ class FieldEncoderInt : public FieldEncoder {
 class FieldEncoderFloat_Lossy : public FieldEncoder {
  public:
   FieldEncoderFloat_Lossy(size_t field_offset, float resolution)
-      : field_offset_(field_offset), resolution_inv_(1.0f / resolution) {
+      : offset_(field_offset), resolution_inv_(1.0f / resolution) {
     if (resolution <= 0.0) {
       throw std::runtime_error("FieldEncoder(Float/Lossy) requires a resolution with value > 0.0");
     }
@@ -82,13 +85,13 @@ class FieldEncoderFloat_Lossy : public FieldEncoder {
 
   size_t encode(const ConstBufferView& point_view, BufferView& output) override;
 
-  void clear() override {
+  void reset() override {
     prev_value_ = 0.0;
   }
 
  private:
   int64_t prev_value_ = 0.0;
-  size_t field_offset_;
+  size_t offset_;
   float resolution_inv_;
 };
 
@@ -96,16 +99,16 @@ class FieldEncoderFloat_Lossy : public FieldEncoder {
 // Specialization for floating point types and lossless compression
 class FieldEncoderFloat_XOR : public FieldEncoder {
  public:
-  FieldEncoderFloat_XOR(size_t field_offset) : field_offset_(field_offset) {}
+  FieldEncoderFloat_XOR(size_t field_offset) : offset_(field_offset) {}
 
   size_t encode(const ConstBufferView& point_view, BufferView& output) override;
 
-  void clear() override {
-    prev_value_bits_ = 0.0;
+  void reset() override {
+    prev_value_bits_ = 0;
   }
 
  private:
-  size_t field_offset_;
+  size_t offset_;
   uint32_t prev_value_bits_ = 0;
 };
 
@@ -118,26 +121,11 @@ class FieldEncoderFloatN_Lossy : public FieldEncoder {
     float resolution;
   };
 
-  FieldEncoderFloatN_Lossy(const std::vector<FieldData>& field_data) : fields_count_(field_data.size()) {
-    if (fields_count_ < 2) {
-      throw std::runtime_error("FieldEncoderFloatN_Lossy requires at least one field");
-    }
-    if (fields_count_ > 4) {
-      throw std::runtime_error("FieldEncoderFloatN_Lossy can have at most 4 fields");
-    }
-
-    for (size_t i = 0; i < fields_count_; ++i) {
-      multiplier_[i] = 1.0f / field_data[i].resolution;
-      if (multiplier_[i] <= 0.0) {
-        throw std::runtime_error("FieldEncoderFloatN_Lossy requires a resolution with value > 0.0");
-      }
-      offset_[i] = field_data[i].offset;
-    }
-  }
+  FieldEncoderFloatN_Lossy(const std::vector<FieldData>& field_data);
 
   size_t encode(const ConstBufferView& point_view, BufferView& output) override;
 
-  void clear() override {
+  void reset() override {
     prev_vect_ = Vector4i(0, 0, 0, 0);
   }
 

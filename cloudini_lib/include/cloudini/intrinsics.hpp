@@ -65,6 +65,21 @@ struct alignas(16) Vector4f {
 #endif
   }
 
+  void setZero() {
+#if defined(ARCH_X86_SSE)
+    data.m = _mm_setzero_ps();
+#elif defined(ARCH_ARM_NEON)
+    data.m = vdupq_n_f32(0.0f);
+#else  // Scalar
+    data.v[0] = 0.0f;
+    data.v[1] = 0.0f;
+    data.v[2] = 0.0f;
+    data.v[3] = 0.0f;
+#endif
+  }
+
+  // --- Size in bytes ---
+
   static size_t byte_size() {
     return 16;
   }
@@ -137,19 +152,6 @@ struct alignas(16) Vector4f {
   }
 };
 
-// --- Zero Vector ---
-inline Vector4f ZeroVector4f() {
-#if defined(ARCH_X86_SSE)
-  return Vector4f(_mm_setzero_ps());
-#elif defined(ARCH_ARM_NEON)
-  return Vector4f(vdupq_n_f32(0.0f));
-#else  // Scalar
-  return Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
-#endif
-}
-
-static const Vector4f kVectorZero = ZeroVector4f();
-
 //-----------------------------------------------------------------------
 // Integers vector (4x int32_t)
 //-----------------------------------------------------------------------
@@ -171,10 +173,27 @@ struct alignas(16) Vector4i {
   Vector4i& operator=(Vector4i&& other) = default;
 
   Vector4i(int32_t x, int32_t y, int32_t z, int32_t w) {
+#if defined(ARCH_X86_SSE)
+    data.m = _mm_set_epi32(w, z, y, x);
+#else  // Scalar
     data.v[0] = x;
     data.v[1] = y;
     data.v[2] = z;
     data.v[3] = w;
+#endif
+  }
+
+  void setZero() {
+#if defined(ARCH_X86_SSE)
+    data.m = _mm_setzero_si128();
+#elif defined(ARCH_ARM_NEON)
+    data.m = vdupq_n_s32(0);
+#else  // Scalar
+    data.v[0] = 0;
+    data.v[1] = 0;
+    data.v[2] = 0;
+    data.v[3] = 0;
+#endif
   }
 
   static size_t byte_size() {

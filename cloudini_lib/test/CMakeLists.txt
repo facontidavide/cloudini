@@ -1,5 +1,6 @@
 set(SRC_FILES
   test_field_encoders.cpp
+  test_intrinsics.cpp
 )
 
 if(ament_cmake_FOUND)

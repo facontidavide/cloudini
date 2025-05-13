@@ -30,7 +30,7 @@ struct PointField {
   uint32_t offset = 0;
   FieldType type = FieldType::UNKNOWN;
   // optionally used by non integer types, when encoding is lossy
-  std::optional<double> resolution;  // for XYZ fields
+  std::optional<float> resolution;  // for XYZ fields
 };
 
 inline int constexpr SizeOf(const FieldType& type) {

@@ -74,6 +74,8 @@ inline size_t encodeVarint(const IntType& val, uint8_t* buf) {
   auto tmp = static_cast<IntType>(val);
   constexpr auto bits_shift = (sizeof(IntType) * 8 - 1);
   auto uval = static_cast<IntType>((tmp << 1) ^ (val >> bits_shift));
+  // we reserve the value 0 for NaN
+  uval += 1;
 
   // Encode the value using variable-length encoding.
   uint8_t* ptr = buf;
@@ -84,8 +86,9 @@ inline size_t encodeVarint(const IntType& val, uint8_t* buf) {
   }
   *ptr = uint8_t(uval);
   ptr++;
-  assert((ptr - buf) <= sizeof(IntType));
-  return static_cast<size_t>(ptr - buf);
+  auto count = static_cast<size_t>(ptr - buf);
+  assert(count <= sizeof(IntType));
+  return count;
 }
 
 template <typename T>
@@ -128,10 +131,13 @@ inline size_t decodeVarint(const uint8_t* buf, IntType& val) {
       break;
     }
   }
+  // we have reserved the value 0 for NaN
+  uval -= 1;
   // Perform zigzag decoding to retrieve the original signed value.
   val = static_cast<IntType>((uval >> 1) ^ -(uval & 1));
-  assert((ptr - buf) <= sizeof(IntType));
-  return static_cast<size_t>(ptr - buf);
+  const auto count = static_cast<size_t>(ptr - buf);
+  assert(count <= sizeof(IntType));
+  return count;
 }
 
 }  // namespace Cloudini
