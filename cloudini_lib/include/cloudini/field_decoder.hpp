@@ -50,7 +50,7 @@ class FieldDecoderCopy : public FieldDecoder {
 template <typename IntType>
 class FieldDecoderInt : public FieldDecoder {
  public:
-  FieldDecoderInt(size_t field_offset) : offset_(offset_) {
+  FieldDecoderInt(size_t field_offset) : offset_(field_offset) {
     static_assert(std::is_integral<IntType>::value, "FieldDecoderInt requires an integral type");
   }
 
@@ -71,7 +71,7 @@ class FieldDecoderInt : public FieldDecoder {
 
  private:
   int64_t prev_value_ = 0;
-  size_t offset_ = 0;
+  size_t offset_;
 };
 
 //------------------------------------------------------------------------------------------

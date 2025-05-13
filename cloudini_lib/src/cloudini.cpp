@@ -13,12 +13,13 @@
 
 namespace Cloudini {
 
+constexpr static uint8_t kMagicLength = strlen(magic_header);
+
 size_t ComputeHeaderSize(const std::vector<PointField>& fields) {
-  size_t header_size = strlen(magic_header);
+  size_t header_size = kMagicLength;
   header_size += sizeof(uint32_t);                   // width
   header_size += sizeof(uint32_t);                   // height
   header_size += sizeof(uint32_t);                   // point_step
-  header_size += sizeof(uint64_t);                   // decoded size
   header_size += sizeof(uint8_t) + sizeof(uint8_t);  // first and second stage options
   header_size += sizeof(uint16_t);                   // fields count
 
@@ -26,19 +27,16 @@ size_t ComputeHeaderSize(const std::vector<PointField>& fields) {
     header_size += field.name.size() + sizeof(uint16_t);  // name
     header_size += sizeof(uint32_t);                      // offset
     header_size += sizeof(uint8_t);                       // type
-    header_size += sizeof(double);                        // resolution
+    header_size += sizeof(float);                         // resolution
   }
   return header_size;
 }
 
 size_t EncodeHeader(const EncodingInfo& header, BufferView& output) {
-  static uint8_t magic_length = strlen(magic_header);
-  uint8_t* buff = output.data;
-
   const size_t prev_size = output.size;
 
-  memcpy(buff, magic_header, magic_length);
-  buff += magic_length;
+  memcpy(output.data, magic_header, kMagicLength);
+  output.advance(kMagicLength);
 
   encode(header.width, output);
   encode(header.height, output);
@@ -46,8 +44,6 @@ size_t EncodeHeader(const EncodingInfo& header, BufferView& output) {
 
   encode(static_cast<uint8_t>(header.firts_stage), output);
   encode(static_cast<uint8_t>(header.second_stage), output);
-  encode(header.decoded_size, output);
-
   encode(static_cast<uint16_t>(header.fields.size()), output);
 
   for (const auto& field : header.fields) {
@@ -57,11 +53,11 @@ size_t EncodeHeader(const EncodingInfo& header, BufferView& output) {
     if (field.resolution) {
       encode(*field.resolution, output);
     } else {
-      const double res = 0.0;
+      const float res = 0.0;
       encode(res, output);
     }
   }
-  return output.size - prev_size;
+  return prev_size - output.size;
 }
 
 EncodingInfo DecodeHeader(ConstBufferView& input) {
@@ -69,10 +65,11 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
   const uint8_t* buff = input.data;
 
   // check the magic header
-  if (memcmp(buff, magic_header, strlen(magic_header)) != 0) {
-    throw std::runtime_error("Invalid magic header");
+  if (memcmp(buff, magic_header, kMagicLength) != 0) {
+    std::string fist_bytes = std::string(reinterpret_cast<const char*>(buff), kMagicLength);
+    throw std::runtime_error(std::string("Invalid magic header. got: ") + fist_bytes);
   }
-  buff += strlen(magic_header);
+  input.advance(kMagicLength);
 
   decode(input, header.width);
   decode(input, header.height);
@@ -85,8 +82,6 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
   decode(input, stage);
   header.second_stage = static_cast<SecondStageOpt>(stage);
 
-  decode(input, header.decoded_size);
-
   uint16_t fields_count = 0;
   decode(input, fields_count);
 
@@ -97,7 +92,7 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
     uint8_t type = 0;
     decode(input, type);
     field.type = static_cast<FieldType>(type);
-    double res = 0.0;
+    float res = 0.0;
     decode(input, res);
     field.resolution = res;
     header.fields.push_back(std::move(field));
@@ -106,49 +101,60 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
 }
 
 PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
-  for (size_t i = 0; i < info_.fields.size(); ++i) {
-    auto& field = info_.fields[i];
+  for (size_t index = 0; index < info_.fields.size(); ++index) {
+    auto resolution = info_.fields[index].resolution.value_or(1.0f);
+    auto offset = info_.fields[index].offset;
+    auto field_type = info_.fields[index].type;
 
-    if (field.resolution && *field.resolution <= 0.0) {
-      throw std::runtime_error("Field resolution must be greater than 0");
-    }
     // special case: consecutive FLOAT32 fields
-    auto next_is_float = [this](size_t index) -> bool {
-      return (index + 1) < info_.fields.size() && info_.fields[index + 1].type == FieldType::FLOAT32;
+    auto next_is_float = [this](size_t i) -> bool {
+      return (i + 1) < info_.fields.size() && info_.fields[i + 1].type == FieldType::FLOAT32;
     };
 
-    if (field.type == FieldType::FLOAT32 && next_is_float(i)) {
+    if (field_type == FieldType::FLOAT32 && next_is_float(index)) {
       std::vector<FieldEncoderFloatN_Lossy::FieldData> field_data;
+
       while (field_data.size() < 4) {
-        field_data.emplace_back(field.offset, *field.resolution);
-        if (!next_is_float(i)) {
+        field_data.emplace_back(offset, resolution);
+        if (!next_is_float(index)) {
           break;
         }
-        field = info_.fields[++i];
+        index++;
+        resolution = info_.fields[index].resolution.value_or(1.0f);
+        offset = info_.fields[index].offset;
       }
       encoders_.push_back(std::make_unique<FieldEncoderFloatN_Lossy>(field_data));
       continue;
     }
 
-    if (field.type == FieldType::FLOAT32) {
-      encoders_.push_back(std::make_unique<FieldEncoderFloat_Lossy>(field.offset, *field.resolution));
-    } else if (field.type == FieldType::INT16) {
-      encoders_.push_back(std::make_unique<FieldEncoderInt<uint16_t>>(field.offset));
-    } else if (field.type == FieldType::INT32) {
-      encoders_.push_back(std::make_unique<FieldEncoderInt<uint32_t>>(field.offset));
-    } else if (field.type == FieldType::UINT16) {
-      encoders_.push_back(std::make_unique<FieldEncoderInt<uint16_t>>(field.offset));
-    } else if (field.type == FieldType::UINT32) {
-      encoders_.push_back(std::make_unique<FieldEncoderInt<uint32_t>>(field.offset));
-    } else if (field.type == FieldType::INT8 || field.type == FieldType::UINT8) {
-      encoders_.push_back(std::make_unique<FieldEncoderCopy>(field.offset, field.type));
-    } else {
-      throw std::runtime_error("Unsupported field type");
+    switch (field_type) {
+      case FieldType::FLOAT32:
+        encoders_.push_back(std::make_unique<FieldEncoderFloat_Lossy>(offset, resolution));
+        break;
+      case FieldType::INT16:
+        encoders_.push_back(std::make_unique<FieldEncoderInt<uint16_t>>(offset));
+        break;
+      case FieldType::INT32:
+        encoders_.push_back(std::make_unique<FieldEncoderInt<uint32_t>>(offset));
+        break;
+      case FieldType::UINT16:
+        encoders_.push_back(std::make_unique<FieldEncoderInt<uint16_t>>(offset));
+        break;
+      case FieldType::UINT32:
+        encoders_.push_back(std::make_unique<FieldEncoderInt<uint32_t>>(offset));
+        break;
+      case FieldType::INT8:
+      case FieldType::UINT8:
+        encoders_.push_back(std::make_unique<FieldEncoderCopy>(offset, field_type));
+        break;
+      default:
+        throw std::runtime_error("Unsupported field type");
     }
   }
 
   header_.resize(ComputeHeaderSize(info_.fields));
   BufferView buffer_view(header_.data(), header_.size());
+
   EncodeHeader(info_, buffer_view);
 }
 
@@ -212,6 +218,81 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t
   }
 
   return output.size();
+}
+
+//------------------------------------------------------------------------------------------
+
+void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
+  auto create_decoder = [this](const PointField& field) -> std::unique_ptr<FieldDecoder> {
+    if (field.type == FieldType::FLOAT32 && field.resolution) {
+      return (std::make_unique<FieldDecoderFloat_Lossy>(field.offset, *field.resolution));
+    } else if (field.type == FieldType::INT16) {
+      return (std::make_unique<FieldDecoderInt<uint16_t>>(field.offset));
+    } else if (field.type == FieldType::INT32) {
+      return (std::make_unique<FieldDecoderInt<uint32_t>>(field.offset));
+    } else if (field.type == FieldType::UINT16) {
+      return (std::make_unique<FieldDecoderInt<uint16_t>>(field.offset));
+    } else if (field.type == FieldType::UINT32) {
+      return (std::make_unique<FieldDecoderInt<uint32_t>>(field.offset));
+    } else if (field.type == FieldType::INT8 || field.type == FieldType::UINT8) {
+      return (std::make_unique<FieldDecoderCopy>(field.offset, field.type));
+    } else {
+      throw std::runtime_error("Unsupported field type");
+    }
+  };
+
+  decoders_.resize(info.fields.size());
+  for (size_t i = 0; i < info.fields.size(); ++i) {
+    decoders_[i] = create_decoder(info.fields[i]);
+  }
+}
+
+void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compressed_data, BufferView output) {
+  // read the header
+  updateDecoders(info);
+
+  // allocate sufficient space in the buffer
+  buffer_.resize(info.width * info.height * info.point_step);
+
+  //----------------------------------------------------------------------
+  // start decompressing using "second_stage" param.
+  // Note that compressed_data doesn't contan the header anymore.
+  // Decompressed data will be stored in buffer_
+  switch (info.second_stage) {
+    case SecondStageOpt::LZ4: {
+      const auto* src_ptr = reinterpret_cast<const char*>(compressed_data.data);
+      auto* buffer_ptr = reinterpret_cast<char*>(buffer_.data());
+      const int decompressed_size = LZ4_decompress_safe(src_ptr, buffer_ptr, compressed_data.size, buffer_.size());
+      if (decompressed_size < 0) {
+        throw std::runtime_error("LZ4 decompression failed");
+      }
+      buffer_.resize(decompressed_size);
+    } break;
+
+    case SecondStageOpt::ZSTD: {
+      const size_t decompressed_size =
+          ZSTD_decompress(buffer_.data(), buffer_.size(), compressed_data.data, compressed_data.size);
+      if (ZSTD_isError(decompressed_size)) {
+        throw std::runtime_error("ZSTD decompression failed");
+      }
+      buffer_.resize(decompressed_size);
+    } break;
+
+    case SecondStageOpt::NONE: {
+      // TODO: fixme, no need to copy
+      memcpy(buffer_.data(), compressed_data.data, compressed_data.size);
+    } break;
+  }
+
+  //----------------------------------------------------------------------
+  // decode the data (first stage)
+  ConstBufferView buffer_view(buffer_.data(), buffer_.size());
+  for (size_t i = 0; i < info.width * info.height; ++i) {
+    for (auto& decoder : decoders_) {
+      decoder->decode(buffer_view, output);
+    }
+    output.advance(info.point_step);
+  }
 }
 
 }  // namespace Cloudini

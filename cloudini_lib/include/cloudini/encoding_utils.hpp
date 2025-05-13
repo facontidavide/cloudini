@@ -60,7 +60,7 @@ inline void encode(const std::string& str, BufferView& buff) {
   uint16_t len = static_cast<uint16_t>(str.size());
   encode(len, buff);
   memcpy(buff.data, str.c_str(), len);
-  buff.advance(sizeof(len));
+  buff.advance(len);
 }
 
 template <typename IntType>

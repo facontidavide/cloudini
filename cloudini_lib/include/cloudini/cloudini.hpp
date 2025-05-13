@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "cloudini/encoding_utils.hpp"
+#include "cloudini/field_decoder.hpp"
 #include "cloudini/field_encoder.hpp"
 
 namespace Cloudini {
@@ -42,8 +43,6 @@ struct EncodingInfo {
 
   // the second step of the encoding (general purpose compression)
   SecondStageOpt second_stage = SecondStageOpt::ZSTD;
-
-  uint32_t decoded_size = 0;
 };
 
 constexpr const char* magic_header = "CLOUDINI_V01";
@@ -57,6 +56,7 @@ size_t ComputeHeaderSize(const std::vector<PointField>& fields);
  * @param header The header information to encode.
  * @param output The output buffer to write the encoded header data. Will be modified to point to the next data after
  * the header.
+ * @return The size of the encoded header.
  */
 size_t EncodeHeader(const EncodingInfo& header, BufferView& output);
 
@@ -74,8 +74,6 @@ class PointcloudEncoder {
 
   size_t encode(ConstBufferView cloud_data, std::vector<uint8_t>& output);
 
-  void reset();
-
  private:
   EncodingInfo info_;
   std::vector<std::unique_ptr<FieldEncoder>> encoders_;
@@ -83,6 +81,16 @@ class PointcloudEncoder {
   std::vector<uint8_t> header_;
 };
 
-size_t PointcloudDecode(ConstBufferView serialized_cloud, BufferView cloud_data);
+class PointcloudDecoder {
+ public:
+  PointcloudDecoder() {}
 
+  void decode(const EncodingInfo& info, ConstBufferView compressed_data, BufferView output);
+
+ private:
+  void updateDecoders(const EncodingInfo& info);
+
+  std::vector<std::unique_ptr<FieldDecoder>> decoders_;
+  std::vector<uint8_t> buffer_;
+};
 }  // namespace Cloudini

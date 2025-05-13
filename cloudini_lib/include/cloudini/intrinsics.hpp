@@ -273,19 +273,19 @@ struct alignas(16) Vector4i {
 
 // Cast Vector4f (float) to Vector4i (int32_t) using truncation
 inline Vector4i cast_vector4f_to_Vector4i(const Vector4f& float_vec) {
-#if defined(ARCH_X86_SSE)  // Requires SSE2
-  // Converts four floats (__m128) to four 32-bit signed integers (__m128i)
-  // using truncation (round towards zero).
-  return Vector4i(_mm_cvtps_epi32(float_vec.data.m));
-#elif defined(ARCH_ARM_NEON)
-  // Converts four floats (float32x4_t) to four 32-bit signed integers (int32x4_t)
-  // using truncation (round towards zero).
-  return Vector4i(vcvtq_s32_f32(float_vec.data.m));
-#else  // Scalar fallback
+  // #if defined(ARCH_X86_SSE)  // Requires SSE2
+  //   // Converts four floats (__m128) to four 32-bit signed integers (__m128i)
+  //   // using truncation (round towards zero).
+  //   return Vector4i(_mm_cvtps_epi32(float_vec.data.m));
+  // #elif defined(ARCH_ARM_NEON)
+  //   // Converts four floats (float32x4_t) to four 32-bit signed integers (int32x4_t)
+  //   // using truncation (round towards zero).
+  //   return Vector4i(vcvtq_s32_f32(float_vec.data.m));
+  // #else  // Scalar fallback
   return Vector4i(
       static_cast<int32_t>(float_vec.data.v[0]),  //
       static_cast<int32_t>(float_vec.data.v[1]),  //
       static_cast<int32_t>(float_vec.data.v[2]),  //
       static_cast<int32_t>(float_vec.data.v[3]));
-#endif
+  // #endif
 }

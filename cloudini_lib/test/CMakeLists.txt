@@ -1,7 +1,12 @@
 set(SRC_FILES
   test_field_encoders.cpp
   test_intrinsics.cpp
+  test_header.cpp
 )
+
+if(PCL_FOUND)
+  list(APPEND SRC_FILES test_pcl.cpp)
+endif()
 
 if(ament_cmake_FOUND)
 
@@ -19,8 +24,13 @@ else()
     add_test(NAME test_cloudini COMMAND test_cloudini)
 
     target_link_libraries(test_cloudini
-        GTest::gtest
-        GTest::gtest_main)
+      data_path
+      GTest::gtest
+      GTest::gtest_main)
+
+    if(PCL_FOUND)
+      target_link_libraries(test_cloudini ${PCL_LIBRARIES} )
+    endif()
 
 endif()
 
