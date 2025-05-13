@@ -32,18 +32,14 @@ static Cloudini::EncodingInfo defaultEncodingInfo(const pcl::PointCloud<pcl::Poi
   return info;
 }
 
-static void PCD_Encode(benchmark::State& state) {
+static void PCD_Encode_Impl(
+    benchmark::State& state, const pcl::PointCloud<pcl::PointXYZI>& cloud, const Cloudini::EncodingInfo& info) {
   using namespace Cloudini;
+  std::vector<uint8_t> output;
 
-  auto cloud = loadCloud();
-
-  EncodingInfo info = defaultEncodingInfo(cloud);
   PointcloudEncoder encoder(info);
 
-  std::vector<uint8_t> output;
-  ConstBufferView cloud_data(
-      reinterpret_cast<const uint8_t*>(cloud.points.data()), cloud.points.size() * sizeof(pcl::PointXYZI));
-
+  const ConstBufferView cloud_data(cloud.points.data(), cloud.points.size() * sizeof(pcl::PointXYZI));
   for (auto _ : state) {
     encoder.encode(cloud_data, output);
   }
@@ -51,30 +47,108 @@ static void PCD_Encode(benchmark::State& state) {
   std::cout << "Encoded size: " << output.size() << "  percentage: " << percentage << "%" << std::endl;
 }
 
-BENCHMARK(PCD_Encode);
+static void PCD_Decode_Impl(
+    benchmark::State& state, const pcl::PointCloud<pcl::PointXYZI>& cloud, const Cloudini::EncodingInfo& info) {
+  using namespace Cloudini;
+  std::vector<uint8_t> compressed_vect;
+
+  PointcloudEncoder encoder(info);
+  ConstBufferView cloud_data(cloud.points.data(), cloud.points.size() * sizeof(pcl::PointXYZI));
+  encoder.encode(cloud_data, compressed_vect);
+
+  PointcloudDecoder decoder;
+
+  pcl::PointCloud<pcl::PointXYZI> cloud2;
+  cloud2.resize(cloud.size());
+
+  for (auto _ : state) {
+    ConstBufferView compressed_view(compressed_vect.data(), compressed_vect.size());
+    BufferView cloud_out(cloud2.points.data(), cloud2.points.size() * sizeof(pcl::PointXYZI));
+
+    auto header_info = Cloudini::DecodeHeader(compressed_view);
+    decoder.decode(header_info, compressed_view, cloud_out);
+  }
+}
 
 //------------------------------------------------------------------------------------------
-static void PCD_ZSTD_only(benchmark::State& state) {
-  using namespace Cloudini;
-
-  auto cloud = loadCloud();
-  EncodingInfo info = defaultEncodingInfo(cloud);
-  info.firts_stage = Cloudini::FirstStageOpt::NONE;
+static void PCD_Encode_ZST(benchmark::State& state) {
+  const auto cloud = loadCloud();
+  auto info = defaultEncodingInfo(cloud);
+  info.firts_stage = Cloudini::FirstStageOpt::LOSSY;
   info.second_stage = Cloudini::SecondStageOpt::ZSTD;
-  PointcloudEncoder encoder(info);
-
-  std::vector<uint8_t> output;
-  ConstBufferView cloud_data(
-      reinterpret_cast<const uint8_t*>(cloud.points.data()), cloud.points.size() * sizeof(pcl::PointXYZI));
-
-  for (auto _ : state) {
-    encoder.encode(cloud_data, output);
-  }
-  const auto percentage = 100 * (static_cast<double>(output.size()) / static_cast<double>(cloud_data.size));
-  std::cout << "Encoded size: " << output.size() << "  percentage: " << percentage << "%" << std::endl;
+  PCD_Encode_Impl(state, cloud, info);
 }
 
-BENCHMARK(PCD_ZSTD_only);
+static void PCD_Decode_ZST(benchmark::State& state) {
+  const auto cloud = loadCloud();
+  auto info = defaultEncodingInfo(cloud);
+  info.firts_stage = Cloudini::FirstStageOpt::LOSSY;
+  info.second_stage = Cloudini::SecondStageOpt::ZSTD;
+  PCD_Decode_Impl(state, cloud, info);
+}
+
+BENCHMARK(PCD_Encode_ZST);
+BENCHMARK(PCD_Decode_ZST);
+
+//------------------------------------------------------------------------------------------
+static void PCD_Encode_LZ4(benchmark::State& state) {
+  const auto cloud = loadCloud();
+  auto info = defaultEncodingInfo(cloud);
+  info.firts_stage = Cloudini::FirstStageOpt::LOSSY;
+  info.second_stage = Cloudini::SecondStageOpt::LZ4;
+  PCD_Encode_Impl(state, cloud, info);
+}
+
+static void PCD_Decode_LZ4(benchmark::State& state) {
+  const auto cloud = loadCloud();
+  auto info = defaultEncodingInfo(cloud);
+  info.firts_stage = Cloudini::FirstStageOpt::LOSSY;
+  info.second_stage = Cloudini::SecondStageOpt::LZ4;
+  PCD_Decode_Impl(state, cloud, info);
+}
+
+BENCHMARK(PCD_Encode_LZ4);
+BENCHMARK(PCD_Decode_LZ4);
+
+//------------------------------------------------------------------------------------------
+static void PCD_Encode_ZSTD_only(benchmark::State& state) {
+  const auto cloud = loadCloud();
+  auto info = defaultEncodingInfo(cloud);
+  info.firts_stage = Cloudini::FirstStageOpt::NONE;
+  info.second_stage = Cloudini::SecondStageOpt::ZSTD;
+  PCD_Encode_Impl(state, cloud, info);
+}
+
+static void PCD_Decode_ZSTD_only(benchmark::State& state) {
+  const auto cloud = loadCloud();
+  auto info = defaultEncodingInfo(cloud);
+  info.firts_stage = Cloudini::FirstStageOpt::NONE;
+  info.second_stage = Cloudini::SecondStageOpt::ZSTD;
+  PCD_Decode_Impl(state, cloud, info);
+}
+
+BENCHMARK(PCD_Encode_ZSTD_only);
+BENCHMARK(PCD_Decode_ZSTD_only);
+
+//------------------------------------------------------------------------------------------
+static void PCD_Encode_LZ4_only(benchmark::State& state) {
+  const auto cloud = loadCloud();
+  auto info = defaultEncodingInfo(cloud);
+  info.firts_stage = Cloudini::FirstStageOpt::NONE;
+  info.second_stage = Cloudini::SecondStageOpt::LZ4;
+  PCD_Encode_Impl(state, cloud, info);
+}
+
+static void PCD_Decode_LZ4_only(benchmark::State& state) {
+  const auto cloud = loadCloud();
+  auto info = defaultEncodingInfo(cloud);
+  info.firts_stage = Cloudini::FirstStageOpt::NONE;
+  info.second_stage = Cloudini::SecondStageOpt::LZ4;
+  PCD_Decode_Impl(state, cloud, info);
+}
+
+BENCHMARK(PCD_Encode_LZ4_only);
+BENCHMARK(PCD_Decode_LZ4_only);
 
 //------------------------------------------------------------------------------------------
 BENCHMARK_MAIN();

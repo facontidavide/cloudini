@@ -251,6 +251,11 @@ void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compres
   // read the header
   updateDecoders(info);
 
+  // check if the first bytes are the magic header. if they are, skip them
+  if (memcmp(compressed_data.data, magic_header, kMagicLength) == 0) {
+    throw std::runtime_error("compressed_data contains the header. You should use DecodeHeader first");
+  }
+
   // allocate sufficient space in the buffer
   buffer_.resize(info.width * info.height * info.point_step);
 
