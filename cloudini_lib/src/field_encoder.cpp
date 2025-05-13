@@ -27,16 +27,12 @@ size_t FieldEncoderFloat_Lossy::encode(const ConstBufferView& point_view, Buffer
 //------------------------------------------------------------------------------------------
 
 size_t FieldEncoderFloat_XOR::encode(const ConstBufferView& point_view, BufferView& output) {
-  const float current_value = *(reinterpret_cast<const float*>(point_view.data + offset_));
-  const uint32_t current_value_bits = std::bit_cast<uint32_t>(current_value);
-
+  const uint32_t current_value_bits = *(reinterpret_cast<const uint32_t*>(point_view.data + offset_));
   const uint32_t residual = current_value_bits ^ prev_value_bits_;
   prev_value_bits_ = current_value_bits;
-
-  memcpy(output.data, &residual, sizeof(residual));
-
-  output.advance(sizeof(residual));
-  return sizeof(residual);
+  memcpy(output.data, &residual, sizeof(uint32_t));
+  output.advance(sizeof(uint32_t));
+  return sizeof(uint32_t);
 }
 
 //------------------------------------------------------------------------------------------

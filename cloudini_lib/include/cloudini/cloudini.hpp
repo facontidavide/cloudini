@@ -8,28 +8,32 @@
 
 namespace Cloudini {
 
+/// First stage of the encoding, using custom encoding
 enum class FirstStageOpt : uint8_t {
-  // No compression
-  UNDEFINED = 0,
-  // May apply lossy compression to some fields
-  // (e.g. position, normals, doubles)
+  // Do nothing. Compression is done in the second stage only
+  NONE = 0,
+  // Will apply lossy compression to FLOAT32 fields
   LOSSY = 1,
-  // Lossless compression (e.g. XoR for doubles)
+  // Lossless compression (e.g. XoR for FLOAT32).
+  // Encoded size will NOT be smaller unless you apply the second stage
   LOSSLES = 2,
-  // Do nothing. Compression is done in the second stage
-  NONE = 3,
 };
 
+/// Second stage of the encoding, using general purpose compression
 enum class SecondStageOpt : uint8_t {
-  NONE = 0,  // No compression
-  LZ4 = 1,   // LZ4 compression
-  ZSTD = 2   // ZSTD compression
+  // No compression
+  NONE = 0,
+  // LZ4 compression
+  LZ4 = 1,
+  // ZSTD compression
+  ZSTD = 2
 };
 
 struct EncodingInfo {
   // Fields in the point cloud
   std::vector<PointField> fields;
 
+  // equal to number of points when (height == 1)
   uint32_t width = 0;
 
   // clouds that are not organized have height equal to 1
@@ -45,7 +49,7 @@ struct EncodingInfo {
   SecondStageOpt second_stage = SecondStageOpt::ZSTD;
 };
 
-constexpr const char* magic_header = "CLOUDINI_V01";
+constexpr const char* kMagicHeader = "CLOUDINI_V01";
 
 // pre-compute the size of the header, to allocate memory
 size_t ComputeHeaderSize(const std::vector<PointField>& fields);
@@ -68,10 +72,24 @@ size_t EncodeHeader(const EncodingInfo& header, BufferView& output);
  */
 EncodingInfo DecodeHeader(ConstBufferView& input);
 
+/**
+ * @brief PointcloudEncoder is used to encode a point cloud into a compressed format.
+ *
+ * The encoder uses two stages of compression:
+ * 1. First stage: applies lossy or lossless compression to the fields of the point cloud.
+ * 2. Second stage: applies general-purpose compression (LZ4 or ZSTD) to the entire point cloud data.
+ */
 class PointcloudEncoder {
  public:
   PointcloudEncoder(const EncodingInfo& info);
 
+  /**
+   * @brief Encode the point cloud data into a compressed format.
+   *
+   * @param cloud_data The input point cloud data to be encoded.
+   * @param output The output buffer to store the compressed data. It will be resized to fit the encoded data.
+   * @return The size of the encoded data.
+   */
   size_t encode(ConstBufferView cloud_data, std::vector<uint8_t>& output);
 
  private:
@@ -81,10 +99,20 @@ class PointcloudEncoder {
   std::vector<uint8_t> header_;
 };
 
+/**
+ * @brief PointcloudDecoder is used to decode a compressed point cloud into its original format.
+ */
 class PointcloudDecoder {
  public:
   PointcloudDecoder() {}
 
+  /**
+   * @brief Decode the compressed point cloud data into its original format.
+   *
+   * @param info The encoding information for the point cloud.
+   * @param compressed_data The input compressed data to be decoded. It should NOT contain the header.
+   * @param output The output buffer to store the decoded point cloud data. Memory should be already allocated
+   */
   void decode(const EncodingInfo& info, ConstBufferView compressed_data, BufferView output);
 
  private:

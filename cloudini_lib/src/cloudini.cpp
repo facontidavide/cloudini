@@ -13,7 +13,7 @@
 
 namespace Cloudini {
 
-constexpr static uint8_t kMagicLength = strlen(magic_header);
+constexpr static uint8_t kMagicLength = strlen(kMagicHeader);
 
 size_t ComputeHeaderSize(const std::vector<PointField>& fields) {
   size_t header_size = kMagicLength;
@@ -35,7 +35,7 @@ size_t ComputeHeaderSize(const std::vector<PointField>& fields) {
 size_t EncodeHeader(const EncodingInfo& header, BufferView& output) {
   const size_t prev_size = output.size;
 
-  memcpy(output.data, magic_header, kMagicLength);
+  memcpy(output.data, kMagicHeader, kMagicLength);
   output.advance(kMagicLength);
 
   encode(header.width, output);
@@ -65,7 +65,7 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
   const uint8_t* buff = input.data;
 
   // check the magic header
-  if (memcmp(buff, magic_header, kMagicLength) != 0) {
+  if (memcmp(buff, kMagicHeader, kMagicLength) != 0) {
     std::string fist_bytes = std::string(reinterpret_cast<const char*>(buff), kMagicLength);
     throw std::runtime_error(std::string("Invalid magic header. got: ") + fist_bytes);
   }
@@ -111,7 +111,7 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
       return (i + 1) < info_.fields.size() && info_.fields[i + 1].type == FieldType::FLOAT32;
     };
 
-    if (field_type == FieldType::FLOAT32 && next_is_float(index)) {
+    if (info_.firts_stage == FirstStageOpt::LOSSY && field_type == FieldType::FLOAT32 && next_is_float(index)) {
       std::vector<FieldEncoderFloatN_Lossy::FieldData> field_data;
 
       while (field_data.size() < 4) {
@@ -128,9 +128,16 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
     }
 
     switch (field_type) {
-      case FieldType::FLOAT32:
-        encoders_.push_back(std::make_unique<FieldEncoderFloat_Lossy>(offset, resolution));
-        break;
+      case FieldType::FLOAT32: {
+        if (info_.firts_stage == FirstStageOpt::LOSSY) {
+          encoders_.push_back(std::make_unique<FieldEncoderFloat_Lossy>(offset, resolution));
+        } else if (info_.firts_stage == FirstStageOpt::LOSSLES) {
+          encoders_.push_back(std::make_unique<FieldEncoderFloat_XOR>(offset));
+        } else {
+          encoders_.push_back(std::make_unique<FieldEncoderCopy>(offset, FieldType::FLOAT32));
+        }
+      } break;
+
       case FieldType::INT16:
         encoders_.push_back(std::make_unique<FieldEncoderInt<uint16_t>>(offset));
         break;
@@ -252,7 +259,7 @@ void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compres
   updateDecoders(info);
 
   // check if the first bytes are the magic header. if they are, skip them
-  if (memcmp(compressed_data.data, magic_header, kMagicLength) == 0) {
+  if (memcmp(compressed_data.data, kMagicHeader, kMagicLength) == 0) {
     throw std::runtime_error("compressed_data contains the header. You should use DecodeHeader first");
   }
 

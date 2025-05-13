@@ -71,7 +71,7 @@ static void PCD_Decode_Impl(
 }
 
 //------------------------------------------------------------------------------------------
-static void PCD_Encode_ZST(benchmark::State& state) {
+static void PCD_Encode_Lossy_ZST(benchmark::State& state) {
   const auto cloud = loadCloud();
   auto info = defaultEncodingInfo(cloud);
   info.firts_stage = Cloudini::FirstStageOpt::LOSSY;
@@ -79,19 +79,32 @@ static void PCD_Encode_ZST(benchmark::State& state) {
   PCD_Encode_Impl(state, cloud, info);
 }
 
-static void PCD_Decode_ZST(benchmark::State& state) {
+static void PCD_Decode_Lossy_ZST(benchmark::State& state) {
   const auto cloud = loadCloud();
   auto info = defaultEncodingInfo(cloud);
   info.firts_stage = Cloudini::FirstStageOpt::LOSSY;
   info.second_stage = Cloudini::SecondStageOpt::ZSTD;
   PCD_Decode_Impl(state, cloud, info);
 }
+//------------------------------------------------------------------------------------------
+static void PCD_Encode_Lossles_ZST(benchmark::State& state) {
+  const auto cloud = loadCloud();
+  auto info = defaultEncodingInfo(cloud);
+  info.firts_stage = Cloudini::FirstStageOpt::LOSSLES;
+  info.second_stage = Cloudini::SecondStageOpt::ZSTD;
+  PCD_Encode_Impl(state, cloud, info);
+}
 
-BENCHMARK(PCD_Encode_ZST);
-BENCHMARK(PCD_Decode_ZST);
+static void PCD_Encode_Lossles_LZ4(benchmark::State& state) {
+  const auto cloud = loadCloud();
+  auto info = defaultEncodingInfo(cloud);
+  info.firts_stage = Cloudini::FirstStageOpt::LOSSLES;
+  info.second_stage = Cloudini::SecondStageOpt::LZ4;
+  PCD_Encode_Impl(state, cloud, info);
+}
 
 //------------------------------------------------------------------------------------------
-static void PCD_Encode_LZ4(benchmark::State& state) {
+static void PCD_Encode_Lossy_LZ4(benchmark::State& state) {
   const auto cloud = loadCloud();
   auto info = defaultEncodingInfo(cloud);
   info.firts_stage = Cloudini::FirstStageOpt::LOSSY;
@@ -99,16 +112,13 @@ static void PCD_Encode_LZ4(benchmark::State& state) {
   PCD_Encode_Impl(state, cloud, info);
 }
 
-static void PCD_Decode_LZ4(benchmark::State& state) {
+static void PCD_Decode_Lossy_LZ4(benchmark::State& state) {
   const auto cloud = loadCloud();
   auto info = defaultEncodingInfo(cloud);
   info.firts_stage = Cloudini::FirstStageOpt::LOSSY;
   info.second_stage = Cloudini::SecondStageOpt::LZ4;
   PCD_Decode_Impl(state, cloud, info);
 }
-
-BENCHMARK(PCD_Encode_LZ4);
-BENCHMARK(PCD_Decode_LZ4);
 
 //------------------------------------------------------------------------------------------
 static void PCD_Encode_ZSTD_only(benchmark::State& state) {
@@ -127,9 +137,6 @@ static void PCD_Decode_ZSTD_only(benchmark::State& state) {
   PCD_Decode_Impl(state, cloud, info);
 }
 
-BENCHMARK(PCD_Encode_ZSTD_only);
-BENCHMARK(PCD_Decode_ZSTD_only);
-
 //------------------------------------------------------------------------------------------
 static void PCD_Encode_LZ4_only(benchmark::State& state) {
   const auto cloud = loadCloud();
@@ -147,7 +154,17 @@ static void PCD_Decode_LZ4_only(benchmark::State& state) {
   PCD_Decode_Impl(state, cloud, info);
 }
 
+BENCHMARK(PCD_Encode_Lossy_ZST);
+// BENCHMARK(PCD_Encode_Lossles_ZST);
+BENCHMARK(PCD_Encode_ZSTD_only);
+BENCHMARK(PCD_Encode_Lossy_LZ4);
+// BENCHMARK(PCD_Encode_Lossles_LZ4);
 BENCHMARK(PCD_Encode_LZ4_only);
+
+BENCHMARK(PCD_Decode_Lossy_ZST);
+BENCHMARK(PCD_Decode_Lossy_LZ4);
+
+BENCHMARK(PCD_Decode_ZSTD_only);
 BENCHMARK(PCD_Decode_LZ4_only);
 
 //------------------------------------------------------------------------------------------
