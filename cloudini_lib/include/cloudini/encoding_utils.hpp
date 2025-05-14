@@ -63,32 +63,32 @@ inline void encode(const std::string& str, BufferView& buff) {
   buff.advance(len);
 }
 
-template <typename IntType>
-inline size_t encodeVarint(const IntType& val, uint8_t* buf) {
-  static_assert(
-      std::is_same_v<IntType, int64_t> || std::is_same_v<IntType, int32_t>, "encodeVarint requires int64_t or int32_t");
-
-  // Perform zigzag encoding to handle negative values efficiently.
-  // Zigzag encoding maps signed integers to unsigned integers such that
-  // small absolute values (both positive and negative) have small encoded values.
-  auto tmp = static_cast<IntType>(val);
-  constexpr auto bits_shift = (sizeof(IntType) * 8 - 1);
-  auto uval = static_cast<IntType>((tmp << 1) ^ (val >> bits_shift));
-  // we reserve the value 0 for NaN
-  uval += 1;
-
-  // Encode the value using variable-length encoding.
-  uint8_t* ptr = buf;
-  while (uval >= 128) {
-    *ptr = 0x80 | (uval & 0x7f);
+inline size_t encodeVarint64(int64_t value, uint8_t* ptr) {
+  uint64_t val = static_cast<uint64_t>((value << 1) ^ (value >> 63));  // Zig-zag encoding
+  val++;                                                               // reserving value 0 for NaN
+  uint8_t* ptr_start = ptr;
+  while (val > 0x7F) {
+    *ptr = (static_cast<uint8_t>((val & 0x7F) | 0x80));
+    val >>= 7;
     ptr++;
-    uval >>= 7;
   }
-  *ptr = uint8_t(uval);
+  *ptr = static_cast<uint8_t>(val);
   ptr++;
-  auto count = static_cast<size_t>(ptr - buf);
-  assert(count <= sizeof(IntType));
-  return count;
+  return ptr - ptr_start;
+}
+
+inline size_t encodeVarint32(int32_t value, uint8_t* ptr) {
+  uint32_t val = static_cast<uint32_t>((value << 1) ^ (value >> 31));  // Zig-zag encoding
+  val++;                                                               // reserving value 0 for NaN
+  uint8_t* ptr_start = ptr;
+  while (val > 0x7F) {
+    *ptr = (static_cast<uint8_t>((val & 0x7F) | 0x80));
+    val >>= 7;
+    ptr++;
+  }
+  *ptr = static_cast<uint8_t>(val);
+  ptr++;
+  return ptr - ptr_start;
 }
 
 template <typename T>
@@ -114,12 +114,8 @@ inline void decode(ConstBufferView& buff, std::string& str) {
   buff.advance(len);
 };
 
-template <typename IntType>
-inline size_t decodeVarint(const uint8_t* buf, IntType& val) {
-  static_assert(
-      std::is_same_v<IntType, int64_t> || std::is_same_v<IntType, int32_t>, "decodeVarint requires int64_t or int32_t");
-
-  IntType uval = 0;
+inline size_t decodeVarint(const uint8_t* buf, int64_t& val) {
+  int64_t uval = 0;
   uint8_t shift = 0;
   const uint8_t* ptr = buf;
   while (true) {
@@ -132,9 +128,9 @@ inline size_t decodeVarint(const uint8_t* buf, IntType& val) {
     }
   }
   // we have reserved the value 0 for NaN
-  uval -= 1;
+  uval--;
   // Perform zigzag decoding to retrieve the original signed value.
-  val = static_cast<IntType>((uval >> 1) ^ -(uval & 1));
+  val = static_cast<int64_t>((uval >> 1) ^ -(uval & 1));
   const auto count = static_cast<size_t>(ptr - buf);
   assert(count <= sizeof(IntType));
   return count;

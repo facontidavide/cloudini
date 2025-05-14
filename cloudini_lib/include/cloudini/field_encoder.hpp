@@ -55,10 +55,10 @@ class FieldEncoderInt : public FieldEncoder {
   }
 
   size_t encode(const ConstBufferView& point_view, BufferView& output) override {
-    auto value = ToInt64<IntType>(point_view.data + offset_);
-    auto diff = value - prev_value_;
+    int64_t value = ToInt64<IntType>(point_view.data + offset_);
+    int64_t diff = value - prev_value_;
     prev_value_ = value;
-    auto var_size = encodeVarint(diff, output.data);
+    int64_t var_size = encodeVarint64(diff, output.data);
     output.advance(var_size);
     return var_size;
   }

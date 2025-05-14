@@ -15,10 +15,10 @@ size_t FieldEncoderFloat_Lossy::encode(const ConstBufferView& point_view, Buffer
     return 1;
   }
 
-  const auto value = static_cast<int32_t>(std::round(value_real * multiplier_));
-  const auto delta = value - prev_value_;
+  const int64_t value = static_cast<int64_t>(std::round(value_real * multiplier_));
+  const int64_t delta = value - prev_value_;
   prev_value_ = value;
-  auto offset = encodeVarint(delta, output.data);
+  auto offset = encodeVarint64(delta, output.data);
 
   output.advance(offset);
   return offset;
@@ -75,13 +75,14 @@ size_t FieldEncoderFloatN_Lossy::encode(const ConstBufferView& point_view, Buffe
   prev_vect_ = vect_int;
 
   auto ptr_out = output.data;
+
   for (size_t i = 0; i < fields_count_; ++i) {
     if (std::isnan(vect_real[i])) {
       *ptr_out = 0;
       prev_vect_[i] = 0;
       ptr_out++;
     } else {
-      ptr_out += encodeVarint(delta[i], ptr_out);
+      ptr_out += encodeVarint32(delta[i], ptr_out);
     }
   }
 
