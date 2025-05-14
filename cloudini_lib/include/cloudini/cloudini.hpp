@@ -15,7 +15,8 @@ enum class FirstStageOpt : uint8_t {
   // Will apply lossy compression to FLOAT32 fields
   LOSSY = 1,
   // Lossless compression (e.g. XoR for FLOAT32).
-  // Encoded size will NOT be smaller unless you apply the second stage
+  // Currently it has very poor performance, so it is not recommended.
+  // Keeping it for future improvemnts
   LOSSLES = 2,
 };
 

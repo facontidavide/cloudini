@@ -155,10 +155,10 @@ static void PCD_Decode_LZ4_only(benchmark::State& state) {
 }
 
 BENCHMARK(PCD_Encode_Lossy_ZST);
-// BENCHMARK(PCD_Encode_Lossles_ZST);
+BENCHMARK(PCD_Encode_Lossles_ZST);
 BENCHMARK(PCD_Encode_ZSTD_only);
 BENCHMARK(PCD_Encode_Lossy_LZ4);
-// BENCHMARK(PCD_Encode_Lossles_LZ4);
+BENCHMARK(PCD_Encode_Lossles_LZ4);
 BENCHMARK(PCD_Encode_LZ4_only);
 
 BENCHMARK(PCD_Decode_Lossy_ZST);

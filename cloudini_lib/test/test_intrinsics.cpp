@@ -19,7 +19,7 @@ TEST(Intrinsics, Vectors) {
   ASSERT_FLOAT_EQ(c[2], 3.0f);
   ASSERT_FLOAT_EQ(c[3], -4.0f);
 
-  auto ai = cast_vector4f_to_Vector4i(a);
+  auto ai = cast_vector4f_to_vector4i(a);
   ASSERT_EQ(ai[0], 1);
   ASSERT_EQ(ai[1], 2);
   ASSERT_EQ(ai[2], 3);

@@ -108,6 +108,11 @@ target_link_libraries(cloudini_lib
 )
 
 
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  target_compile_options(cloudini_lib PRIVATE -msse4.1)
+endif()
+
+
 if(CLOUDINI_BUILD_BENCHMARKS)
   add_subdirectory(benchmarks)
 endif()

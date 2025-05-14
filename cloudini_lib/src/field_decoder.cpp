@@ -14,7 +14,7 @@ void FieldDecoderFloat_Lossy::decode(ConstBufferView& input, BufferView dest_poi
   int64_t diff = 0;
   const auto count = decodeVarint(input.data, diff);
   const int64_t value = prev_value_ + diff;
-  const float value_real = static_cast<float>(value) * resolution_;
+  const float value_real = static_cast<float>(value) * multiplier_;
   prev_value_ = value;
 
   memcpy(dest_point_view.data + offset_, &value_real, sizeof(float));

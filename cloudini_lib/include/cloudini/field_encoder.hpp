@@ -77,7 +77,7 @@ class FieldEncoderInt : public FieldEncoder {
 class FieldEncoderFloat_Lossy : public FieldEncoder {
  public:
   FieldEncoderFloat_Lossy(size_t field_offset, float resolution)
-      : offset_(field_offset), resolution_inv_(1.0f / resolution) {
+      : offset_(field_offset), multiplier_(1.0F / (2.0F * resolution)) {
     if (resolution <= 0.0) {
       throw std::runtime_error("FieldEncoder(Float/Lossy) requires a resolution with value > 0.0");
     }
@@ -92,7 +92,7 @@ class FieldEncoderFloat_Lossy : public FieldEncoder {
  private:
   int64_t prev_value_ = 0.0;
   size_t offset_;
-  float resolution_inv_;
+  float multiplier_;
 };
 
 //------------------------------------------------------------------------------------------
@@ -109,6 +109,8 @@ class FieldEncoderFloat_XOR : public FieldEncoder {
 
  private:
   size_t offset_;
+  float prev_1_ = 0.0;
+  float prev_2_ = 0.0;
   uint32_t prev_value_bits_ = 0;
 };
 

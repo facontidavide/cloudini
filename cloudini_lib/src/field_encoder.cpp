@@ -15,7 +15,7 @@ size_t FieldEncoderFloat_Lossy::encode(const ConstBufferView& point_view, Buffer
     return 1;
   }
 
-  const auto value = static_cast<int32_t>(value_real * resolution_inv_);
+  const auto value = static_cast<int32_t>(std::round(value_real * multiplier_));
   const auto delta = value - prev_value_;
   prev_value_ = value;
   auto offset = encodeVarint(delta, output.data);
@@ -27,9 +27,16 @@ size_t FieldEncoderFloat_Lossy::encode(const ConstBufferView& point_view, Buffer
 //------------------------------------------------------------------------------------------
 
 size_t FieldEncoderFloat_XOR::encode(const ConstBufferView& point_view, BufferView& output) {
-  const uint32_t current_value_bits = *(reinterpret_cast<const uint32_t*>(point_view.data + offset_));
-  const uint32_t residual = current_value_bits ^ prev_value_bits_;
-  prev_value_bits_ = current_value_bits;
+  const float value = *(reinterpret_cast<const float*>(point_view.data + offset_));
+  // linear prediction
+  const auto prediction = 2.0f * prev_1_ - prev_2_;
+  prev_2_ = prev_1_;
+  prev_1_ = value;
+
+  const uint32_t predicted_int = std::bit_cast<uint32_t>(prediction);
+  const uint32_t current_val_uint = std::bit_cast<uint32_t>(value);
+  const uint32_t residual = current_val_uint ^ predicted_int;
+
   memcpy(output.data, &residual, sizeof(uint32_t));
   output.advance(sizeof(uint32_t));
   return sizeof(uint32_t);
@@ -47,7 +54,7 @@ FieldEncoderFloatN_Lossy::FieldEncoderFloatN_Lossy(const std::vector<FieldData>&
   }
 
   for (size_t i = 0; i < fields_count_; ++i) {
-    multiplier_[i] = 1.0F / field_data[i].resolution;
+    multiplier_[i] = 1.0F / (2 * field_data[i].resolution);
     if (multiplier_[i] <= 0.0) {
       throw std::runtime_error("FieldEncoderFloatN_Lossy requires a resolution with value > 0.0");
     }
@@ -63,7 +70,7 @@ size_t FieldEncoderFloatN_Lossy::encode(const ConstBufferView& point_view, Buffe
       *(reinterpret_cast<const float*>(point_view.data + offset_[3])));
 
   const Vector4f normalized_vect = vect_real * multiplier_;
-  const Vector4i vect_int = cast_vector4f_to_Vector4i(normalized_vect);
+  const Vector4i vect_int = cast_vector4f_to_vector4i(normalized_vect);
   const Vector4i delta = vect_int - prev_vect_;
   prev_vect_ = vect_int;
 

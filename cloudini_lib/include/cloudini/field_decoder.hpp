@@ -78,7 +78,8 @@ class FieldDecoderInt : public FieldDecoder {
 // Specialization for floating point types and lossy compression
 class FieldDecoderFloat_Lossy : public FieldDecoder {
  public:
-  FieldDecoderFloat_Lossy(size_t field_offset, float resolution) : offset_(field_offset), resolution_(resolution) {
+  FieldDecoderFloat_Lossy(size_t field_offset, float resolution)
+      : offset_(field_offset), multiplier_(resolution * 2.0F) {
     if (resolution <= 0.0) {
       throw std::runtime_error("FieldDecoder(Float/Lossy) requires a resolution with value > 0.0");
     }
@@ -92,7 +93,7 @@ class FieldDecoderFloat_Lossy : public FieldDecoder {
 
  private:
   size_t offset_ = 0;
-  float resolution_ = 0.0;
+  float multiplier_ = 0.0;
   int64_t prev_value_ = 0;
 };
 
