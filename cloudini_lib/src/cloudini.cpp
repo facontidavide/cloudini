@@ -101,31 +101,45 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
 }
 
 PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
-  for (size_t index = 0; index < info_.fields.size(); ++index) {
+  header_.resize(ComputeHeaderSize(info_.fields));
+  BufferView buffer_view(header_.data(), header_.size());
+  //-------------------------------------------------------------------------------------------
+  EncodeHeader(info_, buffer_view);
+
+  if (info_.firts_stage == FirstStageOpt::NONE) {
+    for (const auto& field : info_.fields) {
+      encoders_.push_back(std::make_unique<FieldEncoderCopy>(field.offset, field.type));
+    }
+    return;
+  }
+  //-------------------------------------------------------------------------------------------
+  // special case: first 3 or 4 fields are consecutive FLOAT32 fields
+  size_t start_index = 0;
+
+  if (info_.firts_stage == FirstStageOpt::LOSSY) {
+    size_t floats_count = 0;
+    for (size_t i = 0; i < info_.fields.size(); ++i) {
+      if (info_.fields[i].type == FieldType::FLOAT32) {
+        floats_count++;
+      } else {
+        break;
+      }
+    }
+    if (floats_count == 3 || floats_count == 4) {
+      start_index = floats_count;
+      std::vector<FieldEncoderFloatN_Lossy::FieldData> field_data;
+      for (size_t i = 0; i < floats_count; ++i) {
+        field_data.emplace_back(info_.fields[i].offset, info_.fields[i].resolution.value_or(1.0f));
+      }
+      encoders_.push_back(std::make_unique<FieldEncoderFloatN_Lossy>(field_data));
+    }
+  }
+  //-------------------------------------------------------------------------------------------
+  // do remaining fields
+  for (size_t index = start_index; index < info_.fields.size(); ++index) {
     auto resolution = info_.fields[index].resolution.value_or(1.0f);
     auto offset = info_.fields[index].offset;
     auto field_type = info_.fields[index].type;
-
-    // special case: consecutive FLOAT32 fields
-    auto next_is_float = [this](size_t i) -> bool {
-      return (i + 1) < info_.fields.size() && info_.fields[i + 1].type == FieldType::FLOAT32;
-    };
-
-    if (info_.firts_stage == FirstStageOpt::LOSSY && field_type == FieldType::FLOAT32 && next_is_float(index)) {
-      std::vector<FieldEncoderFloatN_Lossy::FieldData> field_data;
-
-      while (field_data.size() < 4) {
-        field_data.emplace_back(offset, resolution);
-        if (!next_is_float(index)) {
-          break;
-        }
-        index++;
-        resolution = info_.fields[index].resolution.value_or(1.0f);
-        offset = info_.fields[index].offset;
-      }
-      encoders_.push_back(std::make_unique<FieldEncoderFloatN_Lossy>(field_data));
-      continue;
-    }
 
     switch (field_type) {
       case FieldType::FLOAT32: {
@@ -133,8 +147,6 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
           encoders_.push_back(std::make_unique<FieldEncoderFloat_Lossy>(offset, resolution));
         } else if (info_.firts_stage == FirstStageOpt::LOSSLES) {
           encoders_.push_back(std::make_unique<FieldEncoderFloat_XOR>(offset));
-        } else {
-          encoders_.push_back(std::make_unique<FieldEncoderCopy>(offset, FieldType::FLOAT32));
         }
       } break;
 
@@ -158,17 +170,18 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
         throw std::runtime_error("Unsupported field type");
     }
   }
-
-  header_.resize(ComputeHeaderSize(info_.fields));
-  BufferView buffer_view(header_.data(), header_.size());
-
-  EncodeHeader(info_, buffer_view);
 }
 
 size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t>& output) {
-  buffer_.resize(cloud_data.size);
   output.resize(header_.size() + cloud_data.size);
 
+  buffer_.resize(cloud_data.size);
+  const BufferView buffer_view(buffer_.data(), buffer_.size());
+  BufferView output_view(output.data(), output.size());
+
+  // copy the header at the beginning of the output
+  memcpy(output.data(), header_.data(), header_.size());
+  output_view.advance(header_.size());
   //----------------------------------------------
   // reset the state of the encoders
   for (auto& encoder : encoders_) {
@@ -176,29 +189,29 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t
   }
   //----------------------------------------------
   // first stage compression. Result is stored in buffer_
-  if (info_.firts_stage != FirstStageOpt::NONE) {
-    BufferView buffer_view(buffer_.data(), buffer_.size());
+  {
+    BufferView encoding_view = (info_.second_stage == SecondStageOpt::NONE) ? output_view : buffer_view;
     size_t serialized_size = 0;
     while (cloud_data.size > 0) {
       for (auto& encoder : encoders_) {
-        serialized_size += encoder->encode(cloud_data, buffer_view);
+        serialized_size += encoder->encode(cloud_data, encoding_view);
       }
       cloud_data.advance(info_.point_step);
     }
-    buffer_.resize(serialized_size);
+
+    // if there is no 2nd stage, we have done already
+    if (info_.second_stage == SecondStageOpt::NONE) {
+      output.resize(serialized_size + header_.size());
+      return output.size();
+    }
   }
 
   //----------------------------------------------
-  // copy the header at the beginning of the output
-  memcpy(output.data(), header_.data(), header_.size());
-
-  const bool has_fist_stage = info_.firts_stage != FirstStageOpt::NONE;
-  const auto buffer_view = has_fist_stage ? ConstBufferView{buffer_.data(), buffer_.size()} : cloud_data;
 
   const char* src_ptr = reinterpret_cast<const char*>(buffer_view.data);
   const size_t src_size = buffer_view.size;
-  char* dest_ptr = reinterpret_cast<char*>(output.data() + header_.size());
-  const size_t dest_capacity = output.size() - header_.size();
+  char* dest_ptr = reinterpret_cast<char*>(output_view.data);
+  const size_t dest_capacity = output_view.size;
   //----------------------------------------------
   // second stage compression. Data in _buffer will be compressed into output
   switch (info_.second_stage) {
@@ -218,10 +231,8 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t
       output.resize(compressed_size + header_.size());
     } break;
 
-    case SecondStageOpt::NONE: {
-      memcpy(dest_ptr, src_ptr, src_size);
-      output.resize(src_size + header_.size());
-    } break;
+    default:
+      throw std::runtime_error("Unsupported second stage compression");
   }
 
   return output.size();
@@ -290,18 +301,18 @@ void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compres
       buffer_.resize(decompressed_size);
     } break;
 
-    case SecondStageOpt::NONE: {
-      // TODO: fixme, no need to copy
-      memcpy(buffer_.data(), compressed_data.data, compressed_data.size);
-    } break;
+    default:
+      break;  // do nothing
   }
 
   //----------------------------------------------------------------------
-  // decode the data (first stage)
-  ConstBufferView buffer_view(buffer_.data(), buffer_.size());
+  // decode the data (first stage).
+  auto encoded_view = (info.second_stage == SecondStageOpt::NONE) ? ConstBufferView(compressed_data)
+                                                                  : ConstBufferView(buffer_.data(), buffer_.size());
+
   for (size_t i = 0; i < info.width * info.height; ++i) {
     for (auto& decoder : decoders_) {
-      decoder->decode(buffer_view, output);
+      decoder->decode(encoded_view, output);
     }
     output.advance(info.point_step);
   }

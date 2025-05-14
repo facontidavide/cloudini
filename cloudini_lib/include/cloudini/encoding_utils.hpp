@@ -132,7 +132,6 @@ inline size_t decodeVarint(const uint8_t* buf, int64_t& val) {
   // Perform zigzag decoding to retrieve the original signed value.
   val = static_cast<int64_t>((uval >> 1) ^ -(uval & 1));
   const auto count = static_cast<size_t>(ptr - buf);
-  assert(count <= sizeof(IntType));
   return count;
 }
 
