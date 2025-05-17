@@ -9,8 +9,9 @@
 namespace Cloudini {
 
 /// First stage of the encoding, using custom encoding
-enum class FirstStageOpt : uint8_t {
-  // Do nothing. Compression is done in the second stage only
+enum class EncodingOptions : uint8_t {
+  // Do nothing. Compression is done in the second stage only.
+  // We kee pthis only for benchmarking purposes.
   NONE = 0,
   // Will apply lossy compression to FLOAT32 fields
   LOSSY = 1,
@@ -21,7 +22,7 @@ enum class FirstStageOpt : uint8_t {
 };
 
 /// Second stage of the encoding, using general purpose compression
-enum class SecondStageOpt : uint8_t {
+enum class CompressionOption : uint8_t {
   // No compression
   NONE = 0,
   // LZ4 compression
@@ -44,10 +45,10 @@ struct EncodingInfo {
   uint32_t point_step = 0;
 
   // the fist step of the encoding
-  FirstStageOpt firts_stage = FirstStageOpt::LOSSY;
+  EncodingOptions encoding_opt = EncodingOptions::LOSSY;
 
-  // the second step of the encoding (general purpose compression)
-  SecondStageOpt second_stage = SecondStageOpt::ZSTD;
+  // the second step is a general purpose compression
+  CompressionOption compression_opt = CompressionOption::ZSTD;
 };
 
 constexpr const char* kMagicHeader = "CLOUDINI_V01";

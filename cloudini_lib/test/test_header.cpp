@@ -9,8 +9,8 @@ TEST(Cloudini, Header) {
   header.width = 10;
   header.height = 20;
   header.point_step = sizeof(float) * 4;
-  header.firts_stage = FirstStageOpt::LOSSY;
-  header.second_stage = SecondStageOpt::ZSTD;
+  header.encoding_opt = EncodingOptions::LOSSY;
+  header.compression_opt = CompressionOption::ZSTD;
 
   header.fields.push_back({"x", 0, FieldType::FLOAT32, 0.01});
   header.fields.push_back({"y", 4, FieldType::FLOAT32, 0.01});
@@ -29,8 +29,8 @@ TEST(Cloudini, Header) {
   ASSERT_EQ(decoded_header.width, header.width);
   ASSERT_EQ(decoded_header.height, header.height);
   ASSERT_EQ(decoded_header.point_step, header.point_step);
-  ASSERT_EQ(decoded_header.firts_stage, header.firts_stage);
-  ASSERT_EQ(decoded_header.second_stage, header.second_stage);
+  ASSERT_EQ(decoded_header.encoding_opt, header.encoding_opt);
+  ASSERT_EQ(decoded_header.compression_opt, header.compression_opt);
   ASSERT_EQ(decoded_header.fields.size(), header.fields.size());
   for (size_t i = 0; i < header.fields.size(); ++i) {
     ASSERT_EQ(decoded_header.fields[i].name, header.fields[i].name);

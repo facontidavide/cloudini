@@ -26,11 +26,18 @@ enum class FieldType : uint8_t {
 };
 
 struct PointField {
+  // name of the field
   std::string name;
+
+  // offset in memory with respect to the start of the point
   uint32_t offset = 0;
+
+  // The data type of the field
   FieldType type = FieldType::UNKNOWN;
-  // optionally used by non integer types, when encoding is lossy
-  std::optional<float> resolution;  // for XYZ fields
+
+  // optionally used by non integer types, when encoding is lossy.
+  // IMPORTANT: the maximum quantization error is equal to (0.5 * resolution)
+  std::optional<float> resolution;
 };
 
 inline int constexpr SizeOf(const FieldType& type) {

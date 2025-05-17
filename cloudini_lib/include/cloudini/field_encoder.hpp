@@ -77,7 +77,7 @@ class FieldEncoderInt : public FieldEncoder {
 class FieldEncoderFloat_Lossy : public FieldEncoder {
  public:
   FieldEncoderFloat_Lossy(size_t field_offset, float resolution)
-      : offset_(field_offset), multiplier_(1.0F / (2.0F * resolution)) {
+      : offset_(field_offset), multiplier_(1.0F / resolution) {
     if (resolution <= 0.0) {
       throw std::runtime_error("FieldEncoder(Float/Lossy) requires a resolution with value > 0.0");
     }
@@ -97,25 +97,37 @@ class FieldEncoderFloat_Lossy : public FieldEncoder {
 
 //------------------------------------------------------------------------------------------
 // Specialization for floating point types and lossless compression
+template <typename FloatType>
 class FieldEncoderFloat_XOR : public FieldEncoder {
  public:
-  FieldEncoderFloat_XOR(size_t field_offset) : offset_(field_offset) {}
+  FieldEncoderFloat_XOR(size_t field_offset) : offset_(field_offset) {
+    static_assert(std::is_floating_point<FloatType>::value, "FieldEncoderFloat_XOR requires a floating point type");
+  }
 
-  size_t encode(const ConstBufferView& point_view, BufferView& output) override;
+  size_t encode(const ConstBufferView& point_view, BufferView& output) override {
+    IntType current_val_uint;
+    memcpy(&current_val_uint, point_view.data + offset_, sizeof(IntType));
+
+    const IntType residual = current_val_uint ^ prev_bits_;
+    prev_bits_ = current_val_uint;
+
+    memcpy(output.data, &residual, sizeof(IntType));
+    output.advance(sizeof(IntType));
+    return sizeof(IntType);
+  }
 
   void reset() override {
-    prev_value_bits_ = 0;
+    prev_bits_ = 0;
   }
 
  private:
+  using IntType = std::conditional_t<std::is_same<FloatType, float>::value, uint32_t, uint64_t>;
   size_t offset_;
-  float prev_1_ = 0.0;
-  float prev_2_ = 0.0;
-  uint32_t prev_value_bits_ = 0;
+  IntType prev_bits_ = 0;
 };
 
 //------------------------------------------------------------------------------------------
-// Specialization for points XYZ and XIZI
+// Specialization for points XYZ and XYZI
 class FieldEncoderFloatN_Lossy : public FieldEncoder {
  public:
   struct FieldData {

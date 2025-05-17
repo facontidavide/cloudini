@@ -20,8 +20,8 @@ TEST(Cloudini, PCD_Encode) {
   info.width = cloud.width;
   info.height = cloud.height;
   info.point_step = sizeof(pcl::PointXYZI);
-  info.firts_stage = FirstStageOpt::LOSSY;
-  info.second_stage = SecondStageOpt::ZSTD;
+  info.encoding_opt = EncodingOptions::LOSSY;
+  info.compression_opt = CompressionOption::ZSTD;
   info.fields.push_back({"x", 0, FieldType::FLOAT32, resolution});
   info.fields.push_back({"y", 4, FieldType::FLOAT32, resolution});
   info.fields.push_back({"z", 8, FieldType::FLOAT32, resolution});
@@ -44,8 +44,8 @@ TEST(Cloudini, PCD_Encode) {
   ASSERT_EQ(info_decoded.width, info.width);
   ASSERT_EQ(info_decoded.height, info.height);
   ASSERT_EQ(info_decoded.point_step, info.point_step);
-  ASSERT_EQ(info_decoded.firts_stage, info.firts_stage);
-  ASSERT_EQ(info_decoded.second_stage, info.second_stage);
+  ASSERT_EQ(info_decoded.encoding_opt, info.encoding_opt);
+  ASSERT_EQ(info_decoded.compression_opt, info.compression_opt);
   ASSERT_EQ(info_decoded.fields.size(), info.fields.size());
   for (size_t i = 0; i < info.fields.size(); ++i) {
     ASSERT_EQ(info_decoded.fields[i].name, info.fields[i].name);

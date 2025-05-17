@@ -123,3 +123,22 @@ message( STATUS "BUILD_TESTING:   ${BUILD_TESTING} " )
 if (BUILD_TESTING)
   add_subdirectory(test)
 endif()
+
+
+if(ament_cmake_FOUND)
+  ament_export_include_directories(include)
+  ament_export_libraries(cloudini_lib)
+  ament_export_targets(cloudini_libTargets)
+endif()
+
+INSTALL(TARGETS cloudini_lib
+      EXPORT cloudini_libTargets
+      ARCHIVE DESTINATION lib
+      LIBRARY DESTINATION lib
+      RUNTIME DESTINATION bin
+      INCLUDES DESTINATION include
+)
+
+INSTALL( DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+  DESTINATION include
+  FILES_MATCHING PATTERN "*.h*")

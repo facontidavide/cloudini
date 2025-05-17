@@ -35,9 +35,5 @@ find_package(ament_cmake QUIET)
 
 if (ament_cmake_FOUND)
   add_subdirectory(cloudini_ros)
+  ament_package()
 endif()
-
-
-# if(CLOUDINI_BUILD_EXAMPLES)
-#   add_subdirectory(examples)
-# endif()

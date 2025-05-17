@@ -20,7 +20,7 @@ size_t ComputeHeaderSize(const std::vector<PointField>& fields) {
   header_size += sizeof(uint32_t);                   // width
   header_size += sizeof(uint32_t);                   // height
   header_size += sizeof(uint32_t);                   // point_step
-  header_size += sizeof(uint8_t) + sizeof(uint8_t);  // first and second stage options
+  header_size += sizeof(uint8_t) + sizeof(uint8_t);  // encoding and compression stage options
   header_size += sizeof(uint16_t);                   // fields count
 
   for (const auto& field : fields) {
@@ -42,8 +42,8 @@ size_t EncodeHeader(const EncodingInfo& header, BufferView& output) {
   encode(header.height, output);
   encode(header.point_step, output);
 
-  encode(static_cast<uint8_t>(header.firts_stage), output);
-  encode(static_cast<uint8_t>(header.second_stage), output);
+  encode(static_cast<uint8_t>(header.encoding_opt), output);
+  encode(static_cast<uint8_t>(header.compression_opt), output);
   encode(static_cast<uint16_t>(header.fields.size()), output);
 
   for (const auto& field : header.fields) {
@@ -53,7 +53,7 @@ size_t EncodeHeader(const EncodingInfo& header, BufferView& output) {
     if (field.resolution) {
       encode(*field.resolution, output);
     } else {
-      const float res = 0.0;
+      const float res = -1.0;
       encode(res, output);
     }
   }
@@ -77,10 +77,10 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
 
   uint8_t stage;
   decode(input, stage);
-  header.firts_stage = static_cast<FirstStageOpt>(stage);
+  header.encoding_opt = static_cast<EncodingOptions>(stage);
 
   decode(input, stage);
-  header.second_stage = static_cast<SecondStageOpt>(stage);
+  header.compression_opt = static_cast<CompressionOption>(stage);
 
   uint16_t fields_count = 0;
   decode(input, fields_count);
@@ -94,7 +94,9 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
     field.type = static_cast<FieldType>(type);
     float res = 0.0;
     decode(input, res);
-    field.resolution = res;
+    if (res > 0) {
+      field.resolution = res;
+    }
     header.fields.push_back(std::move(field));
   }
   return header;
@@ -106,7 +108,7 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
   //-------------------------------------------------------------------------------------------
   EncodeHeader(info_, buffer_view);
 
-  if (info_.firts_stage == FirstStageOpt::NONE) {
+  if (info_.encoding_opt == EncodingOptions::NONE) {
     for (const auto& field : info_.fields) {
       encoders_.push_back(std::make_unique<FieldEncoderCopy>(field.offset, field.type));
     }
@@ -116,7 +118,7 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
   // special case: first 3 or 4 fields are consecutive FLOAT32 fields
   size_t start_index = 0;
 
-  if (info_.firts_stage == FirstStageOpt::LOSSY) {
+  if (info_.encoding_opt == EncodingOptions::LOSSY) {
     size_t floats_count = 0;
     for (size_t i = 0; i < info_.fields.size(); ++i) {
       if (info_.fields[i].type == FieldType::FLOAT32) {
@@ -143,10 +145,10 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
 
     switch (field_type) {
       case FieldType::FLOAT32: {
-        if (info_.firts_stage == FirstStageOpt::LOSSY) {
+        if (info_.encoding_opt == EncodingOptions::LOSSY) {
           encoders_.push_back(std::make_unique<FieldEncoderFloat_Lossy>(offset, resolution));
-        } else if (info_.firts_stage == FirstStageOpt::LOSSLES) {
-          encoders_.push_back(std::make_unique<FieldEncoderFloat_XOR>(offset));
+        } else if (info_.encoding_opt == EncodingOptions::LOSSLES) {
+          encoders_.push_back(std::make_unique<FieldEncoderFloat_XOR<float>>(offset));
         }
       } break;
 
@@ -166,8 +168,11 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
       case FieldType::UINT8:
         encoders_.push_back(std::make_unique<FieldEncoderCopy>(offset, field_type));
         break;
+      case FieldType::FLOAT64:
+        encoders_.push_back(std::make_unique<FieldEncoderFloat_XOR<double>>(offset));
+        break;
       default:
-        throw std::runtime_error("Unsupported field type");
+        throw std::runtime_error("Unsupported field type:" + std::to_string(static_cast<int>(field_type)));
     }
   }
 }
@@ -190,7 +195,7 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t
   //----------------------------------------------
   // first stage compression. Result is stored in buffer_
   {
-    BufferView encoding_view = (info_.second_stage == SecondStageOpt::NONE) ? output_view : buffer_view;
+    BufferView encoding_view = (info_.compression_opt == CompressionOption::NONE) ? output_view : buffer_view;
     size_t serialized_size = 0;
     while (cloud_data.size > 0) {
       for (auto& encoder : encoders_) {
@@ -200,7 +205,7 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t
     }
 
     // if there is no 2nd stage, we have done already
-    if (info_.second_stage == SecondStageOpt::NONE) {
+    if (info_.compression_opt == CompressionOption::NONE) {
       output.resize(serialized_size + header_.size());
       return output.size();
     }
@@ -214,8 +219,8 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t
   const size_t dest_capacity = output_view.size;
   //----------------------------------------------
   // second stage compression. Data in _buffer will be compressed into output
-  switch (info_.second_stage) {
-    case SecondStageOpt::LZ4: {
+  switch (info_.compression_opt) {
+    case CompressionOption::LZ4: {
       int compressed_size = LZ4_compress_default(src_ptr, dest_ptr, src_size, dest_capacity);
       if (compressed_size <= 0) {
         throw std::runtime_error("LZ4 compression failed");
@@ -223,7 +228,7 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t
       output.resize(compressed_size + header_.size());
     } break;
 
-    case SecondStageOpt::ZSTD: {
+    case CompressionOption::ZSTD: {
       size_t compressed_size = ZSTD_compress(dest_ptr, dest_capacity, src_ptr, src_size, 1);
       if (ZSTD_isError(compressed_size)) {
         throw std::runtime_error("ZSTD compression failed");
@@ -278,11 +283,11 @@ void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compres
   buffer_.resize(info.width * info.height * info.point_step);
 
   //----------------------------------------------------------------------
-  // start decompressing using "second_stage" param.
+  // start decompressing using "compression_opt" param.
   // Note that compressed_data doesn't contan the header anymore.
   // Decompressed data will be stored in buffer_
-  switch (info.second_stage) {
-    case SecondStageOpt::LZ4: {
+  switch (info.compression_opt) {
+    case CompressionOption::LZ4: {
       const auto* src_ptr = reinterpret_cast<const char*>(compressed_data.data);
       auto* buffer_ptr = reinterpret_cast<char*>(buffer_.data());
       const int decompressed_size = LZ4_decompress_safe(src_ptr, buffer_ptr, compressed_data.size, buffer_.size());
@@ -292,7 +297,7 @@ void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compres
       buffer_.resize(decompressed_size);
     } break;
 
-    case SecondStageOpt::ZSTD: {
+    case CompressionOption::ZSTD: {
       const size_t decompressed_size =
           ZSTD_decompress(buffer_.data(), buffer_.size(), compressed_data.data, compressed_data.size);
       if (ZSTD_isError(decompressed_size)) {
@@ -307,8 +312,9 @@ void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compres
 
   //----------------------------------------------------------------------
   // decode the data (first stage).
-  auto encoded_view = (info.second_stage == SecondStageOpt::NONE) ? ConstBufferView(compressed_data)
-                                                                  : ConstBufferView(buffer_.data(), buffer_.size());
+  auto encoded_view = (info.compression_opt == CompressionOption::NONE)
+                          ? ConstBufferView(compressed_data)
+                          : ConstBufferView(buffer_.data(), buffer_.size());
 
   for (size_t i = 0; i < info.width * info.height; ++i) {
     for (auto& decoder : decoders_) {
