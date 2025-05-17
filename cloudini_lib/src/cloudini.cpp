@@ -13,7 +13,7 @@
 
 namespace Cloudini {
 
-constexpr static uint8_t kMagicLength = strlen(kMagicHeader);
+const uint8_t kMagicLength = strlen(kMagicHeader);
 
 size_t ComputeHeaderSize(const std::vector<PointField>& fields) {
   size_t header_size = kMagicLength;
@@ -246,7 +246,7 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t
 //------------------------------------------------------------------------------------------
 
 void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
-  auto create_decoder = [this](const PointField& field) -> std::unique_ptr<FieldDecoder> {
+  auto create_decoder = [](const PointField& field) -> std::unique_ptr<FieldDecoder> {
     if (field.type == FieldType::FLOAT32 && field.resolution) {
       return (std::make_unique<FieldDecoderFloat_Lossy>(field.offset, *field.resolution));
     } else if (field.type == FieldType::INT16) {

@@ -34,6 +34,7 @@ else()
     option(LZ4_BUILD_LEGACY "Build the legacy LZ4 library" OFF)
     add_subdirectory(${lz4_SOURCE_DIR}/build/cmake lz4_build)
     set(LZ4_INCLUDE_DIRS ${lz4_SOURCE_DIR}/lib)
+    message("LZ4_INCLUDE_DIRS ${LZ4_INCLUDE_DIRS}")
     set(LZ4_LIBRARY lz4)
     endif()
 endif()
@@ -55,8 +56,8 @@ else()
     option(ZSTD_BUILD_SHARED "BUILD SHARED LIBS" OFF)
     option(ZSTD_BUILD_STATIC "BUILD STATIC LIBS" ON)
     add_subdirectory(${zstd_SOURCE_DIR}/build/cmake zstd_build)
-    set(ZSTD_INCLUDE_DIR ${zstd_SOURCE_DIR}/lib)
-    set(ZSTD_LIBRARY zstd)
+    set(ZSTD_INCLUDE_DIRS ${zstd_SOURCE_DIR}/lib)
+    message("ZSTD_INCLUDE_DIRS ${ZSTD_INCLUDE_DIRS}")
   endif()
 endif()
 
@@ -107,38 +108,39 @@ target_link_libraries(cloudini_lib
     ${PCL_LIBRARIES}
 )
 
+if(NOT EMSCRIPTEN)
+  if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(cloudini_lib PRIVATE -msse4.1)
+  endif()
 
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  target_compile_options(cloudini_lib PRIVATE -msse4.1)
+
+  if(CLOUDINI_BUILD_BENCHMARKS)
+    add_subdirectory(benchmarks)
+  endif()
+
+
+  include(CTest)
+  message( STATUS "BUILD_TESTING:   ${BUILD_TESTING} " )
+  if (BUILD_TESTING)
+    add_subdirectory(test)
+  endif()
+
+
+  if(ament_cmake_FOUND)
+    ament_export_include_directories(include)
+    ament_export_libraries(cloudini_lib)
+    ament_export_targets(cloudini_libTargets)
+  endif()
+
+  INSTALL(TARGETS cloudini_lib
+        EXPORT cloudini_libTargets
+        ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib
+        RUNTIME DESTINATION bin
+        INCLUDES DESTINATION include
+  )
+
+  INSTALL( DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+    DESTINATION include
+    FILES_MATCHING PATTERN "*.h*")
 endif()
-
-
-if(CLOUDINI_BUILD_BENCHMARKS)
-  add_subdirectory(benchmarks)
-endif()
-
-
-include(CTest)
-message( STATUS "BUILD_TESTING:   ${BUILD_TESTING} " )
-if (BUILD_TESTING)
-  add_subdirectory(test)
-endif()
-
-
-if(ament_cmake_FOUND)
-  ament_export_include_directories(include)
-  ament_export_libraries(cloudini_lib)
-  ament_export_targets(cloudini_libTargets)
-endif()
-
-INSTALL(TARGETS cloudini_lib
-      EXPORT cloudini_libTargets
-      ARCHIVE DESTINATION lib
-      LIBRARY DESTINATION lib
-      RUNTIME DESTINATION bin
-      INCLUDES DESTINATION include
-)
-
-INSTALL( DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
-  DESTINATION include
-  FILES_MATCHING PATTERN "*.h*")

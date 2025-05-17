@@ -7,6 +7,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+if(EMSCRIPTEN)
+  # Tested only with emscripten 3.1.70 and Qt 6.9.0
+  set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};$ENV{EMSDK}/upstream/emscripten/cmake/Modules")
+endif()
 
 option(CLOUDINI_BUILD_EXAMPLES "Build examples" ON)
 option(CLOUDINI_BUILD_BENCHMARKS "Build benchmarks" ON)
@@ -33,7 +37,9 @@ add_subdirectory(cloudini_lib)
 # if ament detected, compile cloudini_ros
 find_package(ament_cmake QUIET)
 
-if (ament_cmake_FOUND)
+if (ament_cmake_FOUND AND NOT EMSCRIPTEN)
   add_subdirectory(cloudini_ros)
   ament_package()
 endif()
+
+# add_subdirectory(cloudini_tools)

@@ -60,4 +60,27 @@ inline int constexpr SizeOf(const FieldType& type) {
   }
 }
 
+inline const char* ToString(const FieldType& type) {
+  switch (type) {
+    case FieldType::INT8:
+      return "INT8";
+    case FieldType::UINT8:
+      return "UINT8";
+    case FieldType::INT16:
+      return "INT16";
+    case FieldType::UINT16:
+      return "UINT16";
+    case FieldType::INT32:
+      return "INT32";
+    case FieldType::UINT32:
+      return "UINT32";
+    case FieldType::FLOAT32:
+      return "FLOAT32";
+    case FieldType::FLOAT64:
+      return "FLOAT64";
+    default:
+      return "UNKNOWN";
+  }
+}
+
 }  // namespace Cloudini

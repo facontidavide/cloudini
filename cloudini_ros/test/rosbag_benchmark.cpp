@@ -78,9 +78,9 @@ int main(int argc, char** argv) {
     Cloudini::EncodingInfo encoding_info = Cloudini::ConvertToEncodingInfo(*ros_msg, 0.0001F);
 
     if (statistics.count == 0) {
-      std::cout << msg->topic_name << " fields: ";
+      std::cout << "Topic [" << msg->topic_name << "] has fields:\n";
       for (const auto& field : encoding_info.fields) {
-        std::cout << field.name << " (size " << Cloudini::SizeOf(field.type) << ") ";
+        std::cout << " - " << field.name << " (" << Cloudini::ToString(field.type) << ")\n";
       }
       std::cout << std::endl;
     }
@@ -107,7 +107,7 @@ int main(int argc, char** argv) {
   //------------------------------------------------------------
   for (const auto& [topic, stat] : statistics_by_topic) {
     double dcount = double(stat.count);
-    std::cout << "\nTopic: " << topic << std::endl;
+    std::cout << "Topic: " << topic << std::endl;
     std::cout << "  Count: " << stat.count << std::endl;
     printf(
         "  [LZ4 only]      ratio: %.2f time (usec): %ld\n", stat.lz4_only.total_ratio / dcount,
@@ -120,8 +120,9 @@ int main(int argc, char** argv) {
         "  [Cloudini-LZ4]  ratio: %.2f time (usec): %ld\n", stat.lossy_lz4.total_ratio / dcount,
         stat.lossy_lz4.total_time_usec / stat.count);
     printf(
-        "  [Cloudini-LZ4] ratio: %.2f time (usec): %ld\n", stat.lossy_zstd.total_ratio / dcount,
+        "  [Cloudini-ZSTD] ratio: %.2f time (usec): %ld\n", stat.lossy_zstd.total_ratio / dcount,
         stat.lossy_zstd.total_time_usec / stat.count);
+    std::cout << std::endl;
   }
   return 0;
 }

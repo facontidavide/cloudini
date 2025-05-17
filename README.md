@@ -36,7 +36,7 @@ These are two random examples using real world data from LiDARs.
   [LZ4 only]      ratio: 0.77 time (usec): 2165
   [ZSTD only]     ratio: 0.68 time (usec): 2967
   [Cloudini-LZ4]  ratio: 0.56 time (usec): 1254
-  [Cloudini-LZ4] ratio: 0.51 time (usec): 1576
+  [Cloudini-ZSTD] ratio: 0.51 time (usec): 1576
 ```
 
 - **Channels**: XYZ, intensity, ring (int16), timestamp (double), with padding
@@ -45,22 +45,22 @@ These are two random examples using real world data from LiDARs.
   [LZ4 only]      ratio: 0.31 time (usec): 2866
   [ZSTD only]     ratio: 0.24 time (usec): 3423
   [Cloudini-LZ4]  ratio: 0.16 time (usec): 2210
-  [Cloudini-LZ4] ratio: 0.14 time (usec): 2758
+  [Cloudini-ZSTD] ratio: 0.14 time (usec): 2758
 ```
 
-If you are a ROS user, you can test the compression ration and speed yourself,
+If you are a ROS user, you can test the compression ratio and speed yourself,
 running the application `rosbag_benchmark` on any rosbag containing a `sensor_msgs::msg::PointCloud2` topic.
 
 
 # How it works
 
-Compression happens in 2 steps:
+The algorithm contains two steps:
 
 1. Encoding the pointcloud, channel by channel.
 2. Compression using either [LZ4](https://github.com/lz4/lz4) or [ZSTD](https://github.com/facebook/zstd).
 
 The encoding is lossy for floating point channels (typically the X, Y, Z channels) 
-and lossless for RGBD and integer channels.
+and lossless for RGBA and integer channels.
 
 Now, I know that when you read the word "lossy" you may think about grainy JPEGS images. **Don't**.
 

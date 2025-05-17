@@ -5,3 +5,4 @@
 /codec/CMakeLists.txt.user
 /build/*
 /.cache
+/CMakeLists.txt.user
