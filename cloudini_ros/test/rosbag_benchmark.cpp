@@ -74,9 +74,16 @@ int main(int argc, char** argv) {
     serialization.deserialize_message(&serialized_msg, ros_msg.get());
 
     auto& statistics = statistics_by_topic[msg->topic_name];
-
     // 100 microns resolution!
     Cloudini::EncodingInfo encoding_info = Cloudini::ConvertToEncodingInfo(*ros_msg, 0.0001F);
+
+    if (statistics.count == 0) {
+      std::cout << msg->topic_name << " fields: ";
+      for (const auto& field : encoding_info.fields) {
+        std::cout << field.name << " (size " << Cloudini::SizeOf(field.type) << ") ";
+      }
+      std::cout << std::endl;
+    }
 
     encoding_info.encoding_opt = Cloudini::EncodingOptions::NONE;
     encoding_info.compression_opt = Cloudini::CompressionOption::LZ4;

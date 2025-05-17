@@ -28,6 +28,30 @@ XYZI clouds, may reach 50%.
 
 But, in general, you may expect considerably **better compression and faster encoding/decoding**  than ZTD or LZ4 alone.
 
+These are two random examples using real world data from LiDARs.
+
+- **Channels**: XYZ, Intensity, no padding
+
+```
+  [LZ4 only]      ratio: 0.77 time (usec): 2165
+  [ZSTD only]     ratio: 0.68 time (usec): 2967
+  [Cloudini-LZ4]  ratio: 0.56 time (usec): 1254
+  [Cloudini-LZ4] ratio: 0.51 time (usec): 1576
+```
+
+- **Channels**: XYZ, intensity, ring (int16), timestamp (double), with padding
+ 
+```
+  [LZ4 only]      ratio: 0.31 time (usec): 2866
+  [ZSTD only]     ratio: 0.24 time (usec): 3423
+  [Cloudini-LZ4]  ratio: 0.16 time (usec): 2210
+  [Cloudini-LZ4] ratio: 0.14 time (usec): 2758
+```
+
+If you are a ROS user, you can test the compression ration and speed yourself,
+running the application `rosbag_benchmark` on any rosbag containing a `sensor_msgs::msg::PointCloud2` topic.
+
+
 # How it works
 
 Compression happens in 2 steps:
@@ -42,7 +66,7 @@ Now, I know that when you read the word "lossy" you may think about grainy JPEGS
 
 The encoder apply a quantization using a resolution provided by the user.
 
-Typical LIDAR sensors have an accuracy/noise is in the order of 1/2 cm,
+Typical LiDARs have an accuracy/noise is in the order of 1/2 cm,
 therefore using a resolution of **1 mm** is very conservative.
 
 But if you are paranoid, and decide to use a resolution of **100 microns**, you still get really good compression ratios!
@@ -50,23 +74,3 @@ But if you are paranoid, and decide to use a resolution of **100 microns**, you 
 It should also be noted that these two steps compression strategy has a
 negative overhead, i.e. it is actually **faster** than using LZ4 or ZSTD alone.
 
-
-# For ROS users
-
-You can test the compression ration and speed yourself, running the application
-`rosbag_benchmark` on any rosbag containing a `sensor_msgs::msg::PointCloud2`.
-
-Make sure that the application is compiled using `-DCMAKE_BUILD_TYPE=Release`.
-
-Typical output will look like this:
-
-```
-Found PointCloud2 topic: /points
-
-Topic: /points
-  Count: 1774
-  [LZ4 only]      ratio: 0.37 time (usec): 2718
-  [ZSTD only]     ratio: 0.29 time (usec): 3250
-  [Cloudini-LZ4]  ratio: 0.23 time (usec): 2089
-  [Cloudini-ZSTD] ratio: 0.20 time (usec): 2599
-```
