@@ -1,5 +1,13 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.16)
 project(cloudini_lib)
+
+# If not specified, set the default build type to Release
+if (NOT CMAKE_BUILD_TYPE)
+  message(STATUS "No build type selected, default to Release")
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "RelWithDebInfo" "MinSizeRel")
+endif()
+message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 
 ##################################################################################
 ## Third party dependeciens
@@ -9,82 +17,58 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include(FetchContent)
 include(cmake/CPM.cmake)
+include(cmake/download_deps.cmake)
+
+find_package(ament_cmake QUIET)
+
+find_or_download_zstd()
+message(STATUS "ZSTD_INCLUDE_DIR: ${ZSTD_INCLUDE_DIR}")
+message(STATUS "ZSTD_LIBRARY: ${ZSTD_LIBRARY}")
+
+find_or_download_lz4()
+message(STATUS "LZ4_INCLUDE_DIR: ${LZ4_INCLUDE_DIR}")
+message(STATUS "LZ4_LIBRARY: ${LZ4_LIBRARY}")
 
 
-option(PREFER_SYSTEM_INCLUDE "Use system include" OFF)
 
-if (PREFER_SYSTEM_INCLUDE)
-  find_package(LZ4 QUIET)
-  find_package(Zstd QUIET)
-endif()
+##################################################################################
 
-if (LZ4_FOUND)
-  message(STATUS "LZ4 found, using system include")
+# ----  Trick to pass an absolute path to C++ code  ----
+get_filename_component(DATA_PATH "${CMAKE_CURRENT_LIST_DIR}/samples" ABSOLUTE)
+configure_file (data_path.hpp.in "${CMAKE_BINARY_DIR}/include/data_path.hpp" @ONLY)
+add_library(data_path INTERFACE IMPORTED)
+target_include_directories(data_path INTERFACE ${CMAKE_BINARY_DIR}/include)
+
+##################################################################################
+
+if(ament_cmake_FOUND)
+  message(STATUS "PCL found using ament_cmake")
+  find_package(pcl_ros REQUIRED)
+  set(PCL_SRC src/pcl_conversion.cpp)
+
 else()
-  message(STATUS "LZ4 not found, downloading with CPM")
-    CPMAddPackage(
-    NAME lz4
-    GITHUB_REPOSITORY lz4/lz4
-    VERSION 1.10.0
-    DOWNLOAD_ONLY YES
-  )
-
-  if(lz4_ADDED)
-    option(LZ4_BUILD_CLI "Build the LZ4 command line interface" OFF)
-    option(LZ4_BUILD_LEGACY "Build the legacy LZ4 library" OFF)
-    add_subdirectory(${lz4_SOURCE_DIR}/build/cmake lz4_build)
-    set(LZ4_INCLUDE_DIRS ${lz4_SOURCE_DIR}/lib)
-    message("LZ4_INCLUDE_DIRS ${LZ4_INCLUDE_DIRS}")
-    set(LZ4_LIBRARY lz4)
-    endif()
-endif()
-
-if(ZSTD_FOUND)
-  message(STATUS "Zstd found, using system include")
-else()
-  message(STATUS "Zstd not found, downloading with CPM")
-    CPMAddPackage(
-    NAME zstd
-    GITHUB_REPOSITORY facebook/zstd
-    VERSION 1.5.7
-    DOWNLOAD_ONLY YES
-  )
-
-  if(zstd_ADDED)
-    option(ZSTD_BUILD_PROGRAMS "BUILD PROGRAMS" OFF)
-    option(ZSTD_LEGACY_SUPPORT "LEGACY SUPPORT" OFF)
-    option(ZSTD_BUILD_SHARED "BUILD SHARED LIBS" OFF)
-    option(ZSTD_BUILD_STATIC "BUILD STATIC LIBS" ON)
-    add_subdirectory(${zstd_SOURCE_DIR}/build/cmake zstd_build)
-    set(ZSTD_INCLUDE_DIRS ${zstd_SOURCE_DIR}/lib)
-    message("ZSTD_INCLUDE_DIRS ${ZSTD_INCLUDE_DIRS}")
+  find_package(PCL QUIET)
+  if(PCL_FOUND)
+    message(STATUS "PCL found in system")
+    add_definitions(${PCL_DEFINITIONS})
+    link_directories(${PCL_LIBRARY_DIRS})
+    set(PCL_SRC src/pcl_conversion.cpp)
+  else()
+    message(STATUS "PCL NOT found")
   endif()
 endif()
 
 ##################################################################################
 
-find_package(PCL QUIET)
 
-if(PCL_FOUND)
-  message(STATUS "PCL found")
-  add_definitions(${PCL_DEFINITIONS})
-  link_directories(${PCL_LIBRARY_DIRS})
-  set(PCL_SRC src/pcl_conversion.cpp)
-else()
-  message(STATUS "PCL NOT found")
-endif()
-
-add_library(cloudini_lib STATIC
+add_library(cloudini_lib 
   src/cloudini.cpp
   src/field_encoder.cpp
   src/field_decoder.cpp
   ${PCL_SRC}
 )
 
-target_compile_features(cloudini_lib
-  PUBLIC
-    cxx_std_20
-)
+target_compile_features(cloudini_lib PUBLIC cxx_std_20)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   target_compile_options(cloudini_lib PRIVATE -Wall -Wextra)
@@ -96,14 +80,14 @@ target_include_directories(cloudini_lib
     $<INSTALL_INTERFACE:include>
     ${PCL_INCLUDE_DIRS}
   PRIVATE
-    $<BUILD_INTERFACE:${LZ4_INCLUDE_DIRS}>
-    $<BUILD_INTERFACE:${ZSTD_INCLUDE_DIRS}>
+    $<BUILD_INTERFACE:${LZ4_INCLUDE_DIR}>
+    $<BUILD_INTERFACE:${ZSTD_INCLUDE_DIR}>
 )
 
 target_link_libraries(cloudini_lib
   PRIVATE
-    lz4
-    zstd
+    ${LZ4_LIBRARY}
+    ${ZSTD_LIBRARY}
   PUBLIC
     ${PCL_LIBRARIES}
 )
@@ -113,11 +97,7 @@ if(NOT EMSCRIPTEN)
     target_compile_options(cloudini_lib PRIVATE -msse4.1)
   endif()
 
-
-  if(CLOUDINI_BUILD_BENCHMARKS)
-    add_subdirectory(benchmarks)
-  endif()
-
+  add_subdirectory(benchmarks)
 
   include(CTest)
   message( STATUS "BUILD_TESTING:   ${BUILD_TESTING} " )
@@ -125,14 +105,10 @@ if(NOT EMSCRIPTEN)
     add_subdirectory(test)
   endif()
 
+endif(NOT EMSCRIPTEN)
 
-  if(ament_cmake_FOUND)
-    ament_export_include_directories(include)
-    ament_export_libraries(cloudini_lib)
-    ament_export_targets(cloudini_libTargets)
-  endif()
 
-  INSTALL(TARGETS cloudini_lib
+INSTALL(TARGETS cloudini_lib
         EXPORT cloudini_libTargets
         ARCHIVE DESTINATION lib
         LIBRARY DESTINATION lib
@@ -140,7 +116,14 @@ if(NOT EMSCRIPTEN)
         INCLUDES DESTINATION include
   )
 
-  INSTALL( DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+INSTALL( DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
     DESTINATION include
     FILES_MATCHING PATTERN "*.h*")
+
+if(ament_cmake_FOUND)
+  ament_export_include_directories(include)
+  ament_export_dependencies(pcl_ros)
+  ament_export_libraries(cloudini_lib)
+  ament_export_targets(cloudini_libTargets)
+  ament_package()
 endif()

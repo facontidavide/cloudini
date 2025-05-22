@@ -4,7 +4,7 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 
-#include "cloudini/cloudini.hpp"
+#include "cloudini_lib/cloudini.hpp"
 #include "data_path.hpp"
 
 static pcl::PointCloud<pcl::PointXYZI> loadCloud() {

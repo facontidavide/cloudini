@@ -2,9 +2,9 @@
 
 #include <memory>
 
-#include "cloudini/encoding_utils.hpp"
-#include "cloudini/field_decoder.hpp"
-#include "cloudini/field_encoder.hpp"
+#include "cloudini_lib/encoding_utils.hpp"
+#include "cloudini_lib/field_decoder.hpp"
+#include "cloudini_lib/field_encoder.hpp"
 
 namespace Cloudini {
 

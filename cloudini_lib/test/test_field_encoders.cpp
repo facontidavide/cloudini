@@ -5,8 +5,8 @@
 #include <cstdlib>
 #include <limits>
 
-#include "cloudini/field_decoder.hpp"
-#include "cloudini/field_encoder.hpp"
+#include "cloudini_lib/field_decoder.hpp"
+#include "cloudini_lib/field_encoder.hpp"
 
 TEST(FieldEncoders, IntField) {
   const size_t kNumpoints = 100;

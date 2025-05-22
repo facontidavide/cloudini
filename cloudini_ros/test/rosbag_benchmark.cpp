@@ -11,7 +11,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <string>
 
-#include "cloudini/cloudini.hpp"
+#include "cloudini_lib/cloudini.hpp"
 #include "cloudini_ros/conversion_utils.hpp"
 
 struct StatsData {

@@ -4,7 +4,7 @@
 #include <cassert>
 #include <limits>
 
-#include "cloudini/basic_types.hpp"
+#include "cloudini_lib/basic_types.hpp"
 
 namespace Cloudini {
 

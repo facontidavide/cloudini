@@ -1,6 +1,7 @@
 #pragma once
-#include <cloudini/cloudini.hpp>
+#include <cloudini_lib/cloudini.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <point_cloud_interfaces/msg/compressed_point_cloud2.hpp>
 
 namespace Cloudini {
 
@@ -15,5 +16,9 @@ namespace Cloudini {
  * @return The EncodingInfo structure
  */
 EncodingInfo ConvertToEncodingInfo(const sensor_msgs::msg::PointCloud2& msg, float resolution);
+
+
+EncodingInfo ReadEncodingInfo(const point_cloud_interfaces::msg::CompressedPointCloud2& msg);
+
 
 }  // namespace Cloudini

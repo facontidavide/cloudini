@@ -1,0 +1,19 @@
+<library path="cloudini_point_cloud_transport">
+    <class
+        name="point_cloud_transport/cloudini_pub"
+        type="cloudini_point_cloud_transport::CloudiniPublisher"
+        base_class_type="point_cloud_transport::PublisherPlugin">
+        <description>
+            This plugin publishes a CompressedPointCloud2 using cloudini
+        </description>
+    </class>
+
+    <class
+        name="point_cloud_transport/cloudini_sub"
+        type="cloudini_point_cloud_transport::CloudiniSubscriber"
+        base_class_type="point_cloud_transport::SubscriberPlugin">
+        <description>
+            This plugin decompresses a CompressedPointCloud2 topic using cloudini.
+        </description>
+    </class>
+</library>

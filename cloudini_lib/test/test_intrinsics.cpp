@@ -1,7 +1,7 @@
 
 #include <gtest/gtest.h>
 
-#include <cloudini/intrinsics.hpp>
+#include <cloudini_lib/intrinsics.hpp>
 
 TEST(Intrinsics, Vectors) {
   Vector4f a(1.1f, 2.2f, 3.3f, -4.4f);

@@ -3,8 +3,8 @@
 #include <array>
 #include <stdexcept>
 
-#include "cloudini/encoding_utils.hpp"
-#include "cloudini/intrinsics.hpp"
+#include "cloudini_lib/encoding_utils.hpp"
+#include "cloudini_lib/intrinsics.hpp"
 
 namespace Cloudini {
 

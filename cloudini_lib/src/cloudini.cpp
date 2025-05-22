@@ -1,13 +1,13 @@
-#include "cloudini/cloudini.hpp"
+#include "cloudini_lib/cloudini.hpp"
 
 #include <iostream>
 #include <limits>
 #include <memory>
 #include <stdexcept>
 
-#include "cloudini/encoding_utils.hpp"
-#include "cloudini/field_decoder.hpp"
-#include "cloudini/field_encoder.hpp"
+#include "cloudini_lib/encoding_utils.hpp"
+#include "cloudini_lib/field_decoder.hpp"
+#include "cloudini_lib/field_encoder.hpp"
 #include "lz4.h"
 #include "zstd.h"
 

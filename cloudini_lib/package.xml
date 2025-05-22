@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>cloudini</name>
+  <name>cloudini_lib</name>
   <version>0.1.0</version>
   <description>
   Main library of Cloudini, the pointcloud compression library
@@ -12,16 +12,11 @@
 
   <author>Davide Faconti</author>
 
-  <buildtool_depend>git</buildtool_depend>
-  <buildtool_depend >ament_cmake_ros</buildtool_depend>
+  <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <depend>pluginlib</depend>
-  <depend>mcap_vendor</depend>
-  <depend>sensor_msgs</depend>
-  <depend>rclcpp</depend>
-  <depend>rosbag2_cpp</depend>
-
-  <test_depend >gtest</test_depend>
+  <depend>lz4</depend>
+  <depend>libzstd-dev</depend>
+   <depend>pcl_ros</depend>
 
   <export>
       <build_type >ament_cmake</build_type>

@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "cloudini/cloudini.hpp"
+#include "cloudini_lib/cloudini.hpp"
 
 TEST(Cloudini, Header) {
   using namespace Cloudini;
