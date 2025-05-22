@@ -9,6 +9,8 @@ if (NOT CMAKE_BUILD_TYPE)
 endif()
 message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 
+option(CLOUDINI_BUILD_TOOLS "Build Tools" ON)
+
 ##################################################################################
 ## Third party dependeciens
 
@@ -107,6 +109,9 @@ if(NOT EMSCRIPTEN)
 
 endif(NOT EMSCRIPTEN)
 
+if(CLOUDINI_BUILD_TOOLS)
+  add_subdirectory(tools)
+endif()
 
 INSTALL(TARGETS cloudini_lib
         EXPORT cloudini_libTargets
