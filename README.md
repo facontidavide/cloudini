@@ -4,31 +4,29 @@
 **Cloudini** (pronounced with Italian accent) is a pointcloud compression
 library.
 
-Its main focus is speed, but it still achieve very good compression ratios.
+Its main focus is speed, but it still achieves very good compression ratios.
 
 Its main use cases are:
 
 - To improve the storage of datasets containing pointcloud data (being a notable example **rosbags**).
 
-- Decrease the bandwith used when of streaming pointclouds over a newtwork.
+- Decrease the bandwidth used when streaming pointclouds over a network.
 
 It works seamlessly with [PCL](https://pointclouds.org/) and 
 [ROS](https://www.ros.org/), but the main library can be compiled and used independently, if needed.
 
 # What to expect 
 
-The compression ratio is hard the predict, because it depends on the way
-the original data is encoded.
+The compression ratio is hard to predict because it depends on the way the original data is encoded.
 
 For example, ROS pointcloud messages are extremely inefficient, because
-the include some "padding" in the message that in extreme cases such as 
-XYZI clouds, may reach 50%.
+they include some "padding" in the message that, in extreme cases, may reach up to 50%.
 
 (Yes, you heard correctly, almost 50% of that 10 Gb rosbag is useless padding).
 
 But, in general, you may expect considerably **better compression and faster encoding/decoding**  than ZTD or LZ4 alone.
 
-These are two random examples using real world data from LiDARs.
+These are two random examples using real-world data from LiDARs.
 
 - **Channels**: XYZ, Intensity, no padding
 
@@ -64,14 +62,14 @@ and lossless for RGBA and integer channels.
 
 Now, I know that when you read the word "lossy" you may think about grainy JPEGS images. **Don't**.
 
-The encoder apply a quantization using a resolution provided by the user.
+The encoder applies a quantization using a resolution provided by the user.
 
-Typical LiDARs have an accuracy/noise is in the order of 1/2 cm,
-therefore using a resolution of **1 mm** is very conservative.
+Typical LiDARs have an accuracy/noise in the order of +/- 2 cm.
+Therefore, it using a resolution of **1 mm** (+/- 0.5 mm max quantization error) is comparatively a very conservative option.
 
-But if you are paranoid, and decide to use a resolution of **100 microns**, you still get really good compression ratios!
+But, if you are **really** paranoid, and decide to use a resolution of **100 microns**, you still achieve excellent compression ratios!
 
-It should also be noted that these two steps compression strategy has a
+It should also be noted that this two-step compression strategy has a
 negative overhead, i.e. it is actually **faster** than using LZ4 or ZSTD alone.
 
 # ROS-specific utilities
@@ -82,9 +80,9 @@ See [point_cloud_transport plugins](https://github.com/ros-perception/point_clou
 
 ## cloudini_rosbag_converter
 
-A command line tool that given a rosbag (limited to MCAP format), converts
+A command line tool that, given a rosbag (limited to MCAP format), converts
  all `sensor_msgs/msg/PointCloud2` topics into compressed `point_cloud_interfaces/msg/CompressedPointCloud2` of vice-versa.
 
-Encoding/decoding is faster than general purpose compression algorithms and achieve much better compression ratio at 1mm resolution.
+Encoding/decoding is faster than general-purpose compression algorithms and achieves a better compression ratio at 1mm resolution.
 
 Interestingly, it can be compiled **without** ROS installed in your system! 
