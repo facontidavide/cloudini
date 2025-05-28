@@ -74,3 +74,17 @@ But if you are paranoid, and decide to use a resolution of **100 microns**, you 
 It should also be noted that these two steps compression strategy has a
 negative overhead, i.e. it is actually **faster** than using LZ4 or ZSTD alone.
 
+# ROS-specific utilities
+
+## Plugins
+
+New [point_cloud_transport plugins](https://github.com/ros-perception/point_cloud_transport_plugins).
+
+## cloudini_rosbag_converter
+
+A command line tool that given a rosbag (limited to MCAP format), converts
+ all `sensor_msgs/msg/PointCloud2` topics into compressed `point_cloud_interfaces/msg/CompressedPointCloud2` of vice-versa.
+
+Encoding/decoding is faster than general purpose compression algorithms and achieve much better compression ratio at 1mm resolution.
+
+Interestingly, it can be compiled **without** ROS installed in your system! 

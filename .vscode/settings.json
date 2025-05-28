@@ -85,7 +85,10 @@
         "csignal": "cpp",
         "future": "cpp",
         "valarray": "cpp",
-        "qsettings": "cpp"
+        "qsettings": "cpp",
+        "span": "cpp",
+        "qmessagebox": "cpp",
+        "qapplication": "cpp"
     },
     "python.autoComplete.extraPaths": [
         "/opt/ros/humble/lib/python3.10/site-packages",

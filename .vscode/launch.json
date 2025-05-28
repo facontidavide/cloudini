@@ -51,6 +51,32 @@
                     "ignoreFailures": true
                 }
             ]
+        },
+        {
+            "name": "converter",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/cloudini_lib/build/tools/ros_mcap_converter",
+            "args": [
+                "north1_mini_0.mcap"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ]
         }
     ]
 }

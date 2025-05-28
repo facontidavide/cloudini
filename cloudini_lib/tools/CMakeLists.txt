@@ -1,10 +1,4 @@
 
-option(COMPILING_TO_WASM "Set to ON if compiling to WASM" OFF)
-
-set(CMAKE_AUTOUIC ON)
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
-
 if(NOT TARGET fastcdr)
     CPMAddPackage(
         NAME fastcdr_imported
@@ -26,7 +20,6 @@ if(NOT TARGET mcap)
     target_include_directories(mcap INTERFACE "${mcap_SOURCE_DIR}/cpp/mcap/include")
 endif()
 
-# find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
 add_library(mcap_converter src/mcap_converter.cpp)
 target_include_directories(mcap_converter
@@ -43,20 +36,34 @@ target_link_libraries(mcap_converter
    mcap
 )
 
-add_executable(ros_mcap_converter src/ros_mcap_converter.cpp)
+add_executable(cloudini_rosbag_converter src/cloudini_rosbag_converter.cpp)
 
-target_link_libraries(ros_mcap_converter
+target_link_libraries(cloudini_rosbag_converter
   PRIVATE
    mcap_converter
 )
 
+install(TARGETS cloudini_rosbag_converter
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/cloudini_ros
+)
+
+
+#find_package(Qt6 COMPONENTS Core Gui Widgets REQUIRED)
+#option(COMPILING_TO_WASM "Set to ON if compiling to WASM" OFF)
+
+# set(CMAKE_AUTOUIC ON)
+# set(CMAKE_AUTOMOC ON)
+# set(CMAKE_AUTORCC ON)
+
 # qt_add_executable(mcap_encoder
-#    converter/main.cpp
-#    converter/mainwindow.cpp
-#    converter/mainwindow.h
-#    converter/mainwindow.ui
-#    converter/bytearray_writable.hpp
-#    converter/resources.qrc
+#    qt_app/main.cpp
+#    qt_app/mainwindow.cpp
+#    qt_app/mainwindow.h
+#    qt_app/mainwindow.ui
+#    qt_app/bytearray_writable.hpp
+#    qt_app/resources.qrc
 #    include/message_definitions.hpp
 #    )
 
@@ -71,10 +78,7 @@ target_link_libraries(ros_mcap_converter
 #    Qt::Core
 #    Qt::Gui
 #    Qt::Widgets
-#    cloudini_lib
-#    ${LZ4_LIBRARY}
-#    ${ZSTD_LIBRARY}
-#    mcap
+#    mcap_converter
 # )
 
 # #if(EMSCRIPTEN)
