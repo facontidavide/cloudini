@@ -118,24 +118,24 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
   // special case: first 3 or 4 fields are consecutive FLOAT32 fields
   size_t start_index = 0;
 
-  // if (info_.encoding_opt == EncodingOptions::LOSSY) {
-  //   size_t floats_count = 0;
-  //   for (size_t i = 0; i < info_.fields.size(); ++i) {
-  //     if (info_.fields[i].type == FieldType::FLOAT32) {
-  //       floats_count++;
-  //     } else {
-  //       break;
-  //     }
-  //   }
-  //   if (floats_count == 3 || floats_count == 4) {
-  //     start_index = floats_count;
-  //     std::vector<FieldEncoderFloatN_Lossy::FieldData> field_data;
-  //     for (size_t i = 0; i < floats_count; ++i) {
-  //       field_data.emplace_back(info_.fields[i].offset, info_.fields[i].resolution.value_or(1.0f));
-  //     }
-  //     encoders_.push_back(std::make_unique<FieldEncoderFloatN_Lossy>(field_data));
-  //   }
-  // }
+  if (info_.encoding_opt == EncodingOptions::LOSSY) {
+    size_t floats_count = 0;
+    for (size_t i = 0; i < info_.fields.size(); ++i) {
+      if (info_.fields[i].type == FieldType::FLOAT32) {
+        floats_count++;
+      } else {
+        break;
+      }
+    }
+    if (floats_count == 3 || floats_count == 4) {
+      start_index = floats_count;
+      std::vector<FieldEncoderFloatN_Lossy::FieldData> field_data;
+      for (size_t i = 0; i < floats_count; ++i) {
+        field_data.emplace_back(info_.fields[i].offset, info_.fields[i].resolution.value_or(1.0f));
+      }
+      encoders_.push_back(std::make_unique<FieldEncoderFloatN_Lossy>(field_data));
+    }
+  }
   //-------------------------------------------------------------------------------------------
   // do remaining fields
   for (size_t index = start_index; index < info_.fields.size(); ++index) {
