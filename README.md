@@ -65,7 +65,7 @@ Now, I know that when you read the word "lossy" you may think about grainy JPEGS
 The encoder applies a quantization using a resolution provided by the user.
 
 Typical LiDARs have an accuracy/noise in the order of +/- 2 cm.
-Therefore, it using a resolution of **1 mm** (+/- 0.5 mm max quantization error) is comparatively a very conservative option.
+Therefore, using a resolution of **1 mm** (+/- 0.5 mm max quantization error) is usually a very conservative option.
 
 But, if you are **really** paranoid, and decide to use a resolution of **100 microns**, you still achieve excellent compression ratios!
 
