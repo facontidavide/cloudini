@@ -76,9 +76,9 @@ negative overhead, i.e. it is actually **faster** than using LZ4 or ZSTD alone.
 
 # ROS-specific utilities
 
-## Plugins
+## point_cloud_transport plugins
 
-New [point_cloud_transport plugins](https://github.com/ros-perception/point_cloud_transport_plugins).
+See [point_cloud_transport plugins](https://github.com/ros-perception/point_cloud_transport_plugins) for reference about how they are used.
 
 ## cloudini_rosbag_converter
 
