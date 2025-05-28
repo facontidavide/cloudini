@@ -33,10 +33,10 @@ size_t ComputeHeaderSize(const std::vector<PointField>& fields) {
 }
 
 size_t EncodeHeader(const EncodingInfo& header, BufferView& output) {
-  const size_t prev_size = output.size;
+  const size_t prev_size = output.size();
 
-  memcpy(output.data, kMagicHeader, kMagicLength);
-  output.advance(kMagicLength);
+  memcpy(output.data(), kMagicHeader, kMagicLength);
+  output.trim_front(kMagicLength);
 
   encode(header.width, output);
   encode(header.height, output);
@@ -57,19 +57,19 @@ size_t EncodeHeader(const EncodingInfo& header, BufferView& output) {
       encode(res, output);
     }
   }
-  return prev_size - output.size;
+  return prev_size - output.size();
 }
 
 EncodingInfo DecodeHeader(ConstBufferView& input) {
   EncodingInfo header;
-  const uint8_t* buff = input.data;
+  const uint8_t* buff = input.data();
 
   // check the magic header
   if (memcmp(buff, kMagicHeader, kMagicLength) != 0) {
     std::string fist_bytes = std::string(reinterpret_cast<const char*>(buff), kMagicLength);
     throw std::runtime_error(std::string("Invalid magic header. got: ") + fist_bytes);
   }
-  input.advance(kMagicLength);
+  input.trim_front(kMagicLength);
 
   decode(input, header.width);
   decode(input, header.height);
@@ -178,15 +178,20 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
 }
 
 size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t>& output) {
-  output.resize(header_.size() + cloud_data.size);
-
-  buffer_.resize(cloud_data.size);
-  const BufferView buffer_view(buffer_.data(), buffer_.size());
+  output.resize(header_.size() + cloud_data.size());
   BufferView output_view(output.data(), output.size());
+  auto new_size = encode(cloud_data, output_view);
+  output.resize(new_size);
+  return new_size;
+}
+
+size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output_view) {
+  buffer_.resize(cloud_data.size());
+  const BufferView buffer_view(buffer_.data(), buffer_.size());
 
   // copy the header at the beginning of the output
-  memcpy(output.data(), header_.data(), header_.size());
-  output_view.advance(header_.size());
+  memcpy(output_view.data(), header_.data(), header_.size());
+  output_view.trim_front(header_.size());
   //----------------------------------------------
   // reset the state of the encoders
   for (auto& encoder : encoders_) {
@@ -194,29 +199,28 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t
   }
   //----------------------------------------------
   // first stage compression. Result is stored in buffer_
+  size_t serialized_size = 0;
   {
     BufferView encoding_view = (info_.compression_opt == CompressionOption::NONE) ? output_view : buffer_view;
-    size_t serialized_size = 0;
-    while (cloud_data.size > 0) {
+    while (cloud_data.size() > 0) {
       for (auto& encoder : encoders_) {
         serialized_size += encoder->encode(cloud_data, encoding_view);
       }
-      cloud_data.advance(info_.point_step);
+      cloud_data.trim_front(info_.point_step);
     }
 
     // if there is no 2nd stage, we have done already
     if (info_.compression_opt == CompressionOption::NONE) {
-      output.resize(serialized_size + header_.size());
-      return output.size();
+      return serialized_size + header_.size();
     }
   }
 
   //----------------------------------------------
 
-  const char* src_ptr = reinterpret_cast<const char*>(buffer_view.data);
-  const size_t src_size = buffer_view.size;
-  char* dest_ptr = reinterpret_cast<char*>(output_view.data);
-  const size_t dest_capacity = output_view.size;
+  const char* src_ptr = reinterpret_cast<const char*>(buffer_view.data());
+  const size_t src_size = serialized_size;
+  char* dest_ptr = reinterpret_cast<char*>(output_view.data());
+  const size_t dest_capacity = output_view.size();
   //----------------------------------------------
   // second stage compression. Data in _buffer will be compressed into output
   switch (info_.compression_opt) {
@@ -225,7 +229,7 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t
       if (compressed_size <= 0) {
         throw std::runtime_error("LZ4 compression failed");
       }
-      output.resize(compressed_size + header_.size());
+      return (compressed_size + header_.size());
     } break;
 
     case CompressionOption::ZSTD: {
@@ -233,14 +237,13 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t
       if (ZSTD_isError(compressed_size)) {
         throw std::runtime_error("ZSTD compression failed");
       }
-      output.resize(compressed_size + header_.size());
+      return (compressed_size + header_.size());
     } break;
 
     default:
       throw std::runtime_error("Unsupported second stage compression");
   }
-
-  return output.size();
+  return 0;  // should never reach here
 }
 
 //------------------------------------------------------------------------------------------
@@ -275,7 +278,7 @@ void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compres
   updateDecoders(info);
 
   // check if the first bytes are the magic header. if they are, skip them
-  if (memcmp(compressed_data.data, kMagicHeader, kMagicLength) == 0) {
+  if (memcmp(compressed_data.data(), kMagicHeader, kMagicLength) == 0) {
     throw std::runtime_error("compressed_data contains the header. You should use DecodeHeader first");
   }
 
@@ -288,9 +291,9 @@ void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compres
   // Decompressed data will be stored in buffer_
   switch (info.compression_opt) {
     case CompressionOption::LZ4: {
-      const auto* src_ptr = reinterpret_cast<const char*>(compressed_data.data);
+      const auto* src_ptr = reinterpret_cast<const char*>(compressed_data.data());
       auto* buffer_ptr = reinterpret_cast<char*>(buffer_.data());
-      const int decompressed_size = LZ4_decompress_safe(src_ptr, buffer_ptr, compressed_data.size, buffer_.size());
+      const int decompressed_size = LZ4_decompress_safe(src_ptr, buffer_ptr, compressed_data.size(), buffer_.size());
       if (decompressed_size < 0) {
         throw std::runtime_error("LZ4 decompression failed");
       }
@@ -299,7 +302,7 @@ void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compres
 
     case CompressionOption::ZSTD: {
       const size_t decompressed_size =
-          ZSTD_decompress(buffer_.data(), buffer_.size(), compressed_data.data, compressed_data.size);
+          ZSTD_decompress(buffer_.data(), buffer_.size(), compressed_data.data(), compressed_data.size());
       if (ZSTD_isError(decompressed_size)) {
         throw std::runtime_error("ZSTD decompression failed");
       }
@@ -320,7 +323,7 @@ void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compres
     for (auto& decoder : decoders_) {
       decoder->decode(encoded_view, output);
     }
-    output.advance(info.point_step);
+    output.trim_front(info.point_step);
   }
 }
 

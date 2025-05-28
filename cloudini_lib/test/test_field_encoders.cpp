@@ -34,7 +34,7 @@ TEST(FieldEncoders, IntField) {
     size_t encoded_size = 0;
     for (size_t i = 0; i < kNumpoints; ++i) {
       encoded_size += encoder.encode(input_buffer, buffer_data);
-      input_buffer.advance(sizeof(uint32_t));
+      input_buffer.trim_front(sizeof(uint32_t));
     }
     buffer.resize(encoded_size);
 
@@ -49,7 +49,7 @@ TEST(FieldEncoders, IntField) {
     for (size_t i = 0; i < kNumpoints; ++i) {
       decoder.decode(buffer_data, output_buffer);
       ASSERT_EQ(input_data[i], output_data[i]) << "Mismatch at index " << i;
-      output_buffer.advance(sizeof(uint32_t));
+      output_buffer.trim_front(sizeof(uint32_t));
     }
   }
 }
@@ -91,7 +91,7 @@ TEST(FieldEncoders, FloatLossy) {
     size_t encoded_size = 0;
     for (size_t i = 0; i < kNumpoints; ++i) {
       encoded_size += encoder.encode(input_buffer, buffer_data);
-      input_buffer.advance(sizeof(float));
+      input_buffer.trim_front(sizeof(float));
     }
     buffer.resize(encoded_size);
 
@@ -109,7 +109,7 @@ TEST(FieldEncoders, FloatLossy) {
 
     for (size_t i = 0; i < kNumpoints; ++i) {
       decoder.decode(buffer_data, output_buffer);
-      output_buffer.advance(sizeof(float));
+      output_buffer.trim_front(sizeof(float));
 
       auto diff = std::abs(input_data[i] - output_data[i]);
       max_difference = std::max(max_difference, diff);

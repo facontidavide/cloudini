@@ -26,35 +26,57 @@ if(NOT TARGET mcap)
     target_include_directories(mcap INTERFACE "${mcap_SOURCE_DIR}/cpp/mcap/include")
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+# find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
-qt_add_executable(mcap_encoder
-   converter/main.cpp
-   converter/mainwindow.cpp
-   converter/mainwindow.h
-   converter/mainwindow.ui
-   converter/bytearray_writable.hpp
-   converter/resources.qrc
-   include/message_definitions.hpp
-   )
-
-target_include_directories(mcap_encoder
-  PRIVATE
+add_library(mcap_converter src/mcap_converter.cpp)
+target_include_directories(mcap_converter
+  PUBLIC
    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
    $<BUILD_INTERFACE:${LZ4_INCLUDE_DIR}>
    $<BUILD_INTERFACE:${ZSTD_INCLUDE_DIR}>
 )
-
-target_link_libraries(mcap_encoder PRIVATE
-   Qt::Core
-   Qt::Gui
-   Qt::Widgets
+target_link_libraries(mcap_converter
+  PUBLIC
    cloudini_lib
    ${LZ4_LIBRARY}
    ${ZSTD_LIBRARY}
    mcap
 )
 
-#if(EMSCRIPTEN)
-#    target_compile_definitions(mcap_encoder PRIVATE USING_WASM=1)
-#endif()
+add_executable(ros_mcap_converter src/ros_mcap_converter.cpp)
+
+target_link_libraries(ros_mcap_converter
+  PRIVATE
+   mcap_converter
+)
+
+# qt_add_executable(mcap_encoder
+#    converter/main.cpp
+#    converter/mainwindow.cpp
+#    converter/mainwindow.h
+#    converter/mainwindow.ui
+#    converter/bytearray_writable.hpp
+#    converter/resources.qrc
+#    include/message_definitions.hpp
+#    )
+
+# target_include_directories(mcap_encoder
+#   PRIVATE
+#    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+#    $<BUILD_INTERFACE:${LZ4_INCLUDE_DIR}>
+#    $<BUILD_INTERFACE:${ZSTD_INCLUDE_DIR}>
+# )
+
+# target_link_libraries(mcap_encoder PRIVATE
+#    Qt::Core
+#    Qt::Gui
+#    Qt::Widgets
+#    cloudini_lib
+#    ${LZ4_LIBRARY}
+#    ${ZSTD_LIBRARY}
+#    mcap
+# )
+
+# #if(EMSCRIPTEN)
+# #    target_compile_definitions(mcap_encoder PRIVATE USING_WASM=1)
+# #endif()

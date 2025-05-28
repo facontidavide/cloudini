@@ -34,8 +34,8 @@ class FieldDecoderCopy : public FieldDecoder {
       : offset_(field_offset), field_size_(SizeOf(field_type)) {}
 
   void decode(ConstBufferView& input, BufferView dest_point_view) override {
-    memcpy(dest_point_view.data, input.data + offset_, field_size_);
-    input.advance(field_size_);
+    memcpy(dest_point_view.data(), input.data() + offset_, field_size_);
+    input.trim_front(field_size_);
   }
 
   void reset() override {}
@@ -56,13 +56,13 @@ class FieldDecoderInt : public FieldDecoder {
 
   void decode(ConstBufferView& input, BufferView dest_point_view) override {
     int64_t diff = 0;
-    auto count = decodeVarint(input.data, diff);
+    auto count = decodeVarint(input.data(), diff);
 
     int64_t value = prev_value_ + diff;
     prev_value_ = value;
 
-    memcpy(dest_point_view.data + offset_, &value, sizeof(IntType));
-    input.advance(count);
+    memcpy(dest_point_view.data() + offset_, &value, sizeof(IntType));
+    input.trim_front(count);
   }
 
   void reset() override {

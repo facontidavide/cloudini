@@ -43,7 +43,7 @@ static void PCD_Encode_Impl(
   for (auto _ : state) {
     encoder.encode(cloud_data, output);
   }
-  const auto percentage = 100 * (static_cast<double>(output.size()) / static_cast<double>(cloud_data.size));
+  const auto percentage = 100 * (static_cast<double>(output.size()) / static_cast<double>(cloud_data.size()));
   std::cout << "Encoded size: " << output.size() << "  percentage: " << percentage << "%" << std::endl;
 }
 

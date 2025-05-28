@@ -33,8 +33,8 @@ class FieldEncoderCopy : public FieldEncoder {
       : offset_(field_offset), field_size_(SizeOf(field_type)) {}
 
   size_t encode(const ConstBufferView& point_view, BufferView& output) override {
-    memcpy(output.data, point_view.data + offset_, field_size_);
-    output.advance(field_size_);
+    memcpy(output.data(), point_view.data() + offset_, field_size_);
+    output.trim_front(field_size_);
     return field_size_;
   }
 
@@ -55,11 +55,11 @@ class FieldEncoderInt : public FieldEncoder {
   }
 
   size_t encode(const ConstBufferView& point_view, BufferView& output) override {
-    int64_t value = ToInt64<IntType>(point_view.data + offset_);
+    int64_t value = ToInt64<IntType>(point_view.data() + offset_);
     int64_t diff = value - prev_value_;
     prev_value_ = value;
-    int64_t var_size = encodeVarint64(diff, output.data);
-    output.advance(var_size);
+    int64_t var_size = encodeVarint64(diff, output.data());
+    output.trim_front(var_size);
     return var_size;
   }
 
@@ -106,13 +106,13 @@ class FieldEncoderFloat_XOR : public FieldEncoder {
 
   size_t encode(const ConstBufferView& point_view, BufferView& output) override {
     IntType current_val_uint;
-    memcpy(&current_val_uint, point_view.data + offset_, sizeof(IntType));
+    memcpy(&current_val_uint, point_view.data() + offset_, sizeof(IntType));
 
     const IntType residual = current_val_uint ^ prev_bits_;
     prev_bits_ = current_val_uint;
 
-    memcpy(output.data, &residual, sizeof(IntType));
-    output.advance(sizeof(IntType));
+    memcpy(output.data(), &residual, sizeof(IntType));
+    output.trim_front(sizeof(IntType));
     return sizeof(IntType);
   }
 

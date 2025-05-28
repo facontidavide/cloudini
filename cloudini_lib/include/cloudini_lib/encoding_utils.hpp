@@ -5,53 +5,18 @@
 #include <limits>
 
 #include "cloudini_lib/basic_types.hpp"
+#include "cloudini_lib/contrib/span.hpp"
 
 namespace Cloudini {
 
-struct ConstBufferView {
-  const uint8_t* data = nullptr;
-  size_t size = 0;
+using ConstBufferView = Span<const uint8_t>;
+using BufferView = Span<uint8_t>;
 
-  ConstBufferView() = default;
-
-  ConstBufferView(const ConstBufferView& other) = default;
-  ConstBufferView(ConstBufferView&& other) = default;
-  ConstBufferView& operator=(const ConstBufferView& other) = default;
-  ConstBufferView& operator=(ConstBufferView&& other) = default;
-
-  ConstBufferView(const void* data, size_t size) : data(reinterpret_cast<const uint8_t*>(data)), size(size) {}
-
-  void advance(size_t bytes) {
-    data += bytes;
-    size -= bytes;
-  }
-};
-
-// not owning view of a buffer, similar to std::span
-struct BufferView {
-  uint8_t* data = nullptr;
-  size_t size = 0;
-
-  BufferView() = default;
-
-  BufferView(const BufferView& other) = default;
-  BufferView(BufferView&& other) = default;
-  BufferView& operator=(const BufferView& other) = default;
-  BufferView& operator=(BufferView&& other) = default;
-
-  BufferView(void* data, size_t size) : data(reinterpret_cast<uint8_t*>(data)), size(size) {}
-
-  void advance(size_t bytes) {
-    data += bytes;
-    size -= bytes;
-  }
-};
-
-// Simple encodiing that doesn't account for endianess (TODO?)
+// Simple encoding that doesn't account for endianess (TODO?)
 template <typename T>
 inline void encode(const T& val, BufferView& buff) {
-  memcpy(buff.data, &val, sizeof(val));
-  buff.advance(sizeof(val));
+  memcpy(buff.data(), &val, sizeof(val));
+  buff.trim_front(sizeof(val));
 };
 
 // specialization for std::string
@@ -59,8 +24,8 @@ template <>
 inline void encode(const std::string& str, BufferView& buff) {
   uint16_t len = static_cast<uint16_t>(str.size());
   encode(len, buff);
-  memcpy(buff.data, str.c_str(), len);
-  buff.advance(len);
+  memcpy(buff.data(), str.c_str(), len);
+  buff.trim_front(len);
 }
 
 inline size_t encodeVarint64(int64_t value, uint8_t* ptr) {
@@ -101,8 +66,8 @@ int64_t ToInt64(const uint8_t* ptr) {
 
 template <typename T>
 inline void decode(ConstBufferView& buff, T& val) {
-  memcpy(&val, buff.data, sizeof(val));
-  buff.advance(sizeof(val));
+  memcpy(&val, buff.data(), sizeof(val));
+  buff.trim_front(sizeof(val));
 };
 
 template <>
@@ -110,8 +75,8 @@ inline void decode(ConstBufferView& buff, std::string& str) {
   uint16_t len = 0;
   decode(buff, len);
   str.resize(len);
-  memcpy(str.data(), buff.data, len);
-  buff.advance(len);
+  memcpy(str.data(), buff.data(), len);
+  buff.trim_front(len);
 };
 
 inline size_t decodeVarint(const uint8_t* buf, int64_t& val) {

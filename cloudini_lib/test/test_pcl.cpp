@@ -34,7 +34,7 @@ TEST(Cloudini, PCD_Encode) {
     ConstBufferView cloud_points_view(cloud.points.data(), cloud.points.size() * sizeof(pcl::PointXYZI));
     encoder.encode(cloud_points_view, compressed_data);
 
-    auto ratio = static_cast<float>(compressed_data.size()) / static_cast<float>(cloud_points_view.size);
+    auto ratio = static_cast<float>(compressed_data.size()) / static_cast<float>(cloud_points_view.size());
     std::cout << "Compressed data size: " << compressed_data.size() << " percent:" << 100.0 * ratio << std::endl;
   }
 

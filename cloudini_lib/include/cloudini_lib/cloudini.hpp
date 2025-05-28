@@ -94,6 +94,9 @@ class PointcloudEncoder {
    */
   size_t encode(ConstBufferView cloud_data, std::vector<uint8_t>& output);
 
+  // version that will not allocate any memory in output. Use it at your own risk
+  size_t encode(ConstBufferView cloud_data, BufferView& output);
+
  private:
   EncodingInfo info_;
   std::vector<std::unique_ptr<FieldEncoder>> encoders_;

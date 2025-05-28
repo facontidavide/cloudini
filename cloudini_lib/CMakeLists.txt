@@ -67,6 +67,7 @@ add_library(cloudini_lib
   src/cloudini.cpp
   src/field_encoder.cpp
   src/field_decoder.cpp
+  src/ros_msg_utils.cpp
   ${PCL_SRC}
 )
 

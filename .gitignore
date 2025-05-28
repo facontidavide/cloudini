@@ -8,3 +8,4 @@
 /CMakeLists.txt.user
 /cloudini_lib/CMakeLists.txt.user
 /cloudini_lib/build/
+*.mcap

@@ -1,11 +1,10 @@
 #pragma once
 
 const char* pointcloud_schema_name = "sensor_msgs/msg/PointCloud2";
-const char* compressed_schema_name = "point_cloud_interfaces::msg::CompressedPointCloud2";
-
+const char* compressed_schema_name = "point_cloud_interfaces/msg/CompressedPointCloud2";
 
 const char* pointcloud_schema_data =
-R"(# This message holds a collection of N-dimensional points, which may
+    R"(# This message holds a collection of N-dimensional points, which may
 # contain additional information such as normals, intensity, etc. The
 # point data is stored as a binary blob, its layout described by the
 # contents of the "fields" array.
@@ -75,9 +74,8 @@ int32 sec
 uint32 nanosec
 )";
 
-
 const char* compressed_schema_data =
-R"(# SPDX-License-Identifier: BSD-3-Clause
+    R"(# SPDX-License-Identifier: BSD-3-Clause
 # SPDX-FileCopyrightText: Czech Technical University in Prague .. 2019, paplhjak
 
 std_msgs/Header header
