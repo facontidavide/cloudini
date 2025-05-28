@@ -86,3 +86,16 @@ A command line tool that, given a rosbag (limited to MCAP format), converts
 Encoding/decoding is faster than general-purpose compression algorithms and achieves a better compression ratio at 1mm resolution.
 
 Interestingly, it can be compiled **without** ROS installed in your system!
+
+Example usage: round trip compression / decompression;
+
+```
+# Use option -c for compression
+cloudini_rosbag_converter -f original_rosbag.mcap -o compressed_rosbag.mcap -c
+
+# Use option -d for decompression
+cloudini_rosbag_converter -f compressed_rosbag.mcap -o restored_rosbag.mcap -d
+```
+
+Note that the "restored_rosbag.mcap" might be smalled than the original one, because the chunk-based ZSTD compression provided
+by MCAP is enabled.
