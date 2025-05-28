@@ -1,49 +1,38 @@
 #include "cloudini_plugin/cloudini_publisher.hpp"
+
 #include "cloudini_ros/conversion_utils.hpp"
 
-namespace cloudini_point_cloud_transport
-{
+namespace cloudini_point_cloud_transport {
 
-CloudiniPublisher::CloudiniPublisher()
-{}
+CloudiniPublisher::CloudiniPublisher() {}
 
-void CloudiniPublisher::declareParameters(const std::string& base_topic)
-{
+void CloudiniPublisher::declareParameters(const std::string& base_topic) {
   rcl_interfaces::msg::ParameterDescriptor encode_resolution_descriptor;
   encode_resolution_descriptor.name = "clodini_resolution";
   encode_resolution_descriptor.type = rcl_interfaces::msg::ParameterType::PARAMETER_DOUBLE;
-  encode_resolution_descriptor.description =
-    "resolution of floating points fields (XYZ) in meters";
+  encode_resolution_descriptor.description = "resolution of floating points fields (XYZ) in meters";
 
-  encode_resolution_descriptor.set__integer_range(
-    {rcl_interfaces::msg::IntegerRange()
-      .set__to_value(0.001)});
+  encode_resolution_descriptor.set__integer_range({rcl_interfaces::msg::IntegerRange().set__to_value(0.001)});
 
-  declareParam<double>(
-    encode_resolution_descriptor.name, resolution_,
-    encode_resolution_descriptor);
+  declareParam<double>(encode_resolution_descriptor.name, resolution_, encode_resolution_descriptor);
 
   getParam<double>(encode_resolution_descriptor.name, resolution_);
 
-  auto param_change_callback =
-    [this](const std::vector<rclcpp::Parameter> & parameters)
-    {
-      auto result = rcl_interfaces::msg::SetParametersResult();
-      result.successful = true;
-      for (auto parameter : parameters) {
-        if (parameter.get_name().find("cloudini_resolution") != std::string::npos) {
-          resolution_ = parameter.as_double();
-          return result;
-        }
+  auto param_change_callback = [this](const std::vector<rclcpp::Parameter>& parameters) {
+    auto result = rcl_interfaces::msg::SetParametersResult();
+    result.successful = true;
+    for (auto parameter : parameters) {
+      if (parameter.get_name().find("cloudini_resolution") != std::string::npos) {
+        resolution_ = parameter.as_double();
+        return result;
       }
-      return result;
-    };
+    }
+    return result;
+  };
   setParamCallback(param_change_callback);
 }
-  
-CloudiniPublisher::TypedEncodeResult CloudiniPublisher::encodeTyped(
-  const sensor_msgs::msg::PointCloud2 & raw) const
-{
+
+CloudiniPublisher::TypedEncodeResult CloudiniPublisher::encodeTyped(const sensor_msgs::msg::PointCloud2& raw) const {
   auto info = Cloudini::ConvertToEncodingInfo(raw, resolution_);
   Cloudini::PointcloudEncoder encoder(info);
 

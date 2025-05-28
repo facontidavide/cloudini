@@ -1,24 +1,18 @@
 #pragma once
 
 #include <memory>
-
 #include <point_cloud_interfaces/msg/compressed_point_cloud2.hpp>
 #include <point_cloud_transport/simple_subscriber_plugin.hpp>
 #include <point_cloud_transport/transport_hints.hpp>
 
-
-namespace Cloudini
-{
-  class PointcloudDecoder;
+namespace Cloudini {
+class PointcloudDecoder;
 }
 
-namespace cloudini_point_cloud_transport
-{
+namespace cloudini_point_cloud_transport {
 class CloudiniSubscriber
-  : public point_cloud_transport::SimpleSubscriberPlugin<
-    point_cloud_interfaces::msg::CompressedPointCloud2>
-{
-public:
+    : public point_cloud_transport::SimpleSubscriberPlugin<point_cloud_interfaces::msg::CompressedPointCloud2> {
+ public:
   CloudiniSubscriber();
 
   std::string getTransportName() const override {
@@ -33,10 +27,9 @@ public:
     return "point_cloud_interfaces/msg/CompressedPointCloud2";
   }
 
-  DecodeResult decodeTyped(const point_cloud_interfaces::msg::CompressedPointCloud2 & compressed)
-  const override;
+  DecodeResult decodeTyped(const point_cloud_interfaces::msg::CompressedPointCloud2& compressed) const override;
 
-private:
+ private:
   std::shared_ptr<Cloudini::PointcloudDecoder> decoder_;
 };
 

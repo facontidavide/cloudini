@@ -63,7 +63,7 @@ endif()
 ##################################################################################
 
 
-add_library(cloudini_lib 
+add_library(cloudini_lib
   src/cloudini.cpp
   src/field_encoder.cpp
   src/field_decoder.cpp

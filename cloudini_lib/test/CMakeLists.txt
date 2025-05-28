@@ -14,8 +14,8 @@ if(ament_cmake_FOUND)
     find_package(ament_cmake_gtest REQUIRED)
 
     ament_add_gtest(test_cloudini ${SRC_FILES})
-    target_link_libraries(test_cloudini 
-      data_path 
+    target_link_libraries(test_cloudini
+      data_path
       ${ament_LIBRARIES})
 
 else()

@@ -21,15 +21,13 @@ EncodingInfo ConvertToEncodingInfo(const sensor_msgs::msg::PointCloud2& msg, flo
   return info;
 }
 
-
 EncodingInfo ReadEncodingInfo(const point_cloud_interfaces::msg::CompressedPointCloud2& msg) {
   // the encoding info are in the header of the data
-  if(msg.format != "cloudini") {
+  if (msg.format != "cloudini") {
     throw std::runtime_error("Invalid format. Expected 'cloudini'");
   }
   ConstBufferView data(msg.compressed_data.data(), msg.compressed_data.size());
   return DecodeHeader(data);
 }
-
 
 }  // namespace Cloudini

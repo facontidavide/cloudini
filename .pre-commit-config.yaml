@@ -1,19 +1,4 @@
-
-# To use:
-#
-#     pre-commit run -a
-#
-# Or:
-#
-#     pre-commit install  # (runs every time you commit in git)
-#
-# To update this file:
-#
-#     pre-commit autoupdate
-#
-# See https://github.com/pre-commit/pre-commit
-
-exclude: ^3rdparty/|3rdparty|^include/behaviortree_cpp/contrib/
+exclude: ^.vscode/|^deps/
 repos:
 
   # Standard hooks
@@ -23,11 +8,11 @@ repos:
       - id: check-added-large-files
       - id: check-ast
       - id: check-case-conflict
-      - id: check-docstring-first
       - id: check-merge-conflict
       - id: check-symlinks
       - id: check-xml
       - id: check-yaml
+        exclude: .gitlab-ci.yml
       - id: debug-statements
       - id: end-of-file-fixer
         exclude_types: [svg]
@@ -41,4 +26,5 @@ repos:
     rev: v17.0.6
     hooks:
       - id: clang-format
+        types_or: [c++, c]
         args: ['-fallback-style=none', '-i']

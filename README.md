@@ -12,10 +12,10 @@ Its main use cases are:
 
 - Decrease the bandwidth used when streaming pointclouds over a network.
 
-It works seamlessly with [PCL](https://pointclouds.org/) and 
+It works seamlessly with [PCL](https://pointclouds.org/) and
 [ROS](https://www.ros.org/), but the main library can be compiled and used independently, if needed.
 
-# What to expect 
+# What to expect
 
 The compression ratio is hard to predict because it depends on the way the original data is encoded.
 
@@ -38,7 +38,7 @@ These are two random examples using real-world data from LiDARs.
 ```
 
 - **Channels**: XYZ, intensity, ring (int16), timestamp (double), with padding
- 
+
 ```
   [LZ4 only]      ratio: 0.31 time (usec): 2866
   [ZSTD only]     ratio: 0.24 time (usec): 3423
@@ -57,7 +57,7 @@ The algorithm contains two steps:
 1. Encoding the pointcloud, channel by channel.
 2. Compression using either [LZ4](https://github.com/lz4/lz4) or [ZSTD](https://github.com/facebook/zstd).
 
-The encoding is lossy for floating point channels (typically the X, Y, Z channels) 
+The encoding is lossy for floating point channels (typically the X, Y, Z channels)
 and lossless for RGBA and integer channels.
 
 Now, I know that when you read the word "lossy" you may think about grainy JPEGS images. **Don't**.
@@ -85,4 +85,4 @@ A command line tool that, given a rosbag (limited to MCAP format), converts
 
 Encoding/decoding is faster than general-purpose compression algorithms and achieves a better compression ratio at 1mm resolution.
 
-Interestingly, it can be compiled **without** ROS installed in your system! 
+Interestingly, it can be compiled **without** ROS installed in your system!

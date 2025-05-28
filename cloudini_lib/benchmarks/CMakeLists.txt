@@ -18,9 +18,9 @@ if(PCL_FOUND)
   message(STATUS "PCL found, using system include")
 
     add_executable(pcd_benchmark pcd_benchmark.cpp )
-    
+
     target_include_directories(pcd_benchmark PRIVATE  ${PCL_INCLUDE_DIRS}})
-  
+
     target_link_libraries(pcd_benchmark
     PRIVATE
       cloudini_lib

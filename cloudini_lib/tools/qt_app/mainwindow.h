@@ -1,8 +1,8 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
-#include <QMainWindow>
 #include <QByteArray>
+#include <QMainWindow>
 
 namespace Ui {
 class MainWindow;
@@ -12,8 +12,7 @@ namespace mcap {
 class McapReader;
 }
 
-class MainWindow : public QMainWindow
-{
+class MainWindow : public QMainWindow {
   Q_OBJECT
 
  public:
@@ -36,4 +35,4 @@ class MainWindow : public QMainWindow
   QByteArray read_buffer_;
 };
 
-#endif // MAINWINDOW_H
+#endif  // MAINWINDOW_H

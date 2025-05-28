@@ -1,26 +1,29 @@
 #pragma once
 
-#include <mcap/writer.hpp>
 #include <QByteArray>
+#include <mcap/writer.hpp>
 
+class ByteArrayInterface : public mcap::IWritable {
+ public:
+  ByteArrayInterface(){};
+  virtual ~ByteArrayInterface() = default;
 
-class ByteArrayInterface: public mcap::IWritable {
-public:
+  void end() override {
+    bytes_.end();
+  };
 
-    ByteArrayInterface() {};
-    virtual ~ByteArrayInterface() = default;
+  uint64_t size() const override {
+    return bytes_.size();
+  };
 
-    void end() override { bytes_.end(); };
+  const QByteArray& byteArray() const {
+    return bytes_;
+  }
 
-    uint64_t size() const override { return bytes_.size(); };
+ protected:
+  void handleWrite(const std::byte* data, uint64_t size) override {
+    bytes_.append(reinterpret_cast<const char*>(data), size);
+  }
 
-    const QByteArray& byteArray() const { return bytes_; }
-
-protected:
-    void handleWrite(const std::byte* data, uint64_t size) override
-    {
-        bytes_.append(reinterpret_cast<const char*>(data), size);
-    }
-
-    QByteArray bytes_;
+  QByteArray bytes_;
 };
