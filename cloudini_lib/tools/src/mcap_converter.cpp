@@ -3,10 +3,10 @@
 #include <set>
 #include <stdexcept>
 
+#include "cloudini_lib/ros_message_definitions.hpp"
 #include "cloudini_lib/ros_msg_utils.hpp"
 #include "mcap/reader.hpp"
 #include "mcap/writer.hpp"
-#include "message_definitions.hpp"
 
 McapConverter::TopicsMap McapConverter::open(std::filesystem::path file_in) {
   reader_ = std::make_shared<mcap::McapReader>();
@@ -92,6 +92,8 @@ void McapConverter::encodePointClouds(std::filesystem::path file_out, float reso
 
   mcap::McapWriter writer;
   mcap::McapWriterOptions writer_options(reader_->header()->profile);
+  writer_options.compression = mcap::Compression::None;  // no compression for output
+
   auto status = writer.open(file_out.string(), writer_options);
   if (!status.ok()) {
     throw std::runtime_error("Error opening MCAP file for writing: " + status.message);
@@ -122,7 +124,7 @@ void McapConverter::encodePointClouds(std::filesystem::path file_out, float reso
     compressed_dds_msg.resize(msg.message.dataSize);  // conservative size
 
     Cloudini::ConstBufferView raw_dds_msg(msg.message.data, msg.message.dataSize);
-    auto pc_info = Cloudini::readPointCloud2(raw_dds_msg);
+    auto pc_info = Cloudini::readPointCloud2Message(raw_dds_msg);
     auto encoding_info = Cloudini::toEncodingInfo(pc_info);
 
     // apply resolution to all fields
@@ -140,7 +142,7 @@ void McapConverter::encodePointClouds(std::filesystem::path file_out, float reso
     pc_info.data = Cloudini::ConstBufferView(compressed_cloud);
 
     // generate the new DDS message
-    auto dds_size = Cloudini::writePointCloud2(pc_info, compressed_dds_msg, true);
+    auto dds_size = Cloudini::writePointCloud2Message(pc_info, compressed_dds_msg, true);
     compressed_dds_msg.resize(dds_size);
 
     // copy pointers to compressed_dds_msg
@@ -152,6 +154,63 @@ void McapConverter::encodePointClouds(std::filesystem::path file_out, float reso
       throw std::runtime_error("Error writing message to MCAP file: " + status.message);
     }
   }
+  writer.close();
+}
 
+void McapConverter::decodePointClouds(std::filesystem::path file_out) {
+  if (!reader_) {
+    throw std::runtime_error("McapReader is not initialized. Call open() first.");
+  }
+
+  mcap::McapWriter writer;
+  mcap::McapWriterOptions writer_options(reader_->header()->profile);
+
+  auto status = writer.open(file_out.string(), writer_options);
+  if (!status.ok()) {
+    throw std::runtime_error("Error opening MCAP file for writing: " + status.message);
+  }
+
+  duplicateSchemasAndChannels(*reader_, writer, false);
+
+  mcap::ReadMessageOptions options;
+  mcap::ProblemCallback problem = [](const mcap::Status&) {};
+
+  std::vector<uint8_t> decoded_cloud;
+  std::vector<uint8_t> decoded_dds_msg;
+
+  for (const auto& msg : reader_->readMessages(problem, options)) {
+    mcap::Message new_msg = msg.message;
+    new_msg.channelId = old_to_new_channel_id_.at(msg.channel->id);
+    // default case (not a point cloud)
+    if (msg.schema->name != compressed_schema_name) {
+      auto status = writer.write(new_msg);
+      if (!status.ok()) {
+        throw std::runtime_error("Error writing message to MCAP file: " + status.message);
+      }
+      continue;
+    }
+
+    Cloudini::ConstBufferView raw_dds_msg(msg.message.data, msg.message.dataSize);
+    auto pc_info = Cloudini::readPointCloud2Message(raw_dds_msg);
+
+    Cloudini::ConstBufferView compressed_cloud(pc_info.data);
+    Cloudini::PointcloudDecoder pc_decoder;
+    const auto encoding_info = Cloudini::DecodeHeader(compressed_cloud);
+    pc_decoder.decode(encoding_info, compressed_cloud, decoded_cloud);
+
+    // substitute the data view
+    pc_info.data = Cloudini::ConstBufferView(decoded_cloud);
+
+    // generate the new DDS message
+    auto dds_size = Cloudini::writePointCloud2Message(pc_info, decoded_dds_msg, false);
+
+    new_msg.data = reinterpret_cast<const std::byte*>(decoded_dds_msg.data());
+    new_msg.dataSize = dds_size;
+
+    auto status = writer.write(new_msg);
+    if (!status.ok()) {
+      throw std::runtime_error("Error writing message to MCAP file: " + status.message);
+    }
+  }
   writer.close();
 }

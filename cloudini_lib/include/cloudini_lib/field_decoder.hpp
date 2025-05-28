@@ -34,7 +34,7 @@ class FieldDecoderCopy : public FieldDecoder {
       : offset_(field_offset), field_size_(SizeOf(field_type)) {}
 
   void decode(ConstBufferView& input, BufferView dest_point_view) override {
-    memcpy(dest_point_view.data(), input.data() + offset_, field_size_);
+    memcpy(dest_point_view.data() + offset_, input.data(), field_size_);
     input.trim_front(field_size_);
   }
 

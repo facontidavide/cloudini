@@ -32,7 +32,7 @@
             "name": "test",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/cloudini_lib/test/test_cloudini",
+            "program": "${workspaceFolder}/cloudini_lib/build/test/test_cloudini",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
@@ -56,9 +56,14 @@
             "name": "converter",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/cloudini_lib/build/tools/ros_mcap_converter",
+            "program": "${workspaceFolder}/cloudini_lib/build/tools/cloudini_rosbag_converter",
             "args": [
-                "north1_mini_0.mcap"
+                "-d",
+                "-f",
+                "encoded_cloud.mcap",
+                "-o",
+                "decode_cloud.mcap",
+                "-y"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

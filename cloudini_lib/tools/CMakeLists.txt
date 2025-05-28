@@ -36,11 +36,17 @@ target_link_libraries(mcap_converter
    mcap
 )
 
-add_executable(cloudini_rosbag_converter src/cloudini_rosbag_converter.cpp)
+########################################################
+
+CPMAddPackage("gh:jarro2783/cxxopts@3.3.1")
+
+add_executable(cloudini_rosbag_converter
+ src/cloudini_rosbag_converter.cpp)
 
 target_link_libraries(cloudini_rosbag_converter
   PRIVATE
    mcap_converter
+   cxxopts
 )
 
 install(TARGETS cloudini_rosbag_converter

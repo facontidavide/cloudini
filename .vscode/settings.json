@@ -88,7 +88,9 @@
         "qsettings": "cpp",
         "span": "cpp",
         "qmessagebox": "cpp",
-        "qapplication": "cpp"
+        "qapplication": "cpp",
+        "locale": "cpp",
+        "filesystem": "cpp"
     },
     "python.autoComplete.extraPaths": [
         "/opt/ros/humble/lib/python3.10/site-packages",

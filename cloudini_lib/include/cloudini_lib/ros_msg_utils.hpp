@@ -58,8 +58,8 @@ struct RosPointCloud2 {
 
 EncodingInfo toEncodingInfo(const RosPointCloud2& pc_info);
 
-RosPointCloud2 readPointCloud2(ConstBufferView& raw_dds_msg);
+RosPointCloud2 readPointCloud2Message(ConstBufferView raw_dds_msg);
 
-size_t writePointCloud2(const RosPointCloud2& pc_info, std::vector<uint8_t>& raw_dds_msg, bool is_compressed);
+size_t writePointCloud2Message(const RosPointCloud2& pc_info, std::vector<uint8_t>& raw_dds_msg, bool is_compressed);
 
 }  // namespace Cloudini

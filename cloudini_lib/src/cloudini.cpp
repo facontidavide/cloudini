@@ -118,24 +118,24 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
   // special case: first 3 or 4 fields are consecutive FLOAT32 fields
   size_t start_index = 0;
 
-  if (info_.encoding_opt == EncodingOptions::LOSSY) {
-    size_t floats_count = 0;
-    for (size_t i = 0; i < info_.fields.size(); ++i) {
-      if (info_.fields[i].type == FieldType::FLOAT32) {
-        floats_count++;
-      } else {
-        break;
-      }
-    }
-    if (floats_count == 3 || floats_count == 4) {
-      start_index = floats_count;
-      std::vector<FieldEncoderFloatN_Lossy::FieldData> field_data;
-      for (size_t i = 0; i < floats_count; ++i) {
-        field_data.emplace_back(info_.fields[i].offset, info_.fields[i].resolution.value_or(1.0f));
-      }
-      encoders_.push_back(std::make_unique<FieldEncoderFloatN_Lossy>(field_data));
-    }
-  }
+  // if (info_.encoding_opt == EncodingOptions::LOSSY) {
+  //   size_t floats_count = 0;
+  //   for (size_t i = 0; i < info_.fields.size(); ++i) {
+  //     if (info_.fields[i].type == FieldType::FLOAT32) {
+  //       floats_count++;
+  //     } else {
+  //       break;
+  //     }
+  //   }
+  //   if (floats_count == 3 || floats_count == 4) {
+  //     start_index = floats_count;
+  //     std::vector<FieldEncoderFloatN_Lossy::FieldData> field_data;
+  //     for (size_t i = 0; i < floats_count; ++i) {
+  //       field_data.emplace_back(info_.fields[i].offset, info_.fields[i].resolution.value_or(1.0f));
+  //     }
+  //     encoders_.push_back(std::make_unique<FieldEncoderFloatN_Lossy>(field_data));
+  //   }
+  // }
   //-------------------------------------------------------------------------------------------
   // do remaining fields
   for (size_t index = start_index; index < info_.fields.size(); ++index) {
@@ -153,10 +153,10 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
       } break;
 
       case FieldType::INT16:
-        encoders_.push_back(std::make_unique<FieldEncoderInt<uint16_t>>(offset));
+        encoders_.push_back(std::make_unique<FieldEncoderInt<int16_t>>(offset));
         break;
       case FieldType::INT32:
-        encoders_.push_back(std::make_unique<FieldEncoderInt<uint32_t>>(offset));
+        encoders_.push_back(std::make_unique<FieldEncoderInt<int32_t>>(offset));
         break;
       case FieldType::UINT16:
         encoders_.push_back(std::make_unique<FieldEncoderInt<uint16_t>>(offset));
@@ -166,10 +166,8 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
         break;
       case FieldType::INT8:
       case FieldType::UINT8:
-        encoders_.push_back(std::make_unique<FieldEncoderCopy>(offset, field_type));
-        break;
       case FieldType::FLOAT64:
-        encoders_.push_back(std::make_unique<FieldEncoderFloat_XOR<double>>(offset));
+        encoders_.push_back(std::make_unique<FieldEncoderCopy>(offset, field_type));
         break;
       default:
         throw std::runtime_error("Unsupported field type:" + std::to_string(static_cast<int>(field_type)));
@@ -250,20 +248,27 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output_
 
 void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
   auto create_decoder = [](const PointField& field) -> std::unique_ptr<FieldDecoder> {
-    if (field.type == FieldType::FLOAT32 && field.resolution) {
-      return (std::make_unique<FieldDecoderFloat_Lossy>(field.offset, *field.resolution));
-    } else if (field.type == FieldType::INT16) {
-      return (std::make_unique<FieldDecoderInt<uint16_t>>(field.offset));
-    } else if (field.type == FieldType::INT32) {
-      return (std::make_unique<FieldDecoderInt<uint32_t>>(field.offset));
-    } else if (field.type == FieldType::UINT16) {
-      return (std::make_unique<FieldDecoderInt<uint16_t>>(field.offset));
-    } else if (field.type == FieldType::UINT32) {
-      return (std::make_unique<FieldDecoderInt<uint32_t>>(field.offset));
-    } else if (field.type == FieldType::INT8 || field.type == FieldType::UINT8) {
-      return (std::make_unique<FieldDecoderCopy>(field.offset, field.type));
-    } else {
-      throw std::runtime_error("Unsupported field type");
+    switch (field.type) {
+      case FieldType::FLOAT32:
+        if (field.resolution) {
+          return std::make_unique<FieldDecoderFloat_Lossy>(field.offset, *field.resolution);
+        } else {
+          return std::make_unique<FieldDecoderCopy>(field.offset, field.type);
+        }
+      case FieldType::INT16:
+        return std::make_unique<FieldDecoderInt<int16_t>>(field.offset);
+      case FieldType::INT32:
+        return std::make_unique<FieldDecoderInt<int32_t>>(field.offset);
+      case FieldType::UINT16:
+        return std::make_unique<FieldDecoderInt<uint16_t>>(field.offset);
+      case FieldType::UINT32:
+        return std::make_unique<FieldDecoderInt<uint32_t>>(field.offset);
+      case FieldType::INT8:
+      case FieldType::UINT8:
+      case FieldType::FLOAT64:
+        return std::make_unique<FieldDecoderCopy>(field.offset, field.type);
+      default:
+        throw std::runtime_error("Unsupported field type");
     }
   };
 
@@ -320,10 +325,10 @@ void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compres
                           : ConstBufferView(buffer_.data(), buffer_.size());
 
   for (size_t i = 0; i < info.width * info.height; ++i) {
+    BufferView point_view(output.data() + i * info.point_step, info.point_step);
     for (auto& decoder : decoders_) {
-      decoder->decode(encoded_view, output);
+      decoder->decode(encoded_view, point_view);
     }
-    output.trim_front(info.point_step);
   }
 }
 

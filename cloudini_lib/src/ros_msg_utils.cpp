@@ -20,7 +20,7 @@ namespace Cloudini {
 //     uint8  datatype
 //     uint32 count
 
-RosPointCloud2 readPointCloud2(ConstBufferView& raw_dds_msg) {
+RosPointCloud2 readPointCloud2Message(ConstBufferView raw_dds_msg) {
   nanocdr::Decoder cdr(raw_dds_msg);
 
   RosPointCloud2 result;
@@ -64,7 +64,7 @@ RosPointCloud2 readPointCloud2(ConstBufferView& raw_dds_msg) {
   return result;
 }
 
-size_t writePointCloud2(const RosPointCloud2& pc_info, std::vector<uint8_t>& raw_dds_msg, bool is_compressed) {
+size_t writePointCloud2Message(const RosPointCloud2& pc_info, std::vector<uint8_t>& raw_dds_msg, bool is_compressed) {
   nanocdr::Encoder cdr(pc_info.cdr_header, raw_dds_msg);
 
   //----- write the header -----

@@ -120,6 +120,12 @@ class PointcloudDecoder {
    */
   void decode(const EncodingInfo& info, ConstBufferView compressed_data, BufferView output);
 
+  void decode(const EncodingInfo& info, ConstBufferView compressed_data, std::vector<uint8_t>& output) {
+    output.resize(info.width * info.height * info.point_step);
+    BufferView output_view(output.data(), output.size());
+    decode(info, compressed_data, output_view);
+  }
+
  private:
   void updateDecoders(const EncodingInfo& info);
 

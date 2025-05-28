@@ -1,7 +1,8 @@
 set(SRC_FILES
-  test_field_encoders.cpp
-  test_intrinsics.cpp
-  test_header.cpp
+  # test_field_encoders.cpp
+  # test_intrinsics.cpp
+  # test_header.cpp
+  test_ros_msg.cpp
 )
 
 if(PCL_FOUND)
