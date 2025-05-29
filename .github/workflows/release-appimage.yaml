@@ -13,16 +13,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y git cmake liblz4-dev libzstd-dev
+      - name: Cache apt packages
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: git cmake liblz4-dev libzstd-dev
+          version: 1.0
+
+      - name: Cache CMake files
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/cmake
+            build
+          key: ${{ runner.os }}-cmake-appimage-${{ hashFiles('**/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-cmake-appimage-
 
       - name: Configure
-        run: cmake cloudini_lib -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF
+        run: |
+          mkdir -p build
+          cd build
+          cmake ../cloudini_lib -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF
 
       - name: Build
-        run: make -j$(nproc) install DESTDIR=AppDir
+        working-directory: build
+        run: make -j$(nproc) install DESTDIR=$GITHUB_WORKSPACE/AppDir
 
       - name: Build AppImage
         uses: AppImageCrafters/build-appimage-action@master
