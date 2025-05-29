@@ -28,6 +28,7 @@ AppDir:
     exclude: []
 
   runtime:
+    arch: x86_64
     env:
       PATH: '${APPDIR}/usr/bin:${PATH}'
       LD_LIBRARY_PATH: '${APPDIR}/usr/lib:${LD_LIBRARY_PATH}'
