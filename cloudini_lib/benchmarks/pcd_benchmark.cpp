@@ -1,11 +1,14 @@
 #include <benchmark/benchmark.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+
+#ifdef DRACO_FOUND
 #include <draco/compression/decode.h>
 #include <draco/compression/encode.h>
 #include <draco/compression/expert_encode.h>
 #include <draco/point_cloud/point_cloud_builder.h>
-#include <pcl/io/pcd_io.h>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
+#endif
 
 #include "cloudini_lib/cloudini.hpp"
 #include "data_path.hpp"
