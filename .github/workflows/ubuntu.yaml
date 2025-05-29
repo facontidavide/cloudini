@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: install dependencies
         run: |
@@ -31,7 +31,9 @@ jobs:
           UPDATE_INFO: gh-releases-zsync|AppImageCrafters|cloudini_rosbag_converter|latest|*x86_64.AppImage.zsync
         with:
           recipe: AppImageBuilder.yml
-      - uses: actions/upload-artifact@v2
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
           name: AppImage
-          path: ./AppDir  # Ensure this points to the correct output directory
+          path: '*.AppImage*'
