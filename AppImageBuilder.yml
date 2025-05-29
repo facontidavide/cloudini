@@ -30,7 +30,6 @@ AppDir:
   runtime:
     arch:
       - x86_64
-      - i686
     env:
       PATH: '${APPDIR}/usr/bin:${PATH}'
       LD_LIBRARY_PATH: '${APPDIR}/usr/lib:${LD_LIBRARY_PATH}'
