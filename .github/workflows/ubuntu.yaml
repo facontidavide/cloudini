@@ -1,0 +1,36 @@
+name: C/C++ AppImage
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build-appimage:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git cmake
+
+      - name: configure
+        run: cmake cloudini_lib -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+
+      - name: build
+        run: make -j`nproc`  install DESTDIR=AppDir
+
+      - name: Build AppImage
+        uses: AppImageCrafters/build-appimage-action@master
+        env:
+          UPDATE_INFO: gh-releases-zsync|AppImageCrafters|cloudini_rosbag_converter|latest|*x86_64.AppImage.zsync
+        with:
+          recipe: AppImageBuilder.yml
+      - uses: actions/upload-artifact@v2
+        with:
+          name: AppImage
