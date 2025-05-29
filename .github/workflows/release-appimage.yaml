@@ -1,0 +1,59 @@
+name: Release AppImage
+
+on:
+  workflow_dispatch:  # Allows manual triggering
+  push:
+    tags:
+      - 'v*'  # Push events to matching v*, i.e. v1.0, v20.15.10
+
+jobs:
+  build-appimage:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache apt packages
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: git cmake liblz4-dev libzstd-dev libpcl-dev libboost-all-dev
+          version: 1.0
+
+      - name: Configure
+        run: cmake cloudini_lib -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF
+
+      - name: Build
+        run: make -j$(nproc) install DESTDIR=AppDir
+
+      - name: Build AppImage
+        uses: AppImageCrafters/build-appimage-action@master
+        env:
+          UPDATE_INFO: gh-releases-zsync|AppImageCrafters|cloudini_rosbag_converter|latest|*x86_64.AppImage.zsync
+        with:
+          recipe: AppImageBuilder.yml
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=manual-build" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: github.event_name == 'push'  # Only create release for tag pushes
+        with:
+          name: Release ${{ steps.get_version.outputs.VERSION }}
+          files: |
+            *.AppImage*
+          draft: false
+          prerelease: false
+
+      - name: Upload Artifacts
+        if: github.event_name == 'workflow_dispatch'  # Only upload artifacts for manual runs
+        uses: actions/upload-artifact@v4
+        with:
+          name: AppImage-manual-build
+          path: '*.AppImage*'

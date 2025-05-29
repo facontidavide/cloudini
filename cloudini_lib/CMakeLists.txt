@@ -32,7 +32,6 @@ message(STATUS "LZ4_INCLUDE_DIR: ${LZ4_INCLUDE_DIR}")
 message(STATUS "LZ4_LIBRARY: ${LZ4_LIBRARY}")
 
 
-
 ##################################################################################
 
 # ----  Trick to pass an absolute path to C++ code  ----
@@ -85,12 +84,14 @@ target_include_directories(cloudini_lib
   PRIVATE
     $<BUILD_INTERFACE:${LZ4_INCLUDE_DIR}>
     $<BUILD_INTERFACE:${ZSTD_INCLUDE_DIR}>
+    $<BUILD_INTERFACE:${DRACO_INCLUDE_DIR}>
 )
 
 target_link_libraries(cloudini_lib
   PRIVATE
     ${LZ4_LIBRARY}
     ${ZSTD_LIBRARY}
+    ${DRACO_LIBRARY}
   PUBLIC
     ${PCL_LIBRARIES}
 )

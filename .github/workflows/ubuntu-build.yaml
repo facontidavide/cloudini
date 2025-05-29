@@ -1,0 +1,44 @@
+name: Ubuntu Build & Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache apt packages
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: git cmake libpcl-dev liblz4-dev libzstd-dev libgtest-dev libboost-all-dev
+          version: 1.0
+
+      - name: Cache CMake files
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/cmake
+            build
+          key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-cmake-
+
+      - name: Configure
+        run: |
+          mkdir -p build
+          cd build
+          cmake ../cloudini_lib -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+
+      - name: Build
+        working-directory: build
+        run: make -j$(nproc)
+
+      - name: Run tests
+        working-directory: build
+        run: ctest --output-on-failure

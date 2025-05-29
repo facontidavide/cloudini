@@ -1,8 +1,14 @@
-
 #include <benchmark/benchmark.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+
+#ifdef DRACO_FOUND
+#include <draco/compression/decode.h>
+#include <draco/compression/encode.h>
+#include <draco/compression/expert_encode.h>
+#include <draco/point_cloud/point_cloud_builder.h>
+#endif
 
 #include "cloudini_lib/cloudini.hpp"
 #include "data_path.hpp"
@@ -154,18 +160,64 @@ static void PCD_Decode_LZ4_only(benchmark::State& state) {
   PCD_Decode_Impl(state, cloud, info);
 }
 
+//------------------------------------------------------------------------------------------
+
+#ifdef DRACO_FOUND
+
+static void PCD_Encode_Draco(benchmark::State& state) {
+  const auto cloud = loadCloud();
+  // Create Draco point cloud
+  draco::PointCloudBuilder builder;
+  builder.Start(cloud.size());
+
+  const int pos_att_id = builder.AddAttribute(draco::GeometryAttribute::POSITION, 3, draco::DT_FLOAT32);
+  const int intensity_att_id = builder.AddAttribute(draco::GeometryAttribute::GENERIC, 1, draco::DT_FLOAT32);
+
+  // Add points to the point cloud
+  for (draco::PointIndex i(0); i < cloud.size(); ++i) {
+    const auto& point = cloud.points[i.value()];
+    builder.SetAttributeValueForPoint(pos_att_id, i, &point.x);
+    builder.SetAttributeValueForPoint(intensity_att_id, i, &point.intensity);
+  }
+
+  std::unique_ptr<draco::PointCloud> draco_pc = builder.Finalize(false);
+  if (!draco_pc) {
+    throw std::runtime_error("Failed to create Draco point cloud");
+  }
+
+  // Encode the point cloud
+  draco::ExpertEncoder encoder(*draco_pc);
+  encoder.SetAttributeQuantization(draco::GeometryAttribute::POSITION, 12);
+  encoder.SetAttributeQuantization(draco::GeometryAttribute::GENERIC, 8);
+  encoder.SetEncodingMethod(draco::POINT_CLOUD_SEQUENTIAL_ENCODING);
+
+  draco::EncoderBuffer buffer;
+
+  for (auto _ : state) {
+    buffer.Clear();
+    encoder.EncodeToBuffer(&buffer);
+  }
+  const auto percentage =
+      100 * (static_cast<double>(buffer.size()) / static_cast<double>(cloud.size() * sizeof(pcl::PointXYZI)));
+  std::cout << "Encoded size: " << buffer.size() << "  percentage: " << percentage << "%" << std::endl;
+}
+
+#endif
+
+//------------------------------------------------------------------------------------------
+
 BENCHMARK(PCD_Encode_Lossy_ZST);
-BENCHMARK(PCD_Encode_Lossles_ZST);
 BENCHMARK(PCD_Encode_ZSTD_only);
 BENCHMARK(PCD_Encode_Lossy_LZ4);
-BENCHMARK(PCD_Encode_Lossles_LZ4);
 BENCHMARK(PCD_Encode_LZ4_only);
+
+#ifdef DRACO_FOUND
+BENCHMARK(PCD_Encode_Draco);
+#endif
 
 BENCHMARK(PCD_Decode_Lossy_ZST);
 BENCHMARK(PCD_Decode_Lossy_LZ4);
-
 BENCHMARK(PCD_Decode_ZSTD_only);
 BENCHMARK(PCD_Decode_LZ4_only);
 
-//------------------------------------------------------------------------------------------
 BENCHMARK_MAIN();
