@@ -36,8 +36,6 @@ enum class EncodingFlag : uint8_t { PLAIN_CDR = 0x0, PL_CDR = 0x2, PLAIN_CDR2 = 
 
 enum class Endianness : uint8_t { CDR_BIG_ENDIAN = 0x00, CDR_LITTLE_ENDIAN = 0x01 };
 
-constexpr Endianness getCurrentEndianness();
-
 template <typename T>
 inline void swapEndianness(T& val);
 
@@ -223,7 +221,7 @@ constexpr bool is_type_defined_v() {
   return is_type_defined<T>::value;
 }
 
-constexpr Endianness getCurrentEndianness() {
+inline Endianness getCurrentEndianness() {
   union {
     uint8_t u8;
     uint16_t u16 = 0x0100;
