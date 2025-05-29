@@ -1,3 +1,4 @@
+[![Ubuntu](https://github.com/facontidavide/cloudini/actions/workflows/ubuntu-build.yaml/badge.svg)](https://github.com/facontidavide/cloudini/actions/workflows/ubuntu-build.yaml)
 
 ![Cloudini](logo.png)
 
