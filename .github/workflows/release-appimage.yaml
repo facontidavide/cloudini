@@ -16,7 +16,7 @@ jobs:
       - name: Cache apt packages
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          packages: git cmake liblz4-dev libzstd-dev libpcl-dev libboost-all-dev
+          packages: git cmake liblz4-dev libzstd-dev
           version: 1.0
 
       - name: Configure
@@ -24,6 +24,13 @@ jobs:
 
       - name: Build
         run: make -j$(nproc) install DESTDIR=AppDir
+
+      - name: Check AppDir contents
+        run: |
+          echo "=== AppDir structure ==="
+          find AppDir -type f
+          echo "=== Executable details ==="
+          file AppDir/usr/bin/* || echo "No executables found"
 
       - name: Build AppImage
         uses: AppImageCrafters/build-appimage-action@master
