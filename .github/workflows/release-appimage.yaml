@@ -16,7 +16,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git cmake libpcl-dev liblz4-dev libzstd-dev
+          sudo apt-get install -y git cmake liblz4-dev libzstd-dev
 
       - name: Configure
         run: cmake cloudini_lib -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF
