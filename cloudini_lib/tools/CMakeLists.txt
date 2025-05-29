@@ -52,7 +52,7 @@ target_link_libraries(cloudini_rosbag_converter
 install(TARGETS cloudini_rosbag_converter
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
-  RUNTIME DESTINATION lib/cloudini_ros
+  RUNTIME DESTINATION bin
 )
 
 

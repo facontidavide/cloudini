@@ -73,7 +73,7 @@ But, if you are **really** paranoid, and decide to use a resolution of **100 mic
 It should also be noted that this two-step compression strategy has a
 negative overhead, i.e. it is actually **faster** than using LZ4 or ZSTD alone.
 
-# ROS-specific utilities
+# ROS specific utilities
 
 ## point_cloud_transport plugins
 
@@ -100,3 +100,19 @@ cloudini_rosbag_converter -f compressed_rosbag.mcap -o restored_rosbag.mcap -d
 
 Note that the "restored_rosbag.mcap" might be smalled than the original one, because the chunk-based ZSTD compression provided
 by MCAP is enabled.
+
+# Frequently Asked Questions
+
+### How does it perform, compared to Draco?
+
+[Google Draco](https://github.com/google/draco) has two main encoding methods: SEQUENTIAL and KD_TREE.
+
+The latter could achieve very good compression ratios, but it is very sloooow and it doesn't preserve the original order
+of the points in the point cloud.
+
+Compared with the Draco sequential mode, Cloudini achieve approximatively the same compression, but is considerably faster in
+my (currently limited) benchmark.
+
+### Does the decoder need to know if LZ4 or ZSTD was used?
+
+No, that information is stored in the header of the compressed data, and the decoder will automatically select the right library.
