@@ -22,11 +22,20 @@ AppDir:
       - sourceline: 'deb http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse'
         key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x871920D1991BC93C'
 
-    include: []
+    include:
+      - liblz4-1
+      - libzstd1
     exclude: []
 
+  runtime:
+    env:
+      PATH: '${APPDIR}/usr/bin:${PATH}'
+      LD_LIBRARY_PATH: '${APPDIR}/usr/lib:${LD_LIBRARY_PATH}'
+
   files:
-    include: []
+    include:
+      - usr/bin/cloudini_rosbag_converter
+      - usr/lib/lib*.so*
     exclude:
       - usr/share/man
       - usr/share/doc
