@@ -20,7 +20,7 @@ jobs:
           version: 1.0
 
       - name: Configure
-        run: cmake cloudini_lib -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF
+        run: cmake cloudini_lib -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF -DCLOUDINI_BUILD_BENCHMARKS=OFF
 
       - name: Build
         run: make -j$(nproc) install DESTDIR=AppDir
