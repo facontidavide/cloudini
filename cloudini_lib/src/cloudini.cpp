@@ -121,11 +121,14 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
   if (info_.encoding_opt == EncodingOptions::LOSSY) {
     size_t floats_count = 0;
     for (size_t i = 0; i < info_.fields.size(); ++i) {
-      if (info_.fields[i].type == FieldType::FLOAT32) {
-        floats_count++;
-      } else {
+      if (info_.fields[i].type != FieldType::FLOAT32 && !info_.fields[i].resolution.has_value()) {
         break;
       }
+      if (i > 0 && info_.fields[i].resolution.value() != info_.fields[i].resolution.value()) {
+        // resolution must be the same
+        break;
+      }
+      floats_count++;
     }
     if (floats_count == 3 || floats_count == 4) {
       start_index = floats_count;
@@ -139,24 +142,23 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
   //-------------------------------------------------------------------------------------------
   // do remaining fields
   for (size_t index = start_index; index < info_.fields.size(); ++index) {
-    auto resolution = info_.fields[index].resolution.value_or(1.0f);
-    auto offset = info_.fields[index].offset;
-    auto field_type = info_.fields[index].type;
+    const auto& field = info_.fields[index];
+    const auto offset = field.offset;
 
-    switch (field_type) {
+    switch (field.type) {
       case FieldType::FLOAT32: {
-        if (info_.encoding_opt == EncodingOptions::LOSSY) {
-          encoders_.push_back(std::make_unique<FieldEncoderFloat_Lossy<float>>(offset, resolution));
+        if (info_.encoding_opt == EncodingOptions::LOSSY && field.resolution.has_value()) {
+          encoders_.push_back(std::make_unique<FieldEncoderFloat_Lossy<float>>(offset, *field.resolution));
         } else {
-          encoders_.push_back(std::make_unique<FieldEncoderCopy>(offset, field_type));
+          encoders_.push_back(std::make_unique<FieldEncoderCopy>(offset, field.type));
         }
       } break;
 
       case FieldType::FLOAT64: {
-        if (info_.encoding_opt == EncodingOptions::LOSSY) {
-          encoders_.push_back(std::make_unique<FieldEncoderFloat_Lossy<double>>(offset, resolution));
+        if (info_.encoding_opt == EncodingOptions::LOSSY && field.resolution.has_value()) {
+          encoders_.push_back(std::make_unique<FieldEncoderFloat_Lossy<double>>(offset, *field.resolution));
         } else {
-          encoders_.push_back(std::make_unique<FieldEncoderCopy>(offset, field_type));
+          encoders_.push_back(std::make_unique<FieldEncoderCopy>(offset, field.type));
         }
       } break;
 
@@ -174,9 +176,10 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
         break;
       case FieldType::INT8:
       case FieldType::UINT8:
-
+        encoders_.push_back(std::make_unique<FieldEncoderCopy>(offset, field.type));
+        break;
       default:
-        throw std::runtime_error("Unsupported field type:" + std::to_string(static_cast<int>(field_type)));
+        throw std::runtime_error("Unsupported field type:" + std::to_string(static_cast<int>(field.type)));
     }
   }
 }
@@ -254,24 +257,32 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output_
 
 void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
   auto create_decoder = [](const PointField& field) -> std::unique_ptr<FieldDecoder> {
+    const auto offset = field.offset;
     switch (field.type) {
       case FieldType::FLOAT32:
         if (field.resolution) {
-          return std::make_unique<FieldDecoderFloat_Lossy>(field.offset, *field.resolution);
+          return std::make_unique<FieldDecoderFloat_Lossy<float>>(offset, *field.resolution);
         } else {
           return std::make_unique<FieldDecoderCopy>(field.offset, field.type);
         }
+        break;
+      case FieldType::FLOAT64:
+        if (field.resolution) {
+          return std::make_unique<FieldDecoderFloat_Lossy<double>>(offset, *field.resolution);
+        } else {
+          return std::make_unique<FieldDecoderCopy>(offset, field.type);
+        }
+        break;
       case FieldType::INT16:
-        return std::make_unique<FieldDecoderInt<int16_t>>(field.offset);
+        return std::make_unique<FieldDecoderInt<int16_t>>(offset);
       case FieldType::INT32:
-        return std::make_unique<FieldDecoderInt<int32_t>>(field.offset);
+        return std::make_unique<FieldDecoderInt<int32_t>>(offset);
       case FieldType::UINT16:
-        return std::make_unique<FieldDecoderInt<uint16_t>>(field.offset);
+        return std::make_unique<FieldDecoderInt<uint16_t>>(offset);
       case FieldType::UINT32:
-        return std::make_unique<FieldDecoderInt<uint32_t>>(field.offset);
+        return std::make_unique<FieldDecoderInt<uint32_t>>(offset);
       case FieldType::INT8:
       case FieldType::UINT8:
-      case FieldType::FLOAT64:
         return std::make_unique<FieldDecoderCopy>(field.offset, field.type);
       default:
         throw std::runtime_error("Unsupported field type");

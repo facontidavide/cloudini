@@ -78,7 +78,7 @@ template <typename FloatType>
 class FieldEncoderFloat_Lossy : public FieldEncoder {
  public:
   FieldEncoderFloat_Lossy(size_t field_offset, FloatType resolution)
-      : offset_(field_offset), multiplier_(1.0F / resolution) {
+      : offset_(field_offset), multiplier_(1.0 / resolution) {
     if (resolution <= 0.0) {
       throw std::runtime_error("FieldEncoder(Float/Lossy) requires a resolution with value > 0.0");
     }
@@ -93,7 +93,7 @@ class FieldEncoderFloat_Lossy : public FieldEncoder {
  private:
   int64_t prev_value_ = 0.0;
   size_t offset_;
-  float multiplier_;
+  FloatType multiplier_;
 };
 
 //------------------------------------------------------------------------------------------
@@ -155,9 +155,9 @@ inline size_t FieldEncoderFloat_Lossy<FloatType>::encode(const ConstBufferView& 
   const int64_t value = static_cast<int64_t>(std::round(value_real * multiplier_));
   const int64_t delta = value - prev_value_;
   prev_value_ = value;
-  auto offset = encodeVarint64(delta, output.data());
-  output.trim_front(offset);
-  return offset;
+  auto count = encodeVarint64(delta, output.data());
+  output.trim_front(count);
+  return count;
 }
 
 template <typename IntType>

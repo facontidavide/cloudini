@@ -76,9 +76,10 @@ class FieldDecoderInt : public FieldDecoder {
 
 //------------------------------------------------------------------------------------------
 // Specialization for floating point types and lossy compression
+template <typename FloatType>
 class FieldDecoderFloat_Lossy : public FieldDecoder {
  public:
-  FieldDecoderFloat_Lossy(size_t field_offset, float resolution) : offset_(field_offset), multiplier_(resolution) {
+  FieldDecoderFloat_Lossy(size_t field_offset, FloatType resolution) : offset_(field_offset), multiplier_(resolution) {
     if (resolution <= 0.0) {
       throw std::runtime_error("FieldDecoder(Float/Lossy) requires a resolution with value > 0.0");
     }
@@ -92,7 +93,7 @@ class FieldDecoderFloat_Lossy : public FieldDecoder {
 
  private:
   size_t offset_ = 0;
-  float multiplier_ = 0.0;
+  FloatType multiplier_ = 0.0;
   int64_t prev_value_ = 0;
 };
 
@@ -138,5 +139,26 @@ class FieldDecoderFloatN_Lossy : public FieldDecoder {
   Vector4i prev_vect_ = Vector4i(0, 0, 0, 0);
   Vector4f multiplier_ = Vector4f(0, 0, 0, 0);
 };
+
+//------------------------------------------------------------------------------------------
+template <typename FloatType>
+inline void FieldDecoderFloat_Lossy<FloatType>::decode(ConstBufferView& input, BufferView dest_point_view) {
+  if (input.data()[0] == 0) {
+    constexpr auto nan_value = std::numeric_limits<FloatType>::quiet_NaN();
+    memcpy(dest_point_view.data() + offset_, &nan_value, sizeof(FloatType));
+    input.trim_front(1);
+    reset();
+    return;
+  }
+
+  int64_t diff = 0;
+  const auto count = decodeVarint(input.data(), diff);
+  const int64_t value = prev_value_ + diff;
+  const FloatType value_real = static_cast<FloatType>(value) * multiplier_;
+  prev_value_ = value;
+
+  memcpy(dest_point_view.data() + offset_, &value_real, sizeof(value_real));
+  input.trim_front(count);
+}
 
 }  // namespace Cloudini

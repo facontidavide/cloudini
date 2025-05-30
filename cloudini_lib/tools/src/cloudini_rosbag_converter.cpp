@@ -29,12 +29,12 @@ int main(int argc, char** argv) {
 
     std::cout << "During encoding, you can specify a custom profile, where you specify the resolution of each fields "
                  "or even remove entire fields. Example:\n\n"
-              << "  --profile \"xyz:0.001; intensity:0.1; timestamp:0.000001; ring:remove\"\n"
+              << "  --profile \"xyz:0.001; intensity:0.1; timestamp:remove\"\n"
               << "\nThis means:\n"
-              << " - x,y,z channels will be encoded with a resolution of 0.001 meters (1 mm)\n"
-              << " - intensity channel will be encoded with a resolution of 0.1\n"
-              << " - timestamp field will be encoded with a resolution of 0.000001 (1 usec)\n"
-              << " - ring field will be removed" << std::endl;
+              << " - x,y,z fields will be encoded with a resolution of 0.001 meters (1 mm)\n"
+              << " - intensity field will be encoded with a resolution of 0.1\n"
+              << " - timestamp field will be removed\n"
+              << std::endl;
 
     return 0;
   }
