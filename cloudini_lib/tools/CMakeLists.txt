@@ -1,4 +1,3 @@
-
 if(NOT TARGET fastcdr)
     CPMAddPackage(
         NAME fastcdr_imported
@@ -50,10 +49,10 @@ target_link_libraries(cloudini_rosbag_converter
 )
 
 install(TARGETS cloudini_rosbag_converter
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION bin
-)
+        RUNTIME DESTINATION bin)
+
+install(FILES cloudini.desktop
+        DESTINATION share/applications)
 
 
 #find_package(Qt6 COMPONENTS Core Gui Widgets REQUIRED)

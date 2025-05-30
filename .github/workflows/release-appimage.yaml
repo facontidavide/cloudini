@@ -25,19 +25,17 @@ jobs:
       - name: Build
         run: make -j$(nproc) install DESTDIR=AppDir
 
-      - name: Check AppDir contents
+      - name: Download linuxdeploy
         run: |
-          echo "=== AppDir structure ==="
-          find AppDir -type f
-          echo "=== Executable details ==="
-          file AppDir/usr/bin/* || echo "No executables found"
+          wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
 
-      - name: Build AppImage
-        uses: AppImageCrafters/build-appimage-action@master
+      - name: Create AppImage
         env:
-          UPDATE_INFO: gh-releases-zsync|AppImageCrafters|cloudini_rosbag_converter|latest|*x86_64.AppImage.zsync
-        with:
-          recipe: AppImageBuilder.yml
+          UPDATE_INFORMATION: gh-releases-zsync|AppImageCrafters|cloudini_rosbag_converter|latest|*x86_64.AppImage.zsync
+          VERSION: auto
+        run: |
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --executable AppDir/usr/bin/cloudini_rosbag_converter --output appimage
 
       - name: Get version from tag
         id: get_version
