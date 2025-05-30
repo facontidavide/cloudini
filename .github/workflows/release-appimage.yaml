@@ -44,7 +44,6 @@ jobs:
           VERSION: ${{ steps.get_version.outputs.VERSION }}
         run: |
           ./linuxdeploy-x86_64.AppImage --appdir AppDir --executable AppDir/usr/bin/cloudini_rosbag_converter -d cloudini_lib/tools/cloudini_converter.desktop -i cloudini.png --output appimage
-          mv cloudini_rosbag_converter-*.AppImage cloudini_rosbag_converter-$VERSION-x86_64.AppImage
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
