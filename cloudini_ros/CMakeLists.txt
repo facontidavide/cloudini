@@ -49,14 +49,6 @@ install(
   DESTINATION include/cloudini_ros
 )
 
-
-######### rosbag benchmark #########
-add_executable(rosbag_benchmark test/rosbag_benchmark.cpp)
-
-target_link_libraries(rosbag_benchmark
-  cloudini_ros
-)
-
 ######### plugins #########
 set(PLUGIN_NAME cloudini_point_cloud_transport)
 
@@ -71,11 +63,10 @@ target_link_libraries(${PLUGIN_NAME} PRIVATE
   ${PLUGIN_DEPS}
 )
 
-
 target_include_directories(${PLUGIN_NAME} PRIVATE
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-  "$<INSTALL_INTERFACE:include/${PLUGIN_NAME}>")
-
+  "$<INSTALL_INTERFACE:include/${PLUGIN_NAME}>"
+)
 
 install(TARGETS ${PLUGIN_NAME}
   ARCHIVE DESTINATION lib
@@ -87,6 +78,18 @@ install(
   DIRECTORY include/cloudini_plugin
   DESTINATION include/${PLUGIN_NAME}
 )
+
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  ament_lint_auto_find_test_dependencies()
+
+  ######### rosbag benchmark #########
+  add_executable(rosbag_benchmark test/rosbag_benchmark.cpp)
+
+  target_link_libraries(rosbag_benchmark
+    cloudini_ros
+  )
+endif()
 
 pluginlib_export_plugin_description_file(point_cloud_transport cloudini_plugins.xml)
 
