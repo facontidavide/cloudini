@@ -74,9 +74,10 @@ class FieldEncoderInt : public FieldEncoder {
 
 //------------------------------------------------------------------------------------------
 // Specialization for floating point types and lossy compression
+template <typename FloatType>
 class FieldEncoderFloat_Lossy : public FieldEncoder {
  public:
-  FieldEncoderFloat_Lossy(size_t field_offset, float resolution)
+  FieldEncoderFloat_Lossy(size_t field_offset, FloatType resolution)
       : offset_(field_offset), multiplier_(1.0F / resolution) {
     if (resolution <= 0.0) {
       throw std::runtime_error("FieldEncoder(Float/Lossy) requires a resolution with value > 0.0");
@@ -104,17 +105,7 @@ class FieldEncoderFloat_XOR : public FieldEncoder {
     static_assert(std::is_floating_point<FloatType>::value, "FieldEncoderFloat_XOR requires a floating point type");
   }
 
-  size_t encode(const ConstBufferView& point_view, BufferView& output) override {
-    IntType current_val_uint;
-    memcpy(&current_val_uint, point_view.data() + offset_, sizeof(IntType));
-
-    const IntType residual = current_val_uint ^ prev_bits_;
-    prev_bits_ = current_val_uint;
-
-    memcpy(output.data(), &residual, sizeof(IntType));
-    output.trim_front(sizeof(IntType));
-    return sizeof(IntType);
-  }
+  size_t encode(const ConstBufferView& point_view, BufferView& output) override;
 
   void reset() override {
     prev_bits_ = 0;
@@ -150,5 +141,38 @@ class FieldEncoderFloatN_Lossy : public FieldEncoder {
   Vector4i prev_vect_ = Vector4i(0, 0, 0, 0);
   Vector4f multiplier_ = Vector4f(0, 0, 0, 0);
 };
+
+//------------------------------------------------------------------------------------------
+template <typename FloatType>
+inline size_t FieldEncoderFloat_Lossy<FloatType>::encode(const ConstBufferView& point_view, BufferView& output) {
+  FloatType value_real = *(reinterpret_cast<const FloatType*>(point_view.data() + offset_));
+  if (std::isnan(value_real)) {
+    output.data()[0] = 0;  // value 0 is reserved for NaN
+    prev_value_ = 0;
+    output.trim_front(1);
+    return 1;
+  }
+  const int64_t value = static_cast<int64_t>(std::round(value_real * multiplier_));
+  const int64_t delta = value - prev_value_;
+  prev_value_ = value;
+  auto offset = encodeVarint64(delta, output.data());
+  output.trim_front(offset);
+  return offset;
+}
+
+template <typename IntType>
+inline size_t FieldEncoderFloat_XOR<IntType>::encode(const ConstBufferView& point_view, BufferView& output) {
+  IntType current_val_uint;
+  memcpy(&current_val_uint, point_view.data() + offset_, sizeof(IntType));
+
+  const IntType residual = current_val_uint ^ prev_bits_;
+  prev_bits_ = current_val_uint;
+
+  memcpy(output.data(), &residual, sizeof(IntType));
+  output.trim_front(sizeof(IntType));
+  return sizeof(IntType);
+}
+
+//------------------------------------------------------------------------------------------
 
 }  // namespace Cloudini

@@ -17,13 +17,25 @@ int main(int argc, char** argv) {
       ("o,output", "Output file name", cxxopts::value<std::string>())   //
       ("r,resolution", "Resolution applied to floating point fields",   //
        cxxopts::value<double>()->default_value("0.001"))                //
-      ("c,compress", "Convert PointCloud2 to CompressedPointCloud2")    //
+      ("profile", "Apply a profile to encoding. See '--help' for details. It can be a path to a file or a string",
+       cxxopts::value<std::string>())                                 //
+      ("c,compress", "Convert PointCloud2 to CompressedPointCloud2")  //
       ("d,decode", "Convert CompressedPointCloud2 to PointCloud2");
 
   auto parse_result = options.parse(argc, argv);
 
   if (parse_result.count("help")) {
     std::cout << options.help() << std::endl;
+
+    std::cout << "During encoding, you can specify a custom profile, where you specify the resolution of each fields "
+                 "or even remove entire fields. Example:\n\n"
+              << "  --profile \"xyz:0.001; intensity:0.1; timestamp:0.000001; ring:remove\"\n"
+              << "\nThis means:\n"
+              << " - x,y,z channels will be encoded with a resolution of 0.001 meters (1 mm)\n"
+              << " - intensity channel will be encoded with a resolution of 0.1\n"
+              << " - timestamp field will be encoded with a resolution of 0.000001 (1 usec)\n"
+              << " - ring field will be removed" << std::endl;
+
     return 0;
   }
 
@@ -33,7 +45,13 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  const std::filesystem::path input_file = parse_result["filename"].as<std::string>();
+  auto filename_str = parse_result["filename"].as<std::string>();
+  if (filename_str.empty()) {
+    std::cerr << "Input file name is required." << std::endl;
+    return 1;
+  }
+
+  const std::filesystem::path input_file = filename_str;
 
   const double resolution = parse_result["resolution"].as<double>();
   const bool encode = parse_result.count("compress");
@@ -50,7 +68,7 @@ int main(int argc, char** argv) {
 
   // only mcap files are supported
   if (input_file.extension() != ".mcap") {
-    std::cerr << "Error: Input file must be a .mcap file." << std::endl;
+    std::cerr << "Error: Input file must be a .mcap file. String was: " << input_file << std::endl;
     return 1;
   }
 
@@ -62,6 +80,11 @@ int main(int argc, char** argv) {
   // if filename doesn't have .mcap extension, add it
   if (std::filesystem::path(output_filename).extension() != ".mcap") {
     output_filename += ".mcap";
+  }
+
+  if (decode && parse_result.count("profile")) {
+    std::cerr << "The option --profile is used only for compression" << std::endl;
+    return 1;
   }
 
   // if file exists already, ask the user to confirm overwriting
@@ -109,6 +132,23 @@ int main(int argc, char** argv) {
     std::cout << "\n started processing MCAP file: " << input_file << std::endl;
 
     if (encode) {
+      if (parse_result.count("profile")) {
+        std::string profile_str = parse_result["profile"].as<std::string>();
+        // check if it is a file or a string
+        if (std::filesystem::exists(profile_str)) {
+          std::ifstream file(profile_str);
+          std::string profile;
+          file >> profile;
+          converter.addProfile(profile);
+        } else {
+          converter.addProfile(profile_str);
+        }
+        auto profile_resolutions = converter.getProfile();
+        std::cout << "\nApplied profile resolutions: \n";
+        for (const auto& [field, resolution] : profile_resolutions) {
+          std::cout << "  " << field << ": " << resolution << std::endl;
+        }
+      }
       converter.encodePointClouds(output_filename, resolution);
     }
     if (decode) {

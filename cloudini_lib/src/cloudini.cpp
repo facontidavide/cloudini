@@ -146,9 +146,17 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
     switch (field_type) {
       case FieldType::FLOAT32: {
         if (info_.encoding_opt == EncodingOptions::LOSSY) {
-          encoders_.push_back(std::make_unique<FieldEncoderFloat_Lossy>(offset, resolution));
-        } else if (info_.encoding_opt == EncodingOptions::LOSSLES) {
-          encoders_.push_back(std::make_unique<FieldEncoderFloat_XOR<float>>(offset));
+          encoders_.push_back(std::make_unique<FieldEncoderFloat_Lossy<float>>(offset, resolution));
+        } else {
+          encoders_.push_back(std::make_unique<FieldEncoderCopy>(offset, field_type));
+        }
+      } break;
+
+      case FieldType::FLOAT64: {
+        if (info_.encoding_opt == EncodingOptions::LOSSY) {
+          encoders_.push_back(std::make_unique<FieldEncoderFloat_Lossy<double>>(offset, resolution));
+        } else {
+          encoders_.push_back(std::make_unique<FieldEncoderCopy>(offset, field_type));
         }
       } break;
 
@@ -166,9 +174,7 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
         break;
       case FieldType::INT8:
       case FieldType::UINT8:
-      case FieldType::FLOAT64:
-        encoders_.push_back(std::make_unique<FieldEncoderCopy>(offset, field_type));
-        break;
+
       default:
         throw std::runtime_error("Unsupported field type:" + std::to_string(static_cast<int>(field_type)));
     }

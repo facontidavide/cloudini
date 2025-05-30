@@ -16,8 +16,8 @@ jobs:
       - name: Cache apt packages
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          packages: git cmake
-          version: 1.0
+          packages: git cmake # do not include liblz4-dev libzstd-dev
+          version: 2.0
 
       - name: Configure
         run: cmake cloudini_lib -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF -DCLOUDINI_BUILD_BENCHMARKS=OFF

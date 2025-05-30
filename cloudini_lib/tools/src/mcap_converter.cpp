@@ -85,7 +85,7 @@ void McapConverter::duplicateSchemasAndChannels(
   }
 }
 
-void McapConverter::encodePointClouds(std::filesystem::path file_out, float resolution) {
+void McapConverter::encodePointClouds(std::filesystem::path file_out, std::optional<float> default_resolution) {
   if (!reader_) {
     throw std::runtime_error("McapReader is not initialized. Call open() first.");
   }
@@ -125,14 +125,29 @@ void McapConverter::encodePointClouds(std::filesystem::path file_out, float reso
 
     Cloudini::ConstBufferView raw_dds_msg(msg.message.data, msg.message.dataSize);
     auto pc_info = Cloudini::readPointCloud2Message(raw_dds_msg);
-    auto encoding_info = Cloudini::toEncodingInfo(pc_info);
 
-    // apply resolution to all fields
-    for (auto& field : encoding_info.fields) {
-      if (field.type == Cloudini::FieldType::FLOAT32 || field.type == Cloudini::FieldType::FLOAT64) {
-        field.resolution = resolution;
+    // Apply the profile to the encoding info. removing fields if resolution is 0
+    // Remove first all fields that have resolution 0.0 in the profile
+    pc_info.fields.erase(
+        std::remove_if(
+            pc_info.fields.begin(), pc_info.fields.end(),
+            [this](const auto& field) {
+              auto profile_it = profile_resolutions_.find(field.name);
+              return (profile_it != profile_resolutions_.end() && profile_it->second == 0);
+            }),
+        pc_info.fields.end());
+
+    for (auto& field : pc_info.fields) {
+      auto profile_it = profile_resolutions_.find(field.name);
+      if (profile_it != profile_resolutions_.end()) {
+        field.resolution = profile_it->second;
+      } else if (default_resolution && field.type == Cloudini::FieldType::FLOAT32) {
+        field.resolution = *default_resolution;
       }
     }
+
+    auto encoding_info = Cloudini::toEncodingInfo(pc_info);
+
     // Start encoding the pointcloud data[]
     Cloudini::PointcloudEncoder pc_encoder(encoding_info);
     auto new_size = pc_encoder.encode(pc_info.data, compressed_cloud);
@@ -213,4 +228,79 @@ void McapConverter::decodePointClouds(std::filesystem::path file_out) {
     }
   }
   writer.close();
+}
+
+std::vector<std::string_view> split(std::string_view str, char delimiter) {
+  std::vector<std::string_view> tokens;
+  size_t start = 0, end = 0;
+  while ((end = str.find(delimiter, start)) != std::string_view::npos) {
+    tokens.push_back(str.substr(start, end - start));
+    start = end + 1;
+  }
+  tokens.push_back(str.substr(start));
+  return tokens;
+}
+
+// trim front and back spaces
+std::string_view trimSpaces(std::string_view str) {
+  size_t start = 0, end = str.size();
+  while (start < end && std::isspace(str[start])) {
+    start++;
+  }
+  while (end > start && std::isspace(str[end - 1])) {
+    end--;
+  }
+  return str.substr(start, end - start);
+}
+
+void McapConverter::addProfile(const std::string& profile) {
+  auto tokens = split(profile, ';');
+  for (const auto& token : tokens) {
+    auto param_tokens = split(token, ':');
+    if (param_tokens.size() != 2) {
+      throw std::runtime_error("Invalid profile (wrong number of parameters): " + profile);
+    }
+    std::string field_str(trimSpaces(param_tokens[0]));
+    std::string resolution_str(trimSpaces(param_tokens[1]));
+    float resolution = 1.0f;
+    if (resolution_str == "remove") {
+      resolution = 0.0f;
+    } else {
+      // check if resolution_str can be converted to float
+      try {
+        resolution = std::stof(resolution_str);
+      } catch (const std::invalid_argument& e) {
+        throw std::runtime_error("Invalid profile (failed conversion to float): " + profile);
+      }
+    }
+    if (field_str == "xyz") {
+      profile_resolutions_["x"] = resolution;
+      profile_resolutions_["y"] = resolution;
+      profile_resolutions_["z"] = resolution;
+    } else {
+      profile_resolutions_[field_str] = resolution;
+    }
+  }
+}
+
+std::vector<std::pair<std::string, float>> McapConverter::getProfile() const {
+  std::vector<std::pair<std::string, float>> profile;
+  if (profile_resolutions_.empty()) {
+    return {};
+  }
+  if (profile_resolutions_.count("x")) {
+    profile.push_back({"x", profile_resolutions_.at("x")});
+  }
+  if (profile_resolutions_.count("y")) {
+    profile.push_back({"y", profile_resolutions_.at("y")});
+  }
+  if (profile_resolutions_.count("z")) {
+    profile.push_back({"z", profile_resolutions_.at("z")});
+  }
+  for (const auto& [field, resolution] : profile_resolutions_) {
+    if (field != "x" && field != "y" && field != "z") {
+      profile.push_back({field, resolution});
+    }
+  }
+  return profile;
 }

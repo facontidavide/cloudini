@@ -5,27 +5,6 @@
 
 namespace Cloudini {
 
-size_t FieldEncoderFloat_Lossy::encode(const ConstBufferView& point_view, BufferView& output) {
-  float value_real = *(reinterpret_cast<const float*>(point_view.data() + offset_));
-
-  if (std::isnan(value_real)) {
-    output.data()[0] = 0;  // value 0 is reserved for NaN
-    prev_value_ = 0;
-    output.trim_front(1);
-    return 1;
-  }
-
-  const int64_t value = static_cast<int64_t>(std::round(value_real * multiplier_));
-  const int64_t delta = value - prev_value_;
-  prev_value_ = value;
-  auto offset = encodeVarint64(delta, output.data());
-
-  output.trim_front(offset);
-  return offset;
-}
-
-//------------------------------------------------------------------------------------------
-
 FieldEncoderFloatN_Lossy::FieldEncoderFloatN_Lossy(const std::vector<FieldData>& field_data)
     : fields_count_(field_data.size()) {
   if (fields_count_ < 2) {

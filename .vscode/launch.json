@@ -58,12 +58,14 @@
             "request": "launch",
             "program": "${workspaceFolder}/cloudini_lib/build/tools/cloudini_rosbag_converter",
             "args": [
-                "-d",
+                "-c",
                 "-f",
-                "encoded_cloud.mcap",
+                "decoded_cloud.mcap",
                 "-o",
-                "decode_cloud.mcap",
-                "-y"
+                "encoded_cloud.mcap",
+                "-y",
+                "--profile",
+                "'xyz:0.001;intensity:0.1;timestamp:0.000001;ring:remove'"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
