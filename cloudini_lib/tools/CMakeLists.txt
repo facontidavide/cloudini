@@ -51,7 +51,7 @@ target_link_libraries(cloudini_rosbag_converter
 install(TARGETS cloudini_rosbag_converter
         RUNTIME DESTINATION bin)
 
-install(FILES cloudini.desktop
+install(FILES cloudini_converter.desktop
         DESTINATION share/applications)
 
 
