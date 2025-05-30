@@ -30,21 +30,21 @@ jobs:
           wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           chmod +x linuxdeploy-x86_64.AppImage
 
-      - name: Create AppImage
-        env:
-          UPDATE_INFORMATION: gh-releases-zsync|AppImageCrafters|cloudini_rosbag_converter|latest|*x86_64.AppImage.zsync
-          VERSION: auto
-        run: |
-          ./linuxdeploy-x86_64.AppImage --appdir AppDir --executable AppDir/usr/bin/cloudini_rosbag_converter -d cloudini_lib/tools/cloudini_converter.desktop -i cloudini.png --output appimage
-
-      - name: Get version from tag
+      - name: Get version
         id: get_version
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
             echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           else
-            echo "VERSION=manual-build" >> $GITHUB_OUTPUT
+            echo "VERSION=latest" >> $GITHUB_OUTPUT
           fi
+
+      - name: Create AppImage
+        env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: |
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --executable AppDir/usr/bin/cloudini_rosbag_converter -d cloudini_lib/tools/cloudini_converter.desktop -i cloudini.png --output appimage
+          mv cloudini_rosbag_converter-*.AppImage cloudini_rosbag_converter-$VERSION-x86_64.AppImage
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -52,7 +52,7 @@ jobs:
         with:
           name: Release ${{ steps.get_version.outputs.VERSION }}
           files: |
-            *.AppImage*
+            cloudini_rosbag_converter-*.AppImage
           draft: false
           prerelease: false
 
@@ -61,4 +61,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AppImage-manual-build
-          path: '*.AppImage*'
+          path: cloudini_rosbag_converter-*.AppImage

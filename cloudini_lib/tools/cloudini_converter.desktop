@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Cloudini
+Name=cloudini_rosbag_converter
 Comment=Cloud point compression tool
 Exec=cloudini_rosbag_converter
 Icon=cloudini
