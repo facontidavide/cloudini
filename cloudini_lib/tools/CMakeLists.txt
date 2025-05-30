@@ -1,13 +1,4 @@
 
-if(NOT TARGET fastcdr)
-    CPMAddPackage(
-        NAME fastcdr_imported
-        GITHUB_REPOSITORY eProsima/Fast-CDR
-        GIT_TAG v2.2.6
-        OPTIONS "BUILD_SHARED_LIBS OFF;BUILD_TESTING OFF"
-    )
-endif()
-
 if(NOT TARGET mcap)
     CPMAddPackage(
         NAME mcap
@@ -50,10 +41,10 @@ target_link_libraries(cloudini_rosbag_converter
 )
 
 install(TARGETS cloudini_rosbag_converter
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION bin
-)
+        RUNTIME DESTINATION bin)
+
+install(FILES cloudini_converter.desktop
+        DESTINATION share/applications)
 
 
 #find_package(Qt6 COMPONENTS Core Gui Widgets REQUIRED)

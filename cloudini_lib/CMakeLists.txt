@@ -61,6 +61,7 @@ endif()
 
 ##################################################################################
 
+option(CLOUDINI_BUILD_BENCHMARKS "Build benchmarks" ON)
 
 add_library(cloudini_lib
   src/cloudini.cpp
@@ -101,7 +102,9 @@ if(NOT EMSCRIPTEN)
     target_compile_options(cloudini_lib PRIVATE -msse4.1)
   endif()
 
-  add_subdirectory(benchmarks)
+  if(CLOUDINI_BUILD_BENCHMARKS)
+    add_subdirectory(benchmarks)
+  endif()
 
   include(CTest)
   message( STATUS "BUILD_TESTING:   ${BUILD_TESTING} " )

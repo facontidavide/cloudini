@@ -16,37 +16,34 @@ jobs:
       - name: Cache apt packages
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          packages: git cmake liblz4-dev libzstd-dev
+          packages: git cmake
           version: 1.0
 
       - name: Configure
-        run: cmake cloudini_lib -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF
+        run: cmake cloudini_lib -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF -DCLOUDINI_BUILD_BENCHMARKS=OFF
 
       - name: Build
         run: make -j$(nproc) install DESTDIR=AppDir
 
-      - name: Check AppDir contents
+      - name: Download linuxdeploy
         run: |
-          echo "=== AppDir structure ==="
-          find AppDir -type f
-          echo "=== Executable details ==="
-          file AppDir/usr/bin/* || echo "No executables found"
+          wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
 
-      - name: Build AppImage
-        uses: AppImageCrafters/build-appimage-action@master
-        env:
-          UPDATE_INFO: gh-releases-zsync|AppImageCrafters|cloudini_rosbag_converter|latest|*x86_64.AppImage.zsync
-        with:
-          recipe: AppImageBuilder.yml
-
-      - name: Get version from tag
+      - name: Get version
         id: get_version
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
             echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           else
-            echo "VERSION=manual-build" >> $GITHUB_OUTPUT
+            echo "VERSION=latest" >> $GITHUB_OUTPUT
           fi
+
+      - name: Create AppImage
+        env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: |
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --executable AppDir/usr/bin/cloudini_rosbag_converter -d cloudini_lib/tools/cloudini_converter.desktop -i cloudini.png --output appimage
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -54,7 +51,7 @@ jobs:
         with:
           name: Release ${{ steps.get_version.outputs.VERSION }}
           files: |
-            *.AppImage*
+            cloudini_rosbag_converter-*.AppImage
           draft: false
           prerelease: false
 
@@ -63,4 +60,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AppImage-manual-build
-          path: '*.AppImage*'
+          path: cloudini_rosbag_converter-*.AppImage
