@@ -1,4 +1,4 @@
-name: ROS2 CI
+name: ROS2 Humble
 
 on:
   push:
@@ -9,47 +9,28 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
-    strategy:
-      matrix:
-        ros_distro: [humble, jazzy]
-
+    runs-on: ubuntu-22.04
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup ROS2 environment
-        uses: ros-tooling/setup-ros@v0.7
+      # Step 1: Set up ROS
+      - uses: ros-tooling/setup-ros@v0.7
         with:
-          required-ros-distributions: ${{ matrix.ros_distro }}
+          required-ros-distributions: humble
 
-      - name: Install dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y python3-colcon-common-extensions python3-rosdep
-          sudo rosdep init || true
-          rosdep update
+      # SteCache ROS dependencies
+      - name: Cache ROS dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.ros
+            /tmp/rosdep
+            /opt/ros/humble
+          key: ${{ runner.os }}-ros2-humble-${{ hashFiles('**/package.xml') }}-rosdep
+          restore-keys: |
+            ${{ runner.os }}-ros2-humble-${{ hashFiles('**/package.xml') }}-
+            ${{ runner.os }}-ros2-humble-
 
-      - name: Create workspace
-        run: |
-          mkdir -p ~/ros2_ws/src
-          cp -r . ~/ros2_ws/src/clooudini
-
-      - name: Install package dependencies
-        run: |
-          cd ~/ros2_ws
-          rosdep install --from-paths src --ignore-src -r -y
-
-      - name: Build workspace
-        run: |
-          cd ~/ros2_ws
-          source /opt/ros/${{ matrix.ros_distro }}/setup.bash
-          colcon build --packages-select clooudini
-
-      - name: Run tests
-        run: |
-          cd ~/ros2_ws
-          source /opt/ros/${{ matrix.ros_distro }}/setup.bash
-          source install/setup.bash
-          colcon test --packages-select clooudini
-          colcon test-result --verbose
+      # Step 3: Run ROS CI
+      - uses: ros-tooling/action-ros-ci@v0.4
+        with:
+          package-name: cloudini_ros
+          target-ros2-distro: humble
