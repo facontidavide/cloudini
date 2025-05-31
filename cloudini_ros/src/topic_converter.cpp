@@ -7,6 +7,14 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 /*
+ * This node converts compressed point cloud messages from the
+ * `point_cloud_interfaces/msg/CompressedPointCloud2` format to the
+ * `sensor_msgs/msg/PointCloud2` format.
+ *
+ * It is BRUTALLY efficient, because we reade directly the RAW DDS message,
+ * and write the output message without any intermediate copies.
+ *
+ * This means less CPU and less latency.
  */
 class CloudiniPointcloudConverter : public rclcpp::Node {
  public:
@@ -14,26 +22,23 @@ class CloudiniPointcloudConverter : public rclcpp::Node {
 
   void callback(std::shared_ptr<rclcpp::SerializedMessage> msg);
 
+  ~CloudiniPointcloudConverter() {
+    // bypass the deleter
+    output_message_.get_rcl_serialized_message().buffer = nullptr;
+    output_message_.get_rcl_serialized_message().buffer_length = 0;
+  }
+
  private:
-  // generic subscriber for point cloud messages
+  // generic subscriber for compressed point cloud messages
   rclcpp::GenericSubscription::SharedPtr point_cloud_subscriber_;
 
-  // generic publisher for point cloud messages
+  // generic publisher for sensor_msgs/msg/PointCloud2 (but... raw DDS message)
   rclcpp::GenericPublisher::SharedPtr point_cloud_publisher_;
 
   // callback for point cloud messages
   void point_cloud_callback(const rclcpp::SerializedMessage& serialized_msg);
 
-  // point cloud message type support
-  const rosidl_message_type_support_t* point_cloud_type_support_;
-
-  // Buffer used to store the temporarily
-  std::vector<uint8_t> decoded_pointcloud_data_;
-
   std::vector<uint8_t> output_raw_message_;
-
-  Cloudini::PointcloudDecoder pointcloud_decoder_;
-
   rclcpp::SerializedMessage output_message_;
 };
 //-----------------------------------------------------
@@ -76,16 +81,14 @@ rclcpp::QoS adapt_request_to_offers(
 CloudiniPointcloudConverter::CloudiniPointcloudConverter(const rclcpp::NodeOptions& options)
     : rclcpp::Node("cloudini_pointcloud_converter", options) {
   // Declare parameters for input and output topics
-  this->declare_parameter<std::string>("input_point_cloud", "input_compressed_cloud");
-  this->declare_parameter<std::string>("output_point_cloud", "output_cloud");
+  this->declare_parameter<std::string>("topic_input", "input_points");
+  this->declare_parameter<std::string>("topic_output", "output_points");
 
   // read parameters
-  const std::string input_topic = this->get_parameter("input_compressed_cloud").as_string();
-  const std::string output_topic = this->get_parameter("output_cloud").as_string();
+  const std::string input_topic = this->get_parameter("topic_input").as_string();
+  const std::string output_topic = this->get_parameter("topic_output").as_string();
 
   // Initialize point cloud type support
-  point_cloud_type_support_ = rosidl_typesupport_cpp::get_message_type_support_handle<sensor_msgs::msg::PointCloud2>();
-
   auto publisher_info = this->get_publishers_info_by_topic(input_topic);
   auto detected_qos = adapt_request_to_offers(input_topic, publisher_info);
 
@@ -93,6 +96,7 @@ CloudiniPointcloudConverter::CloudiniPointcloudConverter(const rclcpp::NodeOptio
       std::bind(&CloudiniPointcloudConverter::callback, this, std::placeholders::_1);
 
   const std::string compressed_topic_type = "point_cloud_interfaces/msg/CompressedPointCloud2";
+  const std::string pointcloud_topic_type = "sensor_msgs/msg/PointCloud2";
 
   // Create a generic subscriber for point cloud messages
   point_cloud_subscriber_ = this->create_generic_subscription(
@@ -102,7 +106,7 @@ CloudiniPointcloudConverter::CloudiniPointcloudConverter(const rclcpp::NodeOptio
       callback);
 
   // Create a generic publisher for point cloud messages
-  point_cloud_publisher_ = this->create_generic_publisher(output_topic, compressed_topic_type, detected_qos);
+  point_cloud_publisher_ = this->create_generic_publisher(output_topic, pointcloud_topic_type, detected_qos);
 }
 
 void CloudiniPointcloudConverter::callback(std::shared_ptr<rclcpp::SerializedMessage> msg) {
@@ -118,6 +122,11 @@ void CloudiniPointcloudConverter::callback(std::shared_ptr<rclcpp::SerializedMes
   output_message_.get_rcl_serialized_message().buffer_length = output_raw_message_.size();
   output_message_.get_rcl_serialized_message().buffer = output_raw_message_.data();
   point_cloud_publisher_->publish(output_message_);
+
+  static int count = 0;
+  if (count++ % 100 == 0) {
+    RCLCPP_INFO(this->get_logger(), "Received and converted point cloud message: %d", count);
+  }
 }
 
 int main(int argc, char** argv) {
