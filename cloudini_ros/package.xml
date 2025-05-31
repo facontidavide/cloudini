@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>cloudini_ros</name>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
   <description>
   Main library of Cloudini, the pointcloud compression library
   </description>
