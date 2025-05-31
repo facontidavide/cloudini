@@ -79,6 +79,21 @@ negative overhead, i.e. it is actually **faster** than using LZ4 or ZSTD alone.
 
 See [point_cloud_transport plugins](https://github.com/ros-perception/point_cloud_transport_plugins) for reference about how they are used.
 
+## cloudini_topic_converter
+
+A simple node that subscribes to a compressed `point_cloud_interfaces/msg/CompressedPointCloud2` and publishes a `sensor_msgs/msg/PointCloud2`.
+
+It is MUCH **more efficient** than using the **point_cloud_transport** because the latter would:
+
+1. Receive a serialized DDS message.
+2. Convert that to **CompressedPointCloud2**.
+3. Do the actual decompression.
+4. Convert **PointCloud2** to a serialized DDS message.
+
+Instead, we work directly with **raw** serialized messages, bypassing the ROS type system, skipping steps 2 and 4 in the list above.
+
+This means less latency and less CPU used to make unnecessary copies.
+
 ## cloudini_rosbag_converter
 
 A command line tool that, given a rosbag (limited to MCAP format), converts
