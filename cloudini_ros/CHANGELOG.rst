@@ -2,8 +2,8 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-0.2.0 (2025-05-31)
-------------------
+Forthcoming
+-----------
 * fixes
 * add efficient "bridge" between compressed and regular pointclouds
 * add license
