@@ -1,4 +1,6 @@
 [![Ubuntu](https://github.com/facontidavide/cloudini/actions/workflows/ubuntu-build.yaml/badge.svg)](https://github.com/facontidavide/cloudini/actions/workflows/ubuntu-build.yaml)
+[![ROS2 Humble](https://github.com/facontidavide/cloudini/actions/workflows/ros-humble.yaml/badge.svg)](https://github.com/facontidavide/cloudini/actions/workflows/ros-humble.yaml)
+[![ROS2 Jazzy](https://github.com/facontidavide/cloudini/actions/workflows/ros-jazzy.yaml/badge.svg)](https://github.com/facontidavide/cloudini/actions/workflows/ros-jazzy.yaml)
 
 ![Cloudini](logo.png)
 
@@ -113,7 +115,7 @@ cloudini_rosbag_converter -f original_rosbag.mcap -o compressed_rosbag.mcap -c
 cloudini_rosbag_converter -f compressed_rosbag.mcap -o restored_rosbag.mcap -d
 ```
 
-Note that the "restored_rosbag.mcap" might be smalled than the original one, because the chunk-based ZSTD compression provided
+Note that the "restored_rosbag.mcap" might be smaller than the original one, because the chunk-based ZSTD compression provided
 by MCAP is enabled.
 
 # Frequently Asked Questions
@@ -122,10 +124,10 @@ by MCAP is enabled.
 
 [Google Draco](https://github.com/google/draco) has two main encoding methods: SEQUENTIAL and KD_TREE.
 
-The latter could achieve very good compression ratios, but it is very sloooow and it doesn't preserve the original order
+The latter could achieve excellent compression ratios, but it is very sloooow and it doesn't preserve the original order
 of the points in the point cloud.
 
-Compared with the Draco sequential mode, Cloudini achieve approximatively the same compression, but is considerably faster in
+Compared with the Draco sequential mode, Cloudini achieves approximately the same compression, but is considerably faster in
 my (currently limited) benchmark.
 
 ### Does the decoder need to know if LZ4 or ZSTD was used?
