@@ -4,7 +4,8 @@ on:
   workflow_dispatch:  # Allows manual triggering
   push:
     tags:
-      - 'v*'  # Push events to matching v*, i.e. v1.0, v20.15.10
+          tags:
+            - '[0-9]+.[0-9]+.[0-9]+'  # Push events to matching semantic version tags, i.e. 0.1.2, 1.0.0
 
 jobs:
   build-appimage:

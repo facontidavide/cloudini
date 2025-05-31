@@ -16,6 +16,8 @@
 
 #include "cloudini_lib/ros_msg_utils.hpp"
 
+#include <algorithm>
+
 namespace Cloudini {
 
 // sensor_msgs/msg/PointCloud2
