@@ -53,19 +53,50 @@
             ]
         },
         {
-            "name": "converter",
+            "name": "converter-encode",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/cloudini_lib/build/tools/cloudini_rosbag_converter",
             "args": [
                 "-c",
                 "-f",
-                "decoded_cloud.mcap",
+                "north1_mini_0.mcap",
                 "-o",
                 "encoded_cloud.mcap",
                 "-y",
                 "--profile",
-                "'xyz:0.001;intensity:0.1;timestamp:0.000001;ring:remove'"
+                "'xyz:0.001;intensity:0.1;timestamp:remove'"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "converter-decode",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/cloudini_lib/build/tools/cloudini_rosbag_converter",
+            "args": [
+                "-d",
+                "-f",
+                "encoded_cloud.mcap",
+                "-o",
+                "decoded_cloud.mcap",
+                "-y"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

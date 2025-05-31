@@ -80,41 +80,38 @@ RosPointCloud2 readPointCloud2Message(ConstBufferView raw_dds_msg) {
   return result;
 }
 
-size_t writePointCloud2Message(const RosPointCloud2& pc_info, std::vector<uint8_t>& raw_dds_msg, bool is_compressed) {
-  nanocdr::Encoder cdr(pc_info.cdr_header, raw_dds_msg);
-
+void writePointCloud2Header(nanocdr::Encoder& encoder, const RosPointCloud2& pc_info) {
   //----- write the header -----
-  cdr.encode(pc_info.ros_header.stamp_sec);   // header_stamp_sec
-  cdr.encode(pc_info.ros_header.stamp_nsec);  // header_stamp_nsec
-  cdr.encode(pc_info.ros_header.frame_id);    // frame_id
+  encoder.encode(pc_info.ros_header.stamp_sec);   // header_stamp_sec
+  encoder.encode(pc_info.ros_header.stamp_nsec);  // header_stamp_nsec
+  encoder.encode(pc_info.ros_header.frame_id);    // frame_id
 
   //----- pointcloud info -----
-  cdr.encode(pc_info.height);
-  cdr.encode(pc_info.width);
+  encoder.encode(pc_info.height);
+  encoder.encode(pc_info.width);
 
   //----- fields -----
-  cdr.encode(static_cast<uint32_t>(pc_info.fields.size()));
+  encoder.encode(static_cast<uint32_t>(pc_info.fields.size()));
   for (const auto& field : pc_info.fields) {
-    cdr.encode(field.name);
-    cdr.encode(field.offset);
-    cdr.encode(static_cast<uint8_t>(field.type));
-    cdr.encode(static_cast<uint32_t>(1));  // count, not used
+    encoder.encode(field.name);
+    encoder.encode(field.offset);
+    encoder.encode(static_cast<uint8_t>(field.type));
+    encoder.encode(static_cast<uint32_t>(1));  // count, not used
   }
 
-  cdr.encode(false);  // is_bigendian, not used
-  cdr.encode(pc_info.point_step);
-  cdr.encode(static_cast<uint32_t>(pc_info.point_step * pc_info.width));
+  encoder.encode(false);  // is_bigendian, not used
+  encoder.encode(pc_info.point_step);
+  encoder.encode(static_cast<uint32_t>(pc_info.point_step * pc_info.width));
+}
 
+void writePointCloud2Message(const RosPointCloud2& pc_info, std::vector<uint8_t>& raw_dds_msg, bool is_compressed_msg) {
+  nanocdr::Encoder cdr(pc_info.cdr_header, raw_dds_msg);
+  writePointCloud2Header(cdr, pc_info);
   cdr.encode(pc_info.data);
-
-  cdr.encode(false);  // is_dense, not used
-
-  if (is_compressed) {
-    std::string format = "cloudini";
-    cdr.encode(format);
+  cdr.encode(pc_info.is_dense);
+  if (is_compressed_msg) {
+    cdr.encode(std::string("cloudini"));
   }
-
-  return raw_dds_msg.size();
 }
 
 EncodingInfo toEncodingInfo(const RosPointCloud2& pc_info) {
@@ -126,6 +123,49 @@ EncodingInfo toEncodingInfo(const RosPointCloud2& pc_info) {
   info.compression_opt = CompressionOption::ZSTD;  // default to ZSTD compression
   info.fields = pc_info.fields;
   return info;
+}
+
+void decompressAndWritePointCloud2Message(const RosPointCloud2& pc_info, std::vector<uint8_t>& raw_dds_msg) {
+  nanocdr::Encoder cdr_encoder(pc_info.cdr_header, raw_dds_msg);
+  writePointCloud2Header(cdr_encoder, pc_info);
+
+  const size_t cloud_size = pc_info.width * pc_info.height * pc_info.point_step;
+  cdr_encoder.encode(static_cast<uint32_t>(cloud_size));
+
+  // Reserve enough memory for the decode cloud and take a buffer view to that memory
+  size_t prev_size = raw_dds_msg.size();
+  raw_dds_msg.resize(prev_size + cloud_size);
+  BufferView decoded_cloud_view(raw_dds_msg.data() + prev_size, cloud_size);
+
+  Cloudini::PointcloudDecoder cloud_decoder;
+  Cloudini::ConstBufferView compressed_data = pc_info.data;
+  auto restored_header = Cloudini::DecodeHeader(compressed_data);
+  cloud_decoder.decode(restored_header, compressed_data, decoded_cloud_view);
+
+  // add last field
+  cdr_encoder.encode(pc_info.is_dense);
+}
+
+void applyResolutionProfile(
+    const ResolutionProfile& profile, std::vector<PointField>& fields, std::optional<float> default_resolution) {
+  // erase-remove idiom to remove fields with profile resolution of 0
+  fields.erase(
+      std::remove_if(
+          fields.begin(), fields.end(),
+          [&profile](const auto& field) {
+            auto profile_it = profile.find(field.name);
+            return (profile_it != profile.end() && profile_it->second == 0);
+          }),
+      fields.end());
+
+  for (auto& field : fields) {
+    auto profile_it = profile.find(field.name);
+    if (profile_it != profile.end()) {
+      field.resolution = profile_it->second;
+    } else if (default_resolution && field.type == Cloudini::FieldType::FLOAT32) {
+      field.resolution = *default_resolution;
+    }
+  }
 }
 
 }  // namespace Cloudini

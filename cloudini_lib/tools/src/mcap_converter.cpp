@@ -101,6 +101,7 @@ void McapConverter::duplicateSchemasAndChannels(
   }
 }
 
+//------------------------------------------------------
 void McapConverter::encodePointClouds(std::filesystem::path file_out, std::optional<float> default_resolution) {
   if (!reader_) {
     throw std::runtime_error("McapReader is not initialized. Call open() first.");
@@ -144,23 +145,9 @@ void McapConverter::encodePointClouds(std::filesystem::path file_out, std::optio
 
     // Apply the profile to the encoding info. removing fields if resolution is 0
     // Remove first all fields that have resolution 0.0 in the profile
-    pc_info.fields.erase(
-        std::remove_if(
-            pc_info.fields.begin(), pc_info.fields.end(),
-            [this](const auto& field) {
-              auto profile_it = profile_resolutions_.find(field.name);
-              return (profile_it != profile_resolutions_.end() && profile_it->second == 0);
-            }),
-        pc_info.fields.end());
+    applyResolutionProfile(profile_resolutions_, pc_info.fields, default_resolution);
 
-    for (auto& field : pc_info.fields) {
-      auto profile_it = profile_resolutions_.find(field.name);
-      if (profile_it != profile_resolutions_.end()) {
-        field.resolution = profile_it->second;
-      } else if (default_resolution && field.type == Cloudini::FieldType::FLOAT32) {
-        field.resolution = *default_resolution;
-      }
-    }
+    // Remove padding from the fields to avoid empty padding in the message
 
     auto encoding_info = Cloudini::toEncodingInfo(pc_info);
 
@@ -173,8 +160,7 @@ void McapConverter::encodePointClouds(std::filesystem::path file_out, std::optio
     pc_info.data = Cloudini::ConstBufferView(compressed_cloud);
 
     // generate the new DDS message
-    auto dds_size = Cloudini::writePointCloud2Message(pc_info, compressed_dds_msg, true);
-    compressed_dds_msg.resize(dds_size);
+    Cloudini::writePointCloud2Message(pc_info, compressed_dds_msg, true);
 
     // copy pointers to compressed_dds_msg
     new_msg.data = reinterpret_cast<const std::byte*>(compressed_dds_msg.data());
@@ -188,6 +174,7 @@ void McapConverter::encodePointClouds(std::filesystem::path file_out, std::optio
   writer.close();
 }
 
+//------------------------------------------------------
 void McapConverter::decodePointClouds(std::filesystem::path file_out) {
   if (!reader_) {
     throw std::runtime_error("McapReader is not initialized. Call open() first.");
@@ -222,21 +209,12 @@ void McapConverter::decodePointClouds(std::filesystem::path file_out) {
     }
 
     Cloudini::ConstBufferView raw_dds_msg(msg.message.data, msg.message.dataSize);
-    auto pc_info = Cloudini::readPointCloud2Message(raw_dds_msg);
+    const auto pc_info = Cloudini::readPointCloud2Message(raw_dds_msg);
 
-    Cloudini::ConstBufferView compressed_cloud(pc_info.data);
-    Cloudini::PointcloudDecoder pc_decoder;
-    const auto encoding_info = Cloudini::DecodeHeader(compressed_cloud);
-    pc_decoder.decode(encoding_info, compressed_cloud, decoded_cloud);
-
-    // substitute the data view
-    pc_info.data = Cloudini::ConstBufferView(decoded_cloud);
-
-    // generate the new DDS message
-    auto dds_size = Cloudini::writePointCloud2Message(pc_info, decoded_dds_msg, false);
+    decompressAndWritePointCloud2Message(pc_info, decoded_dds_msg);
 
     new_msg.data = reinterpret_cast<const std::byte*>(decoded_dds_msg.data());
-    new_msg.dataSize = dds_size;
+    new_msg.dataSize = decoded_dds_msg.size();
 
     auto status = writer.write(new_msg);
     if (!status.ok()) {
@@ -246,6 +224,7 @@ void McapConverter::decodePointClouds(std::filesystem::path file_out) {
   writer.close();
 }
 
+//------------------------------------------------------
 std::vector<std::string_view> split(std::string_view str, char delimiter) {
   std::vector<std::string_view> tokens;
   size_t start = 0, end = 0;
