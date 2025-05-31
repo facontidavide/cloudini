@@ -49,6 +49,27 @@ install(
   DESTINATION include/cloudini_ros
 )
 
+######### topic converter #########
+
+add_executable(cloudini_topic_converter
+  src/topic_converter.cpp
+)
+
+target_include_directories(cloudini_topic_converter
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+)
+
+target_link_libraries(cloudini_topic_converter
+  cloudini_ros
+  cloudini_lib::cloudini_lib
+)
+
+install(TARGETS cloudini_topic_converter
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/cloudini_ros
+)
 
 ######### rosbag benchmark #########
 add_executable(rosbag_benchmark test/rosbag_benchmark.cpp)
