@@ -18,8 +18,8 @@ jobs:
       - name: Cache apt packages
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          packages: ros-humble-sensor-msgs ros-humble-point-cloud-interfaces ros-humble-point-cloud-transport ros-humble-pcl-ros
-          version: 1.1
+          packages: ros-humble-sensor-msgs ros-humble-point-cloud-interfaces ros-humble-point-cloud-transport ros-humble-pcl-ros ros-humble-mcap-vendor liblz4-dev libzstd-dev libgtest-dev 
+          version: 1.2
 
       # Run ROS CI
       - uses: ros-tooling/action-ros-ci@v0.4
