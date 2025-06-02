@@ -9,11 +9,12 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    container: ros:humble
+    runs-on: ubuntu-24.04
     steps:
-
-      - uses: actions/checkout@v4
+      # Set up ROS
+      - uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: humble
 
       # Run ROS CI
       - uses: ros-tooling/action-ros-ci@v0.4
