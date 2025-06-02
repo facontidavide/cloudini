@@ -9,7 +9,8 @@ on:
 
 jobs:
   build:
-    runs-on: osrf/ros2:humble-core
+    runs-on: ubuntu-latest
+    container: osrf/ros2:humble-core
     steps:
 
       - uses: actions/checkout@v4
