@@ -10,7 +10,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: osrf/ros:humble
+    container: ros:humble
     steps:
 
       - uses: actions/checkout@v4
