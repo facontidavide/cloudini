@@ -25,4 +25,5 @@ jobs:
       - uses: ros-tooling/action-ros-ci@v0.4
         with:
           package-name: cloudini_ros
+          skip-rosdep-install: true
           target-ros2-distro: humble
