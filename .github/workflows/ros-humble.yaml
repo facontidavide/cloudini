@@ -9,26 +9,18 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: osrf/ros2:humble-core
     steps:
-      # Step 1: Set up ROS
-      - uses: ros-tooling/setup-ros@v0.7
-        with:
-          required-ros-distributions: humble
 
-      # SteCache ROS dependencies
-      - name: Cache ROS dependencies
-        uses: actions/cache@v4
+      - uses: actions/checkout@v4
+
+      - name: Cache apt packages
+        uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          path: |
-            ~/.ros
-            /tmp/rosdep
-            /opt/ros/humble
-          key: ${{ runner.os }}-ros2-humble-${{ hashFiles('**/package.xml') }}-rosdep
-          restore-keys: |
-            ${{ runner.os }}-ros2-humble-${{ hashFiles('**/package.xml') }}-
-            ${{ runner.os }}-ros2-humble-
-      # Step 3: Run ROS CI
+          packages: ros-humble-sensor-msgs ros-humble-point-cloud-interfaces ros-humble-point-cloud-transport
+          version: 1.0
+
+      # Run ROS CI
       - uses: ros-tooling/action-ros-ci@v0.4
         with:
           package-name: cloudini_ros
