@@ -19,11 +19,12 @@ jobs:
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
           packages: ros-humble-sensor-msgs ros-humble-point-cloud-interfaces ros-humble-point-cloud-transport ros-humble-pcl-ros
-          version: 1.0
+          version: 1.1
 
       # Run ROS CI
       - uses: ros-tooling/action-ros-ci@v0.4
         with:
           package-name: cloudini_ros
           skip-rosdep-install: true
+          rosdep-check: true
           target-ros2-distro: humble
