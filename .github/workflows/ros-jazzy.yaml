@@ -9,25 +9,13 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       # Set up ROS
       - uses: ros-tooling/setup-ros@v0.7
         with:
           required-ros-distributions: humble
 
-      # Cache ROS dependencies
-      - name: Cache ROS dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.ros
-            /tmp/rosdep
-            /opt/ros/humble
-          key: ${{ runner.os }}-ros2-humble-${{ hashFiles('**/package.xml') }}-rosdep
-          restore-keys: |
-            ${{ runner.os }}-ros2-humble-${{ hashFiles('**/package.xml') }}-
-            ${{ runner.os }}-ros2-humble-
       # Run ROS CI
       - uses: ros-tooling/action-ros-ci@v0.4
         with:
