@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # Run ROS CI
-      - uses: ros-tooling/action-ros-ci@v0.4
+      - uses: ros-tooling/action-ros-ci@v0.4.3
         with:
           package-name: cloudini_ros
           target-ros2-distro: humble
