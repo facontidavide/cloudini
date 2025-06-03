@@ -91,7 +91,7 @@ void PointcloudDecode(ConstBufferView serialized_data, pcl::PointCloud<PointT>& 
 // Implementations of the templated functions
 //-------------------------------------------------------------------
 //-------------------------------------------------------------------
-bool areSameEncodingInfo(const EncodingInfo& info1, const EncodingInfo& info2);
+bool isSameEncodingInfo(const EncodingInfo& info1, const EncodingInfo& info2);
 
 template <typename PointT>
 inline size_t PointcloudEncode(
@@ -99,9 +99,9 @@ inline size_t PointcloudEncode(
   // get the encoding info
   EncodingInfo info = ConvertToEncodingInfo(cloud, resolution_XYZ);
   // size in bytes of the data
-  serialized_cloud.resize(ComputeHeaderSize(info.fields) + info.cloud.data.size() * sizeof(PointT));
+  serialized_cloud.resize(ComputeHeaderSize(info.fields) + cloud.points.size() * sizeof(PointT));
 
-  ConstBufferView data_view(reinterpret_cast<const uint8_t*>(cloud.data.data()), cloud.data.size());
+  ConstBufferView data_view(reinterpret_cast<const uint8_t*>(cloud.points.data()), cloud.points.size());
   PointcloudEncoder encoder(info);
   return encoder.encode(data_view, serialized_cloud);
 }
@@ -109,23 +109,39 @@ inline size_t PointcloudEncode(
 template <typename PointT>
 inline void PointcloudDecode(ConstBufferView serialized_data, pcl::PointCloud<PointT>& cloud) {
   // decode the header
-  const EncodingInfo header_info = DecodeHeader(serialized_data);
+  EncodingInfo header_info = DecodeHeader(serialized_data);
   // resize the cloud to the decoded size
-  cloud.data.resize(info.width * info.height);
-  cloud.width = info.width;
-  cloud.height = info.height;
+  cloud.points.resize(header_info.width * header_info.height);
+  cloud.width = header_info.width;
+  cloud.height = header_info.height;
 
-  const EncodingInfo cloud_info = ConvertToEncodingInfo<PointT>(header_info);
+  const EncodingInfo cloud_info = ConvertToEncodingInfo<PointT>(cloud, 1.0);  // 1.0 is a placeholder resolution
 
-  // This limitation will be removed in the future
-  if (!isSameEncodingInfo(header_info, cloud_info)) {
-    throw std::runtime_error("The encoding info does not match the point type of the cloud.");
+  // adapt the offset in the fields of "header_info" to match those in  cloud_info
+  for (size_t i = 0; i < header_info.fields.size(); ++i) {
+    auto& field = header_info.fields[i];
+    // find the field with the same name
+    auto it = std::find_if(cloud_info.fields.begin(), cloud_info.fields.end(), [&field](const PointField& f) {
+      return f.name == field.name;
+    });
+    // if found, copy, otherwise, set to kDecodeButSkipStore
+    if (it != cloud_info.fields.end()) {
+      field.offset = it->offset;
+      if (field.type != it->type) {
+        throw std::runtime_error(
+            "Field type mismatch for field: " + field.name + ". Expected: " +
+            std::to_string(static_cast<int>(it->type)) + ", got: " + std::to_string(static_cast<int>(field.type)));
+      }
+    } else {
+      // if the field is not found, we can skip it
+      field.offset = Cloudini::kDecodeButSkipStore;
+    }
   }
 
   // decode the data
-  BufferView output_view(reinterpret_cast<uint8_t*>(cloud.data.data()), cloud.data.size());
+  BufferView output_view(reinterpret_cast<uint8_t*>(cloud.points.data()), cloud.points.size());
   PointcloudDecoder decoder;
-  decoder.decode(serialized_data, output_view);
+  decoder.decode(header_info, serialized_data, output_view);
 }
 
 };  // namespace Cloudini

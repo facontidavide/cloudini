@@ -2,7 +2,7 @@
 
 namespace Cloudini {
 
-bool areSameEncodingInfo(const EncodingInfo& info1, const EncodingInfo& info2) {
+bool isSameEncodingInfo(const EncodingInfo& info1, const EncodingInfo& info2) {
   if (info1.fields.size() != info2.fields.size()) {
     return false;
   }
@@ -60,10 +60,15 @@ EncodingInfo ConvertToEncodingInfo<pcl::PointXYZ>(const pcl::PointCloud<pcl::Poi
 template <>
 EncodingInfo ConvertToEncodingInfo<pcl::PointXYZI>(
     const pcl::PointCloud<pcl::PointXYZI>& cloud, double resolution_XYZ) {
-  EncodingInfo info = ConvertToEncodingInfo<pcl::PointXYZ>(cloud, resolution_XYZ);
+  EncodingInfo info;
+  info.width = cloud.width;
+  info.height = cloud.height;
+  info.fields.push_back(PointField{"x", 0, FieldType::FLOAT32, resolution_XYZ});
+  info.fields.push_back(PointField{"y", 4, FieldType::FLOAT32, resolution_XYZ});
+  info.fields.push_back(PointField{"z", 8, FieldType::FLOAT32, resolution_XYZ});
 
-  const pcl::PointXYZI point;
-  const size_t intensity_offset = reinterpret_cast<uint8_t*>(&point.intensity) - reinterpret_cast<uint8_t*>(&point.x);
+  pcl::PointXYZI dummy;
+  const size_t intensity_offset = reinterpret_cast<uint8_t*>(&dummy.intensity) - reinterpret_cast<uint8_t*>(&dummy.x);
   info.fields.push_back(PointField{"intensity", intensity_offset, FieldType::FLOAT32, std::nullopt});
   return info;
 }
