@@ -2,103 +2,70 @@
 
 namespace Cloudini {
 
-// EncodingInfo ConvertToEncodingInfo(  //
-//     const pcl::PCLPointCloud2& cloud, double resolution_XYZ) {
-//   EncodingInfo info;
+bool areSameEncodingInfo(const EncodingInfo& info1, const EncodingInfo& info2) {
+  if (info1.fields.size() != info2.fields.size()) {
+    return false;
+  }
 
-//   info.width = cloud.width;
-//   info.height = cloud.height;
-//   info.point_step = cloud.point_step;
+  for (size_t i = 0; i < info1.fields.size(); ++i) {
+    if (info1.fields[i].name != info2.fields[i].name ||      //
+        info1.fields[i].offset != info2.fields[i].offset ||  //
+        info1.fields[i].type != info2.fields[i].type) {
+      return false;
+    }
+  }
 
-//   const bool starts_with_XYZ =
-//       (cloud.fields.size() >= 3) &&
-//       (cloud.fields[0].name == "x" && cloud.fields[0].datatype == pcl::PCLPointField::FLOAT32) &&
-//       (cloud.fields[1].name == "y" && cloud.fields[1].datatype == pcl::PCLPointField::FLOAT32) &&
-//       (cloud.fields[2].name == "z" && cloud.fields[2].datatype == pcl::PCLPointField::FLOAT32);
+  return info1.width == info2.width &&    //
+         info1.height == info2.height &&  //
+         info1.point_step == info2.point_step;
+}
 
-//   const bool is_XYZI = starts_with_XYZ && (cloud.fields.size() >= 4) &&
-//                        (cloud.fields[3].name == "intensity" && cloud.fields[3].datatype ==
-//                        pcl::PCLPointField::FLOAT32);
+EncodingInfo ConvertToEncodingInfo(const pcl::PCLPointCloud2& cloud, double resolution_XYZ) {
+  EncodingInfo info;
 
-//   size_t index = 0;
+  info.width = cloud.width;
+  info.height = cloud.height;
+  info.point_step = cloud.point_step;
 
-//   if (is_XYZI) {
-//     info.fields.push_back(PointField{"XYZI", 0, FieldType::POINT_XYZI, resolution_XYZ});
-//     index = 4;
-//   } else if (starts_with_XYZ) {
-//     info.fields.push_back(PointField{"XYZ", 0, FieldType::POSITION_XYZ, resolution_XYZ});
-//     index = 3;
-//   }
+  for (size_t i = 0; i < cloud.fields.size(); ++i) {
+    const pcl::PCLPointField& field = cloud.fields[i];
+    PointField point_field;
+    point_field.name = field.name;
+    point_field.offset = field.offset;
+    point_field.type = static_cast<FieldType>(field.datatype);
 
-//   // remaining fields
-//   while (index < cloud.fields.size()) {
-//     const pcl::PCLPointField& field = cloud.fields[index];
+    // If the field is a FLOAT32 and has a resolution, set it
+    if (point_field.type == FieldType::FLOAT32 && resolution_XYZ > 0.0) {
+      point_field.resolution = resolution_XYZ;
+    } else {
+      point_field.resolution = std::nullopt;
+    }
 
-//     PointField point_field;
-//     point_field.name = field.name;
-//     point_field.offset = field.offset;
-//     point_field.type = static_cast<FieldType>(field.datatype);
-//     info.fields.push_back(point_field);
-//     index++;
-//   }
+    info.fields.push_back(point_field);
+  }
+  return info;
+}
 
-//   return info;
-// }
+template <>
+EncodingInfo ConvertToEncodingInfo<pcl::PointXYZ>(const pcl::PointCloud<pcl::PointXYZ>& cloud, double resolution_XYZ) {
+  EncodingInfo info;
+  info.width = cloud.width;
+  info.height = cloud.height;
+  info.fields.push_back(PointField{"x", 0, FieldType::FLOAT32, resolution_XYZ});
+  info.fields.push_back(PointField{"y", 4, FieldType::FLOAT32, resolution_XYZ});
+  info.fields.push_back(PointField{"z", 8, FieldType::FLOAT32, resolution_XYZ});
+  return info;
+}
 
-// template <>
-// EncodingInfo ConvertToEncodingInfo<pcl::PointXYZ>(const pcl::PointCloud<pcl::PointXYZ>& cloud, double resolution_XYZ)
-// {
-//   EncodingInfo info;
-//   info.width = cloud.width;
-//   info.height = cloud.height;
-//   info.point_step = sizeof(pcl::PointXYZ);
-//   info.fields.push_back(PointField{"XYZ", 0, FieldType::POSITION_XYZ, resolution_XYZ});
-//   return info;
-// }
+template <>
+EncodingInfo ConvertToEncodingInfo<pcl::PointXYZI>(
+    const pcl::PointCloud<pcl::PointXYZI>& cloud, double resolution_XYZ) {
+  EncodingInfo info = ConvertToEncodingInfo<pcl::PointXYZ>(cloud, resolution_XYZ);
 
-// template <>
-// EncodingInfo ConvertToEncodingInfo<pcl::PointXYZI>(
-//     const pcl::PointCloud<pcl::PointXYZI>& cloud, double resolution_XYZ) {
-//   EncodingInfo info;
-//   info.width = cloud.width;
-//   info.height = cloud.height;
-//   info.point_step = sizeof(pcl::PointXYZI);
-//   info.fields.push_back(PointField{"XYZI", 0, FieldType::POINT_XYZI, resolution_XYZ});
-//   return info;
-// }
-
-// template <>
-// EncodingInfo ConvertToEncodingInfo<pcl::PointXYZRGBA>(
-//     const pcl::PointCloud<pcl::PointXYZRGBA>& cloud, double resolution_XYZ) {
-//   EncodingInfo info;
-//   info.width = cloud.width;
-//   info.height = cloud.height;
-//   info.point_step = sizeof(pcl::PointXYZRGBA);
-//   info.fields.push_back(PointField{"XYZ", 0, FieldType::POSITION_XYZ, resolution_XYZ});
-//   info.fields.push_back(PointField{"RGBA", 16, FieldType::UINT32, std::nullopt});
-//   return info;
-// }
-
-// template <>
-// EncodingInfo ConvertToEncodingInfo<pcl::PointXYZRGB>(
-//     const pcl::PointCloud<pcl::PointXYZRGB>& cloud, double resolution_XYZ) {
-//   EncodingInfo info;
-//   info.width = cloud.width;
-//   info.height = cloud.height;
-//   info.point_step = sizeof(pcl::PointXYZRGB);
-//   info.fields.push_back(PointField{"XYZ", 0, FieldType::POSITION_XYZ, resolution_XYZ});
-//   info.fields.push_back(PointField{"RGB", 16, FieldType::UINT32, std::nullopt});
-//   return info;
-// }
-
-// template <>
-// EncodingInfo ConvertToEncodingInfo<pcl::Normal>(const pcl::PointCloud<pcl::Normal>& cloud, double resolution_XYZ) {
-//   EncodingInfo info;
-//   info.width = cloud.width;
-//   info.height = cloud.height;
-//   info.point_step = sizeof(pcl::Normal);
-//   info.fields.push_back(PointField{"NORMAL", 0, FieldType::FLOAT32, resolution_XYZ});
-//   return info;
-// }
+  const pcl::PointXYZI point;
+  const size_t intensity_offset = reinterpret_cast<uint8_t*>(&point.intensity) - reinterpret_cast<uint8_t*>(&point.x);
+  info.fields.push_back(PointField{"intensity", intensity_offset, FieldType::FLOAT32, std::nullopt});
+  return info;
+}
 
 }  // namespace Cloudini
