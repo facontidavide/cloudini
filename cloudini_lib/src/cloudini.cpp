@@ -137,11 +137,7 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
   if (info_.encoding_opt == EncodingOptions::LOSSY) {
     size_t floats_count = 0;
     for (size_t i = 0; i < info_.fields.size(); ++i) {
-      if (info_.fields[i].type != FieldType::FLOAT32 && !info_.fields[i].resolution.has_value()) {
-        break;
-      }
-      if (i > 0 && info_.fields[i].resolution.value() != info_.fields[i].resolution.value()) {
-        // resolution must be the same
+      if (info_.fields[i].type != FieldType::FLOAT32 || !info_.fields[i].resolution.has_value()) {
         break;
       }
       floats_count++;
@@ -149,8 +145,9 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
     if (floats_count == 3 || floats_count == 4) {
       start_index = floats_count;
       std::vector<FieldEncoderFloatN_Lossy::FieldData> field_data;
+      field_data.reserve(floats_count);
       for (size_t i = 0; i < floats_count; ++i) {
-        field_data.emplace_back(info_.fields[i].offset, info_.fields[i].resolution.value_or(1.0f));
+        field_data.emplace_back(info_.fields[i].offset, info_.fields[i].resolution.value());
       }
       encoders_.push_back(std::make_unique<FieldEncoderFloatN_Lossy>(field_data));
     }
