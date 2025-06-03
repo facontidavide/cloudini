@@ -14,12 +14,14 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef CLOUDINI_PLUGIN__CLOUDINI_SUBSCRIBER_HPP_
+#define CLOUDINI_PLUGIN__CLOUDINI_SUBSCRIBER_HPP_
 
 #include <memory>
 #include <point_cloud_interfaces/msg/compressed_point_cloud2.hpp>
 #include <point_cloud_transport/simple_subscriber_plugin.hpp>
 #include <point_cloud_transport/transport_hints.hpp>
+#include <string>
 
 namespace Cloudini {
 class PointcloudDecoder;
@@ -50,3 +52,5 @@ class CloudiniSubscriber
 };
 
 }  // namespace cloudini_point_cloud_transport
+
+#endif  // CLOUDINI_PLUGIN__CLOUDINI_SUBSCRIBER_HPP_

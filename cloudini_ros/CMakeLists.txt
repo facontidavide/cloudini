@@ -71,12 +71,26 @@ install(TARGETS cloudini_topic_converter
   RUNTIME DESTINATION lib/cloudini_ros
 )
 
-######### rosbag benchmark #########
-add_executable(rosbag_benchmark test/rosbag_benchmark.cpp)
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  find_package(ament_cmake_clang_format REQUIRED)
 
-target_link_libraries(rosbag_benchmark
-  cloudini_ros
-)
+  set(ament_cmake_clang_format_CONFIG_FILE ../.clang-format)
+
+  list(APPEND AMENT_LINT_AUTO_EXCLUDE
+    ament_cmake_cpplint
+    ament_cmake_uncrustify
+  )
+
+  ament_lint_auto_find_test_dependencies()
+
+  ######### rosbag benchmark #########
+  add_executable(rosbag_benchmark test/rosbag_benchmark.cpp)
+
+  target_link_libraries(rosbag_benchmark
+    cloudini_ros
+  )
+endif()
 
 ######### plugins #########
 set(PLUGIN_NAME cloudini_point_cloud_transport)
@@ -92,11 +106,10 @@ target_link_libraries(${PLUGIN_NAME} PRIVATE
   ${PLUGIN_DEPS}
 )
 
-
 target_include_directories(${PLUGIN_NAME} PRIVATE
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-  "$<INSTALL_INTERFACE:include/${PLUGIN_NAME}>")
-
+  "$<INSTALL_INTERFACE:include/${PLUGIN_NAME}>"
+)
 
 install(TARGETS ${PLUGIN_NAME}
   ARCHIVE DESTINATION lib
