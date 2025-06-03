@@ -59,7 +59,7 @@ size_t FieldEncoderFloatN_Lossy::encode(const ConstBufferView& point_view, Buffe
       prev_vect_[i] = 0;
       ptr_out++;
     } else {
-      ptr_out += encodeVarint32(delta[i], ptr_out);
+      ptr_out += encodeVarint64(delta[i], ptr_out);
     }
   }
 

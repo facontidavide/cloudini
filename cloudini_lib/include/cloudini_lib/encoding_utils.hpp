@@ -58,20 +58,6 @@ inline size_t encodeVarint64(int64_t value, uint8_t* ptr) {
   return ptr - ptr_start;
 }
 
-inline size_t encodeVarint32(int32_t value, uint8_t* ptr) {
-  uint32_t val = static_cast<uint32_t>((value << 1) ^ (value >> 31));  // Zig-zag encoding
-  val++;                                                               // reserving value 0 for NaN
-  uint8_t* ptr_start = ptr;
-  while (val > 0x7F) {
-    *ptr = (static_cast<uint8_t>((val & 0x7F) | 0x80));
-    val >>= 7;
-    ptr++;
-  }
-  *ptr = static_cast<uint8_t>(val);
-  ptr++;
-  return ptr - ptr_start;
-}
-
 template <typename T>
 int64_t ToInt64(const uint8_t* ptr) {
   T tmp = *(reinterpret_cast<const T*>(ptr));
