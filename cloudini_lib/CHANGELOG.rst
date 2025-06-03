@@ -2,8 +2,8 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.3.0 (2025-06-03)
+------------------
 * PCL conversion fixed and tested
 * same speed with varint 64
 * small fix
