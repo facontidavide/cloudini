@@ -40,6 +40,10 @@ struct PointField {
   std::optional<float> resolution;
 };
 
+// If the value of PointField::offset is equal to this one, it means that the field was encoded, but we don't want to
+// save it when doing the decoding
+constexpr static uint32_t kDecodeButSkipStore = std::numeric_limits<uint32_t>::max();
+
 inline int constexpr SizeOf(const FieldType& type) {
   switch (type) {
     case FieldType::INT8:

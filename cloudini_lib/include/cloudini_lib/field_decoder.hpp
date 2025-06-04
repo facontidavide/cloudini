@@ -50,7 +50,9 @@ class FieldDecoderCopy : public FieldDecoder {
       : offset_(field_offset), field_size_(SizeOf(field_type)) {}
 
   void decode(ConstBufferView& input, BufferView dest_point_view) override {
-    memcpy(dest_point_view.data() + offset_, input.data(), field_size_);
+    if (offset_ != kDecodeButSkipStore) {
+      memcpy(dest_point_view.data() + offset_, input.data(), field_size_);
+    }
     input.trim_front(field_size_);
   }
 
@@ -76,8 +78,9 @@ class FieldDecoderInt : public FieldDecoder {
 
     int64_t value = prev_value_ + diff;
     prev_value_ = value;
-
-    memcpy(dest_point_view.data() + offset_, &value, sizeof(IntType));
+    if (offset_ != kDecodeButSkipStore) {
+      memcpy(dest_point_view.data() + offset_, &value, sizeof(IntType));
+    }
     input.trim_front(count);
   }
 
@@ -161,7 +164,9 @@ template <typename FloatType>
 inline void FieldDecoderFloat_Lossy<FloatType>::decode(ConstBufferView& input, BufferView dest_point_view) {
   if (input.data()[0] == 0) {
     constexpr auto nan_value = std::numeric_limits<FloatType>::quiet_NaN();
-    memcpy(dest_point_view.data() + offset_, &nan_value, sizeof(FloatType));
+    if (offset_ != kDecodeButSkipStore) {
+      memcpy(dest_point_view.data() + offset_, &nan_value, sizeof(FloatType));
+    }
     input.trim_front(1);
     reset();
     return;
@@ -173,7 +178,9 @@ inline void FieldDecoderFloat_Lossy<FloatType>::decode(ConstBufferView& input, B
   const FloatType value_real = static_cast<FloatType>(value) * multiplier_;
   prev_value_ = value;
 
-  memcpy(dest_point_view.data() + offset_, &value_real, sizeof(value_real));
+  if (offset_ != kDecodeButSkipStore) {
+    memcpy(dest_point_view.data() + offset_, &value_real, sizeof(value_real));
+  }
   input.trim_front(count);
 }
 

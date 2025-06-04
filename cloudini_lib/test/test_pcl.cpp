@@ -4,7 +4,10 @@
 #include <pcl/point_types.h>
 
 #include "cloudini_lib/cloudini.hpp"
+#include "cloudini_lib/pcl_conversion.hpp"
 #include "data_path.hpp"
+
+using namespace Cloudini;
 
 TEST(Cloudini, PCD_Encode) {
   pcl::PointCloud<pcl::PointXYZI> cloud;
@@ -15,7 +18,6 @@ TEST(Cloudini, PCD_Encode) {
 
   const float resolution = 0.001f;
 
-  using namespace Cloudini;
   EncodingInfo info;
   info.width = cloud.width;
   info.height = cloud.height;
@@ -72,5 +74,43 @@ TEST(Cloudini, PCD_Encode) {
     ASSERT_NEAR(cloud.points[i].y, cloud_out.points[i].y, tolerance) << "i:" << i;
     ASSERT_NEAR(cloud.points[i].z, cloud_out.points[i].z, tolerance) << "i:" << i;
     ASSERT_NEAR(cloud.points[i].intensity, cloud_out.points[i].intensity, tolerance) << "i:" << i;
+  }
+}
+
+TEST(Cloudini, PCL_Conversion) {
+  pcl::PointCloud<pcl::PointXYZI> cloud;
+  const std::string filepath = Cloudini::tests::DATA_PATH + "lidar.pcd";
+  if (pcl::io::loadPCDFile<pcl::PointXYZI>(filepath, cloud) == -1) {
+    throw std::runtime_error(std::string("Failed to load PCD file:") + filepath);
+  }
+
+  const float resolution = 0.001f;
+
+  std::vector<uint8_t> serialized_data;
+  PointcloudEncode(cloud, serialized_data, 0.001);
+
+  const auto tolerance = resolution * 1.01F;
+
+  {
+    pcl::PointCloud<pcl::PointXYZI> cloud_out;
+    PointcloudDecode(serialized_data, cloud_out);
+
+    for (size_t i = 0; i < cloud.points.size(); ++i) {
+      ASSERT_NEAR(cloud.points[i].x, cloud_out.points[i].x, tolerance) << "i:" << i;
+      ASSERT_NEAR(cloud.points[i].y, cloud_out.points[i].y, tolerance) << "i:" << i;
+      ASSERT_NEAR(cloud.points[i].z, cloud_out.points[i].z, tolerance) << "i:" << i;
+      ASSERT_NEAR(cloud.points[i].intensity, cloud_out.points[i].intensity, tolerance) << "i:" << i;
+    }
+  }
+
+  {
+    pcl::PointCloud<pcl::PointXYZI> cloud_out;
+    PointcloudDecode(serialized_data, cloud_out);
+
+    for (size_t i = 0; i < cloud.points.size(); ++i) {
+      ASSERT_NEAR(cloud.points[i].x, cloud_out.points[i].x, tolerance) << "i:" << i;
+      ASSERT_NEAR(cloud.points[i].y, cloud_out.points[i].y, tolerance) << "i:" << i;
+      ASSERT_NEAR(cloud.points[i].z, cloud_out.points[i].z, tolerance) << "i:" << i;
+    }
   }
 }

@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>cloudini_ros</name>
-  <version>0.2.0</version>
+  <version>0.3.0</version>
   <description>
   Main library of Cloudini, the pointcloud compression library
   </description>
@@ -27,8 +27,12 @@
   <depend>rclcpp</depend>
   <depend>rosbag2_cpp</depend>
 
+  <test_depend>ament_cmake_clang_format</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+  <test_depend>ament_lint_auto</test_depend>
+
   <export>
-      <build_type >ament_cmake</build_type>
+    <build_type>ament_cmake</build_type>
   </export>
 
 </package>

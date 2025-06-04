@@ -187,8 +187,8 @@ static void PCD_Encode_Draco(benchmark::State& state) {
 
   // Encode the point cloud
   draco::ExpertEncoder encoder(*draco_pc);
-  encoder.SetAttributeQuantization(draco::GeometryAttribute::POSITION, 12);
-  encoder.SetAttributeQuantization(draco::GeometryAttribute::GENERIC, 8);
+  encoder.SetAttributeQuantization(draco::GeometryAttribute::POSITION, 14);
+  encoder.SetAttributeQuantization(draco::GeometryAttribute::GENERIC, 10);
   encoder.SetEncodingMethod(draco::POINT_CLOUD_SEQUENTIAL_ENCODING);
 
   draco::EncoderBuffer buffer;
