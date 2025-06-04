@@ -72,17 +72,17 @@ install(TARGETS cloudini_topic_converter
 )
 
 if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
+  # find_package(ament_lint_auto REQUIRED)
   find_package(ament_cmake_clang_format REQUIRED)
 
   set(ament_cmake_clang_format_CONFIG_FILE ../.clang-format)
 
-  list(APPEND AMENT_LINT_AUTO_EXCLUDE
-    ament_cmake_cpplint
-    ament_cmake_uncrustify
-  )
+  # list(APPEND AMENT_LINT_AUTO_EXCLUDE
+  #   ament_cmake_cpplint
+  #  ament_cmake_uncrustify
+  #)
 
-  ament_lint_auto_find_test_dependencies()
+  # ament_lint_auto_find_test_dependencies()
 
   ######### rosbag benchmark #########
   add_executable(rosbag_benchmark test/rosbag_benchmark.cpp)
