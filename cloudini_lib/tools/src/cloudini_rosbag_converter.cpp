@@ -20,6 +20,7 @@
 #include "mcap_converter.hpp"
 
 #define MCAP_IMPLEMENTATION
+#include "cloudini_lib/cloudini.hpp"
 #include "mcap/reader.hpp"
 #include "mcap/writer.hpp"
 
@@ -36,7 +37,9 @@ int main(int argc, char** argv) {
       ("profile", "Apply a profile to encoding. See '--help' for details. It can be a path to a file or a string",
        cxxopts::value<std::string>())                                 //
       ("c,compress", "Convert PointCloud2 to CompressedPointCloud2")  //
-      ("d,decode", "Convert CompressedPointCloud2 to PointCloud2");
+      ("d,decode", "Convert CompressedPointCloud2 to PointCloud2")    //
+      ("m,method", "Compression method to use for the second stage of compression ('lz4' or 'zstd', 'none')",
+       cxxopts::value<std::string>()->default_value("zstd"));
 
   auto parse_result = options.parse(argc, argv);
 
@@ -116,6 +119,22 @@ int main(int argc, char** argv) {
   }
   std::cout << "Input file: " << input_file << std::endl;
 
+  // parse the compression method if encoding
+  std::optional<uint8_t> compression_option;
+  const auto compression_options_map = std::unordered_map<std::string, Cloudini::CompressionOption>{
+      {"lz4", Cloudini::CompressionOption::LZ4},
+      {"zstd", Cloudini::CompressionOption::ZSTD},
+      {"none", Cloudini::CompressionOption::NONE}};
+
+  if (encode) {
+    std::string compression_method = parse_result["method"].as<std::string>();
+    if (!compression_options_map.contains(compression_method)) {
+      std::cerr << "Error: Invalid compression method: " << compression_method << std::endl;
+      return 1;
+    }
+    compression_option = static_cast<uint8_t>(compression_options_map.at(compression_method));
+  }
+
   int compressed_pointclouds_count = 0;
   int regular_pointclouds_count = 0;
 
@@ -165,7 +184,7 @@ int main(int argc, char** argv) {
           std::cout << "  " << field << ": " << resolution << std::endl;
         }
       }
-      converter.encodePointClouds(output_filename, resolution);
+      converter.encodePointClouds(output_filename, resolution, compression_option);
     }
     if (decode) {
       converter.decodePointClouds(output_filename);

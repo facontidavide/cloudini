@@ -102,7 +102,9 @@ void McapConverter::duplicateSchemasAndChannels(
 }
 
 //------------------------------------------------------
-void McapConverter::encodePointClouds(std::filesystem::path file_out, std::optional<float> default_resolution) {
+void McapConverter::encodePointClouds(
+    std::filesystem::path file_out, std::optional<float> default_resolution,
+    std::optional<uint8_t> compression_option) {
   if (!reader_) {
     throw std::runtime_error("McapReader is not initialized. Call open() first.");
   }
@@ -150,6 +152,10 @@ void McapConverter::encodePointClouds(std::filesystem::path file_out, std::optio
     // Remove padding from the fields to avoid empty padding in the message
 
     auto encoding_info = Cloudini::toEncodingInfo(pc_info);
+    // If the compression option is specified, set it in the point cloud info
+    if (compression_option) {
+      encoding_info.compression_opt = static_cast<Cloudini::CompressionOption>(*compression_option);
+    }
 
     // Start encoding the pointcloud data[]
     Cloudini::PointcloudEncoder pc_encoder(encoding_info);

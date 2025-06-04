@@ -47,7 +47,9 @@ class McapConverter {
   //   - "ring" field removed
   void addProfile(const std::string& profile);
 
-  void encodePointClouds(std::filesystem::path file_out, std::optional<float> default_resolution);
+  void encodePointClouds(
+      std::filesystem::path file_out, std::optional<float> default_resolution,
+      std::optional<uint8_t> compression_option);
 
   void decodePointClouds(std::filesystem::path file_out);
 
