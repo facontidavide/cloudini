@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef CLOUDINI_ROS__CONVERSION_UTILS_HPP_
+#define CLOUDINI_ROS__CONVERSION_UTILS_HPP_
 
 #include <cloudini_lib/cloudini.hpp>
 #include <point_cloud_interfaces/msg/compressed_point_cloud2.hpp>
@@ -37,3 +38,4 @@ EncodingInfo ConvertToEncodingInfo(const sensor_msgs::msg::PointCloud2& msg, flo
 EncodingInfo ReadEncodingInfo(const point_cloud_interfaces::msg::CompressedPointCloud2& msg);
 
 }  // namespace Cloudini
+#endif  // CLOUDINI_ROS__CONVERSION_UTILS_HPP_
