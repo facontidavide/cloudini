@@ -107,12 +107,12 @@ target_link_libraries(cloudini_lib
 )
 
 if(NOT EMSCRIPTEN)
-  if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|i686")  
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|i686")
     if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
       target_compile_options(cloudini_lib PRIVATE -msse4.1)
     endif()
   endif()
-  
+
   if(CLOUDINI_BUILD_BENCHMARKS)
     add_subdirectory(benchmarks)
   endif()
