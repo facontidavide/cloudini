@@ -46,46 +46,6 @@ size_t FieldEncoderFloatN_Lossy::encode(const ConstBufferView& point_view, Buffe
       *(reinterpret_cast<const float*>(point_view.data() + offset_[2])),
       *(reinterpret_cast<const float*>(point_view.data() + offset_[3])));
 
-#if defined(ARCH_X86_SSE)
-  // SIMD NaN detection: compare vector with itself, NaN != NaN
-  const __m128 nan_mask = _mm_cmpneq_ps(vect_real.data.m, vect_real.data.m);
-  const int nan_bits = _mm_movemask_ps(nan_mask);
-
-  // Early path for no NaNs (most common case)
-  if (__builtin_expect(nan_bits == 0, 1)) {
-    const Vector4f normalized_vect = vect_real * multiplier_;
-    const Vector4i vect_int = cast_vector4f_to_vector4i(normalized_vect);
-    const Vector4i delta = vect_int - prev_vect_;
-    prev_vect_ = vect_int;
-
-    auto* ptr_out = output.data();
-
-    // Unroll the loop for better performance
-    switch (fields_count_) {
-      case 4:
-        ptr_out += encodeVarint64(delta[3], ptr_out);
-        [[fallthrough]];
-      case 3:
-        ptr_out += encodeVarint64(delta[2], ptr_out);
-        [[fallthrough]];
-      case 2:
-        ptr_out += encodeVarint64(delta[1], ptr_out);
-        ptr_out += encodeVarint64(delta[0], ptr_out);
-        break;
-      default:
-        // Fallback for unusual field counts
-        for (size_t i = 0; i < fields_count_; ++i) {
-          ptr_out += encodeVarint64(delta[i], ptr_out);
-        }
-    }
-
-    const auto count = static_cast<size_t>(ptr_out - output.data());
-    output.trim_front(count);
-    return count;
-  }
-#endif
-
-  // Fallback path (with NaNs or no SIMD)
   const Vector4f normalized_vect = vect_real * multiplier_;
   const Vector4i vect_int = cast_vector4f_to_vector4i(normalized_vect);
   const Vector4i delta = vect_int - prev_vect_;
@@ -93,8 +53,30 @@ size_t FieldEncoderFloatN_Lossy::encode(const ConstBufferView& point_view, Buffe
 
   auto* ptr_out = output.data();
 
+#if defined(ARCH_X86_SSE)
+  // SIMD NaN detection: compare vector with itself, NaN != NaN
+  const __m128 nan_mask = _mm_cmpneq_ps(vect_real.data.m, vect_real.data.m);
+  const int nan_bits = _mm_movemask_ps(nan_mask);
+
+  // Early path for no NaNs (most common case)
+  if (__builtin_expect(nan_bits == 0, 1)) {
+    ptr_out += encodeVarint64(delta[0], ptr_out);
+    ptr_out += encodeVarint64(delta[1], ptr_out);
+    if (fields_count_ > 2) {
+      ptr_out += encodeVarint64(delta[2], ptr_out);
+    }
+    if (fields_count_ > 3) {
+      ptr_out += encodeVarint64(delta[3], ptr_out);
+    }
+    const auto count = static_cast<size_t>(ptr_out - output.data());
+    output.trim_front(count);
+    return count;
+  }
+#endif
+
+  // Fallback path (with NaNs or no SIMD)
   for (size_t i = 0; i < fields_count_; ++i) {
-    if (std::isnan(vect_real[i])) {
+    if (__builtin_expect(std::isnan(vect_real[i]), 0)) {
       *ptr_out = 0;
       prev_vect_[i] = 0;
       ptr_out++;
