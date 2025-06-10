@@ -2,8 +2,8 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.3.1 (2025-06-10)
+------------------
 * fix formatting
 * Merge branch 'main' of github.com:facontidavide/cloudini
 * small speed optimization

@@ -2,8 +2,8 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.3.1 (2025-06-10)
+------------------
 * Merge branch 'main' of github.com:facontidavide/cloudini
 * Update CMakeLists.txt
 * Included ROS 2 lint testing (`#3 <https://github.com/facontidavide/cloudini/issues/3>`_)
