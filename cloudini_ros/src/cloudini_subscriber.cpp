@@ -16,6 +16,8 @@
 
 #include "cloudini_plugin/cloudini_subscriber.hpp"
 
+#include <exception>
+
 #include "cloudini_lib/cloudini.hpp"
 
 namespace cloudini_point_cloud_transport {

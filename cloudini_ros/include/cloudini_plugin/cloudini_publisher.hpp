@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef CLOUDINI_PLUGIN__CLOUDINI_PUBLISHER_HPP_
+#define CLOUDINI_PLUGIN__CLOUDINI_PUBLISHER_HPP_
 
 #include <memory>
 #include <point_cloud_interfaces/msg/compressed_point_cloud2.hpp>
@@ -47,3 +48,5 @@ class CloudiniPublisher
 };
 
 }  // namespace cloudini_point_cloud_transport
+
+#endif  // CLOUDINI_PLUGIN__CLOUDINI_PUBLISHER_HPP_

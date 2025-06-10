@@ -15,6 +15,8 @@
  */
 
 #include <cloudini_ros/conversion_utils.hpp>
+#include <exception>
+#include <optional>
 
 namespace Cloudini {
 

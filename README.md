@@ -27,7 +27,7 @@ they include some "padding" in the message that, in extreme cases, may reach up 
 
 (Yes, you heard correctly, almost 50% of that 10 Gb rosbag is useless padding).
 
-But, in general, you may expect considerably **better compression and faster encoding/decoding**  than ZTD or LZ4 alone.
+But, in general, you may expect considerably **better compression and faster encoding/decoding**  than ZSTD or LZ4 alone.
 
 These are two random examples using real-world data from LiDARs.
 
