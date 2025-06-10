@@ -101,7 +101,8 @@ inline size_t PointcloudEncode(
   // size in bytes of the data
   serialized_cloud.resize(ComputeHeaderSize(info.fields) + cloud.points.size() * sizeof(PointT));
 
-  ConstBufferView data_view(reinterpret_cast<const uint8_t*>(cloud.points.data()), cloud.points.size());
+  ConstBufferView data_view(
+      reinterpret_cast<const uint8_t*>(cloud.points.data()), cloud.points.size() * sizeof(PointT));
   PointcloudEncoder encoder(info);
   return encoder.encode(data_view, serialized_cloud);
 }

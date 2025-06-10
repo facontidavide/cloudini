@@ -51,6 +51,7 @@ EncodingInfo ConvertToEncodingInfo<pcl::PointXYZ>(const pcl::PointCloud<pcl::Poi
   EncodingInfo info;
   info.width = cloud.width;
   info.height = cloud.height;
+  info.point_step = sizeof(pcl::PointXYZ);
   info.fields.push_back(PointField{"x", 0, FieldType::FLOAT32, resolution_XYZ});
   info.fields.push_back(PointField{"y", 4, FieldType::FLOAT32, resolution_XYZ});
   info.fields.push_back(PointField{"z", 8, FieldType::FLOAT32, resolution_XYZ});
@@ -63,6 +64,7 @@ EncodingInfo ConvertToEncodingInfo<pcl::PointXYZI>(
   EncodingInfo info;
   info.width = cloud.width;
   info.height = cloud.height;
+  info.point_step = sizeof(pcl::PointXYZI);
   info.fields.push_back(PointField{"x", 0, FieldType::FLOAT32, resolution_XYZ});
   info.fields.push_back(PointField{"y", 4, FieldType::FLOAT32, resolution_XYZ});
   info.fields.push_back(PointField{"z", 8, FieldType::FLOAT32, resolution_XYZ});
