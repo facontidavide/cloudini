@@ -16,16 +16,17 @@
     <p class="subtitle">Check the compression ratio of <b>sensor_msgs::PointCloud2</b> obtainable with
       <a href="https://github.com/facontidavide/cloudini" target="_blank" rel="noopener noreferrer">Cloudini</a>.
     </p>
-
-    <p class="subtitle">Only <b>rosbags</b> saved as MCAP are supported.<br>
-      This app runs inside your browser, your data is <b>NOT</b> uploaded to the cloud.</b></p>
+    <ul class="info-list">
+      <li>Only <b>rosbags</b> saved as MCAP are supported.</li>
+      <li>This app runs inside your browser, your data will <b>NOT</b> be uploaded to the cloud.</li>
+    </ul>
 
     <div id="dropZone">
       📁 Drag your rosbag here or click to select file
       <input type="file" id="fileInput" accept=".mcap" style="display: none;">
     </div>
 
-    <div id="status">Ready - drop your MCAP file to begin analysis</div>
+    <div id="status">Ready - drop your MCAP file to start the analysis</div>
     <div id="results"></div>
   </div>
 

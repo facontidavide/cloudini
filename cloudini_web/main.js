@@ -222,29 +222,21 @@ async function analyzeFile(reader, file) {
         const grandCompressionRatio = grandTotalSize > 0 ? (grandTotalCompressed / grandTotalSize).toFixed(3) : 0;
 
         results.innerHTML = `
-            <div style="margin-top: 30px;">
-                <h3 style="color: #2c3e50; font-size: 1.4em; margin-bottom: 20px; text-align: center;">
+            <div class="results-container">
+                <h3 class="results-title">
                     ✅ Found ${foundChannels.length} PointCloud2 Channel${foundChannels.length !== 1 ? 's' : ''}
                 </h3>
-                <div style="display: grid; gap: 15px; margin-bottom: 30px;">
+                <div class="channels-grid">
                     ${channelResults.map(ch =>
-                        `<div style="
-                            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-                            border: 1px solid #e9ecef;
-                            border-radius: 12px;
-                            padding: 20px;
-                            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
-                            transition: transform 0.2s ease, box-shadow 0.2s ease;
-                        " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 15px rgba(0, 0, 0, 0.1)'"
-                           onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 6px rgba(0, 0, 0, 0.07)'">
-                            <div style="display: grid; grid-template-columns: auto 1fr; gap: 15px; align-items: center;">
+                        `<div class="channel-card">
+                            <div class="channel-content">
                                 <div>
-                                    <div style="font-size: 1.1em; font-weight: 600; color: #2c3e50; margin-bottom: 8px;">${ch.topic}</div>
-                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; font-size: 0.9em; color: #6c757d;">
+                                    <div class="channel-topic">${ch.topic}</div>
+                                    <div class="channel-details">
                                         <div><strong>Schema:</strong> ${ch.schema}</div>
                                         <div><strong>Encoding:</strong> ${ch.encoding}</div>
                                         <div><strong>Channel ID:</strong> ${ch.channelId}</div>
-                                        <div><strong>Messages:</strong> <span style="color: #28a745; font-weight: 600;">${ch.messageCount.toLocaleString()}</span></div>
+                                        <div><strong>Messages:</strong> <span class="message-count">${ch.messageCount.toLocaleString()}</span></div>
                                     </div>
                                 </div>
                             </div>
@@ -252,33 +244,24 @@ async function analyzeFile(reader, file) {
                     ).join('')}
                 </div>
 
-                <div style="
-                    text-align: center;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                    border-radius: 15px;
-                    padding: 30px;
-                    margin: 30px 0;
-                    font-size: 18px;
-                    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
-                ">
-                    <h3 style="margin: 0 0 20px 0; font-size: 1.6em;">📊 Compression Analysis</h3>
-                    <div style="font-size: 1.1em; opacity: 0.8; margin-bottom: 5px;">
+                <div class="compression-analysis">
+                    <h3 class="compression-title">📊 Compression Analysis</h3>
+                    <div class="compression-note">
                         This includes ONLY pointclouds, other messages in the rosbag are ignored.</div>
-                    <div style="font-size: 1.0em; opacity: 0.8; margin-bottom: 5px;">
+                    <div class="compression-quantization">
                         Quantization used: 1 millimeter</div>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-top: 20px;">
-                        <div style="background: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 10px; backdrop-filter: blur(10px);">
-                            <div style="font-size: 0.9em; opacity: 0.8; margin-bottom: 5px;">Original Size (uncompressed)</div>
-                            <div style="font-size: 1.4em; font-weight: 600;">${(grandTotalSize / (1024 * 1024)).toFixed(1)} MB</div>
+                    <div class="compression-stats">
+                        <div class="stat-card">
+                            <div class="stat-label">Original Size (uncompressed)</div>
+                            <div class="stat-value">${(grandTotalSize / (1024 * 1024)).toFixed(1)} MB</div>
                         </div>
-                        <div style="background: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 10px; backdrop-filter: blur(10px);">
-                            <div style="font-size: 0.9em; opacity: 0.8; margin-bottom: 5px;">Compressed Size</div>
-                            <div style="font-size: 1.4em; font-weight: 600;">${(grandTotalCompressed / (1024 * 1024)).toFixed(1)} MB</div>
+                        <div class="stat-card">
+                            <div class="stat-label">Compressed Size</div>
+                            <div class="stat-value">${(grandTotalCompressed / (1024 * 1024)).toFixed(1)} MB</div>
                         </div>
-                        <div style="background: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 10px; backdrop-filter: blur(10px);">
-                            <div style="font-size: 0.9em; opacity: 0.8; margin-bottom: 5px;">Compression Ratio</div>
-                            <div style="font-size: 1.4em; font-weight: 600;">${grandCompressionRatio}</div>
+                        <div class="stat-card">
+                            <div class="stat-label">Compression Ratio</div>
+                            <div class="stat-value">${grandCompressionRatio}</div>
                         </div>
                     </div>
                 </div>
@@ -287,44 +270,18 @@ async function analyzeFile(reader, file) {
     } else {
         status.innerHTML = `File: ${file.name} | Channels: ${totalChannels} | Schemas: ${allSchemas.size}`;
         results.innerHTML = `
-            <div style="margin-top: 30px; text-align: center;">
-                <div style="
-                    background: linear-gradient(135deg, #ff9a56 0%, #ff6b6b 100%);
-                    color: white;
-                    border-radius: 15px;
-                    padding: 30px;
-                    margin: 20px 0;
-                    box-shadow: 0 10px 30px rgba(255, 107, 107, 0.3);
-                ">
-                    <div style="font-size: 3em; margin-bottom: 15px;">🔍</div>
-                    <h3 style="margin: 0 0 15px 0; font-size: 1.4em;">No PointCloud2 Channels Found</h3>
-                    <p style="margin: 0; opacity: 0.9;">This MCAP file doesn't contain any sensor_msgs/msg/PointCloud2 data.</p>
+            <div class="no-results">
+                <div class="no-results-card">
+                    <div class="no-results-icon">🔍</div>
+                    <h3 class="no-results-title">No PointCloud2 Channels Found</h3>
+                    <p class="no-results-text">This MCAP file doesn't contain any sensor_msgs/msg/PointCloud2 data.</p>
                 </div>
 
-                <div style="
-                    background: #f8f9fa;
-                    border-radius: 12px;
-                    padding: 25px;
-                    margin-top: 20px;
-                    border-left: 4px solid #6c757d;
-                ">
-                    <h4 style="color: #495057; margin: 0 0 15px 0;">📋 Available Schemas in this file:</h4>
-                    <div style="
-                        display: flex;
-                        flex-wrap: wrap;
-                        gap: 10px;
-                        justify-content: center;
-                        font-family: 'Courier New', monospace;
-                        font-size: 0.9em;
-                    ">
+                <div class="schemas-info">
+                    <h4 class="schemas-title">📋 Available Schemas in this file:</h4>
+                    <div class="schemas-list">
                         ${Array.from(allSchemas).sort().map(schema =>
-                            `<span style="
-                                background: #e9ecef;
-                                color: #495057;
-                                padding: 5px 10px;
-                                border-radius: 15px;
-                                border: 1px solid #dee2e6;
-                            ">${schema}</span>`
+                            `<span class="schema-tag">${schema}</span>`
                         ).join('')}
                     </div>
                 </div>
