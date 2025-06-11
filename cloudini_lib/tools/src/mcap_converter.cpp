@@ -111,7 +111,20 @@ void McapConverter::encodePointClouds(
 
   mcap::McapWriter writer;
   mcap::McapWriterOptions writer_options(reader_->header()->profile);
-  writer_options.compression = static_cast<mcap::Compression>(mcap_writer_compression);
+
+  switch (mcap_writer_compression) {
+    case Cloudini::CompressionOption::ZSTD:
+      writer_options.compression = mcap::Compression::Zstd;
+      break;
+    case Cloudini::CompressionOption::LZ4:
+      writer_options.compression = mcap::Compression::Lz4;
+      break;
+    case Cloudini::CompressionOption::NONE:
+      writer_options.compression = mcap::Compression::None;
+      break;
+    default:
+      throw std::runtime_error("Unsupported compression option for MCAP writer");
+  }
 
   auto status = writer.open(file_out.string(), writer_options);
   if (!status.ok()) {
@@ -185,7 +198,20 @@ void McapConverter::decodePointClouds(
 
   mcap::McapWriter writer;
   mcap::McapWriterOptions writer_options(reader_->header()->profile);
-  writer_options.compression = static_cast<mcap::Compression>(mcap_writer_compression);
+
+  switch (mcap_writer_compression) {
+    case Cloudini::CompressionOption::ZSTD:
+      writer_options.compression = mcap::Compression::Zstd;
+      break;
+    case Cloudini::CompressionOption::LZ4:
+      writer_options.compression = mcap::Compression::Lz4;
+      break;
+    case Cloudini::CompressionOption::NONE:
+      writer_options.compression = mcap::Compression::None;
+      break;
+    default:
+      throw std::runtime_error("Unsupported compression option for MCAP writer");
+  }
 
   auto status = writer.open(file_out.string(), writer_options);
   if (!status.ok()) {
