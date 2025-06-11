@@ -23,6 +23,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "cloudini_lib/cloudini.hpp"
+
 namespace mcap {
 class McapReader;
 class McapWriter;
@@ -47,9 +49,11 @@ class McapConverter {
   //   - "ring" field removed
   void addProfile(const std::string& profile);
 
-  void encodePointClouds(std::filesystem::path file_out, std::optional<float> default_resolution);
+  void encodePointClouds(
+      std::filesystem::path file_out, std::optional<float> default_resolution,
+      Cloudini::CompressionOption mcap_writer_compression);
 
-  void decodePointClouds(std::filesystem::path file_out);
+  void decodePointClouds(std::filesystem::path file_out, Cloudini::CompressionOption mcap_writer_compression);
 
   std::vector<std::pair<std::string, float>> getProfile() const;
 
