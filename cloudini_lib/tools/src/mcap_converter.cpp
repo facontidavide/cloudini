@@ -104,14 +104,14 @@ void McapConverter::duplicateSchemasAndChannels(
 //------------------------------------------------------
 void McapConverter::encodePointClouds(
     std::filesystem::path file_out, std::optional<float> default_resolution,
-    const mcap::Compression mcap_writer_compression) {
+    Cloudini::CompressionOption mcap_writer_compression) {
   if (!reader_) {
     throw std::runtime_error("McapReader is not initialized. Call open() first.");
   }
 
   mcap::McapWriter writer;
   mcap::McapWriterOptions writer_options(reader_->header()->profile);
-  writer_options.compression = mcap_writer_compression;
+  writer_options.compression = static_cast<mcap::Compression>(mcap_writer_compression);
 
   auto status = writer.open(file_out.string(), writer_options);
   if (!status.ok()) {
@@ -177,14 +177,15 @@ void McapConverter::encodePointClouds(
 }
 
 //------------------------------------------------------
-void McapConverter::decodePointClouds(std::filesystem::path file_out, const mcap::Compression mcap_writer_compression) {
+void McapConverter::decodePointClouds(
+    std::filesystem::path file_out, Cloudini::CompressionOption mcap_writer_compression) {
   if (!reader_) {
     throw std::runtime_error("McapReader is not initialized. Call open() first.");
   }
 
   mcap::McapWriter writer;
   mcap::McapWriterOptions writer_options(reader_->header()->profile);
-  writer_options.compression = mcap_writer_compression;
+  writer_options.compression = static_cast<mcap::Compression>(mcap_writer_compression);
 
   auto status = writer.open(file_out.string(), writer_options);
   if (!status.ok()) {

@@ -23,10 +23,11 @@
 #include <unordered_map>
 #include <vector>
 
+#include "cloudini_lib/cloudini.hpp"
+
 namespace mcap {
 class McapReader;
 class McapWriter;
-enum struct Compression;
 }  // namespace mcap
 
 class McapConverter {
@@ -50,9 +51,9 @@ class McapConverter {
 
   void encodePointClouds(
       std::filesystem::path file_out, std::optional<float> default_resolution,
-      const mcap::Compression mcap_writer_compression);
+      Cloudini::CompressionOption mcap_writer_compression);
 
-  void decodePointClouds(std::filesystem::path file_out, const mcap::Compression mcap_writer_compression);
+  void decodePointClouds(std::filesystem::path file_out, Cloudini::CompressionOption mcap_writer_compression);
 
   std::vector<std::pair<std::string, float>> getProfile() const;
 

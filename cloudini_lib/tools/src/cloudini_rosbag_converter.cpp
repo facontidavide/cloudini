@@ -40,7 +40,7 @@ int main(int argc, char** argv) {
       ("c,compress", "Convert PointCloud2 to CompressedPointCloud2")  //
       ("d,decode", "Convert CompressedPointCloud2 to PointCloud2")    //
       ("m,method", "Compression method to use when writing data back to mcap ('lz4' or 'zstd', 'none')",
-       cxxopts::value<std::string>()->default_value("none"));
+       cxxopts::value<std::string>()->default_value("zstd"));
 
   auto parse_result = options.parse(argc, argv);
 
@@ -121,13 +121,13 @@ int main(int argc, char** argv) {
   std::cout << "Input file: " << input_file << std::endl;
 
   // Parse the mcap writer compression method
-  mcap::Compression mcap_writer_compression;
+  Cloudini::CompressionOption mcap_writer_compression;
 
   // clang-format off
-  const auto compression_options_map = std::unordered_map<std::string, mcap::Compression>{
-      {"lz4", mcap::Compression::Lz4}, 
-      {"zstd", mcap::Compression::Zstd}, 
-      {"none", mcap::Compression::None}};
+  const auto compression_options_map = std::unordered_map<std::string, Cloudini::CompressionOption>{
+      {"none", Cloudini::CompressionOption::NONE},
+      {"lz4", Cloudini::CompressionOption::LZ4}, 
+      {"zstd", Cloudini::CompressionOption::ZSTD}};
   // clang-format on
 
   std::string compression_method = parse_result["method"].as<std::string>();
@@ -137,7 +137,7 @@ int main(int argc, char** argv) {
   }
   mcap_writer_compression = compression_options_map.at(compression_method);
   std::cout << "Using compression method: " << compression_method << std::endl;
-  
+
   int compressed_pointclouds_count = 0;
   int regular_pointclouds_count = 0;
 
