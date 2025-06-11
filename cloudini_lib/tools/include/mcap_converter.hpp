@@ -26,6 +26,7 @@
 namespace mcap {
 class McapReader;
 class McapWriter;
+enum struct Compression;
 }  // namespace mcap
 
 class McapConverter {
@@ -49,9 +50,9 @@ class McapConverter {
 
   void encodePointClouds(
       std::filesystem::path file_out, std::optional<float> default_resolution,
-      std::optional<uint8_t> compression_option);
+      const mcap::Compression mcap_writer_compression);
 
-  void decodePointClouds(std::filesystem::path file_out);
+  void decodePointClouds(std::filesystem::path file_out, const mcap::Compression mcap_writer_compression);
 
   std::vector<std::pair<std::string, float>> getProfile() const;
 
