@@ -91,7 +91,9 @@
         "qapplication": "cpp",
         "locale": "cpp",
         "filesystem": "cpp",
-        "*.tcc": "cpp"
+        "*.tcc": "cpp",
+        "queue": "cpp",
+        "*.txx": "cpp"
     },
     "python.autoComplete.extraPaths": [
         "/opt/ros/humble/lib/python3.10/site-packages",
@@ -101,4 +103,5 @@
         "/opt/ros/humble/lib/python3.10/site-packages",
         "/opt/ros/humble/local/lib/python3.10/dist-packages"
     ],
+    "cmake.sourceDirectory": "/home/davide/ws_compression/src/clooudini/cloudini_lib",
 }

@@ -1,0 +1,33 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MCAP PointCloud2 Analyzer</title>
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>
+      <img src="/cloudini.png" alt="Cloudini Logo" style="height: 4em; vertical-align: middle; margin-right: 0.5em;">
+      Cloudini Compression Tester
+    </h1>
+    <p class="subtitle">Check the compression ratio of <b>sensor_msgs::PointCloud2</b> obtainable with
+      <a href="https://github.com/facontidavide/cloudini" target="_blank" rel="noopener noreferrer">Cloudini</a>.
+    </p>
+
+    <p class="subtitle">Only <b>rosbags</b> saved as MCAP are supported</b></p>
+
+    <div id="dropZone">
+      📁 Drag your rosbag here or click to select file
+      <input type="file" id="fileInput" accept=".mcap" style="display: none;">
+    </div>
+
+    <div id="status">Ready - drop your MCAP file to begin analysis</div>
+    <div id="results"></div>
+  </div>
+
+  <script type="module" src="/main.js"></script>
+</body>
+</html>

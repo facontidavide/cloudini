@@ -1,0 +1,83 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  padding: 40px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+}
+
+h1 {
+  text-align: center;
+  color: #2c3e50;
+  font-size: 2.5em;
+  margin-bottom: 10px;
+  background: linear-gradient(45deg, #667eea, #764ba2);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.subtitle {
+  text-align: center;
+  color: #2c3e50;
+  font-size: 1.1em;
+  margin-bottom: 40px;
+}
+
+#dropZone {
+  border: 3px dashed #3498db;
+  background: linear-gradient(45deg, #f8f9fa, #e9ecef);
+  border-radius: 15px;
+  padding: 60px 30px;
+  text-align: center;
+  margin: 30px 0;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 1.2em;
+  color: #2c3e50;
+}
+
+#dropZone:hover {
+  border-color: #2980b9;
+  background: linear-gradient(45deg, #e3f2fd, #bbdefb);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+#dropZone.disabled {
+  border-color: #bdc3c7;
+  background: linear-gradient(45deg, #ecf0f1, #d5dbdb);
+  color: #7f8c8d;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+#dropZone.disabled:hover {
+  border-color: #bdc3c7;
+  background: linear-gradient(45deg, #ecf0f1, #d5dbdb);
+  transform: none;
+  box-shadow: none;
+}
+
+#status {
+  text-align: center;
+  font-size: 1.1em;
+  margin: 20px 0;
+  padding: 15px;
+  color: #2c3e50;
+}

@@ -109,7 +109,7 @@ void McapConverter::encodePointClouds(std::filesystem::path file_out, std::optio
 
   mcap::McapWriter writer;
   mcap::McapWriterOptions writer_options(reader_->header()->profile);
-  writer_options.compression = mcap::Compression::None;  // no compression for output
+  // writer_options.compression = mcap::Compression::None;  // no compression for output
 
   auto status = writer.open(file_out.string(), writer_options);
   if (!status.ok()) {
