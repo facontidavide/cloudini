@@ -18,6 +18,7 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
+#include <iostream>
 #include <stdexcept>
 #include <type_traits>
 #include <vector>
@@ -416,11 +417,12 @@ inline void Encoder::encode(const T& in) {
 }
 
 inline void Encoder::encode(const std::string& in) {
-  const uint32_t str_len = in.size();
+  const uint32_t str_len = in.size() + 1;
   encode(str_len);
   const auto prev_size = storage_->size();
   storage_->resize(prev_size + str_len);
-  memcpy(storage_->data() + prev_size, in.data(), str_len);
+  memcpy(storage_->data() + prev_size, in.data(), in.size());
+  storage_->data()[prev_size + in.size()] = '\0';
 }
 
 inline void Encoder::encode(const ConstBuffer& buffer) {
