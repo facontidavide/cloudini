@@ -107,12 +107,12 @@ target_link_libraries(cloudini_lib
 )
 
 if(NOT EMSCRIPTEN)
-  if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|i686")  
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|i686")
     if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
       target_compile_options(cloudini_lib PRIVATE -msse4.1)
     endif()
   endif()
-  
+
   if(CLOUDINI_BUILD_BENCHMARKS)
     add_subdirectory(benchmarks)
   endif()
@@ -122,6 +122,30 @@ if(NOT EMSCRIPTEN)
   if (BUILD_TESTING)
     add_subdirectory(test)
   endif()
+
+else()
+  # WASM module target
+  add_executable(cloudini_wasm
+    src/wasm_functions.cpp
+  )
+
+  target_compile_features(cloudini_wasm PUBLIC cxx_std_20)
+
+  target_include_directories(cloudini_wasm
+    PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/include
+      ${LZ4_INCLUDE_DIR}
+      ${ZSTD_INCLUDE_DIR}
+  )
+
+  target_link_libraries(cloudini_wasm
+    PRIVATE
+      cloudini_lib
+  )
+
+  set_target_properties(cloudini_wasm PROPERTIES
+    LINK_FLAGS "-s EXPORTED_FUNCTIONS=['_ComputeCompressedSize','_malloc','_free'] -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8'] -s MODULARIZE=1 -s EXPORT_NAME='CloudiniModule'"
+  )
 
 endif(NOT EMSCRIPTEN)
 

@@ -1,0 +1,9 @@
+# Development notes
+
+## Compile with Emscripten
+
+```
+mkdir build_wasm; cd build_wasm
+emcmake cmake .. -DCLOUDINI_BUILD_TOOLS=OFF
+emmake make
+```
