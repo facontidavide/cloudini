@@ -2,6 +2,9 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+
 0.3.1 (2025-06-10)
 ------------------
 * Merge branch 'main' of github.com:facontidavide/cloudini

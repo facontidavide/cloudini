@@ -2,6 +2,14 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Compression profile (MCAP writer) (`#14 <https://github.com/facontidavide/cloudini/issues/14>`_)
+  Co-authored-by: Giuseppe Rizzi <giuseppe.rizzi@ascento.ch>
+* Null character termination (`#13 <https://github.com/facontidavide/cloudini/issues/13>`_)
+* add experimental WASM + web tester
+* Contributors: Davide Faconti, Giuseppe Rizzi
+
 0.3.1 (2025-06-10)
 ------------------
 * fix formatting
