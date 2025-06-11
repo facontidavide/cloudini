@@ -2,8 +2,8 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.3.3 (2025-06-11)
+------------------
 * Compression profile (MCAP writer) (`#14 <https://github.com/facontidavide/cloudini/issues/14>`_)
   Co-authored-by: Giuseppe Rizzi <giuseppe.rizzi@ascento.ch>
 * Null character termination (`#13 <https://github.com/facontidavide/cloudini/issues/13>`_)
