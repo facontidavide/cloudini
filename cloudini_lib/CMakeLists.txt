@@ -11,6 +11,9 @@ message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 
 option(CLOUDINI_BUILD_TOOLS "Build Tools" ON)
 
+# create compile_commands.json
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 ##################################################################################
 ## Third party dependeciens
 

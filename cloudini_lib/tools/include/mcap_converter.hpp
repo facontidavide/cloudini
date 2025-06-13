@@ -17,6 +17,7 @@
 #pragma once
 
 #include <filesystem>
+#include <fstream>
 #include <map>
 #include <optional>
 #include <string>
@@ -28,6 +29,7 @@
 namespace mcap {
 class McapReader;
 class McapWriter;
+class FileStreamReader;
 }  // namespace mcap
 
 class McapConverter {
@@ -58,6 +60,8 @@ class McapConverter {
   std::vector<std::pair<std::string, float>> getProfile() const;
 
  private:
+  std::ifstream input_stream_;
+  std::shared_ptr<mcap::FileStreamReader> data_source_;
   std::shared_ptr<mcap::McapReader> reader_;
   TopicsMap topics_;
 

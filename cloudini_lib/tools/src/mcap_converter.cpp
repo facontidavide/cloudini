@@ -21,12 +21,17 @@
 
 #include "cloudini_lib/ros_message_definitions.hpp"
 #include "cloudini_lib/ros_msg_utils.hpp"
+
+#define MCAP_IMPLEMENTATION
 #include "mcap/reader.hpp"
+#include "mcap/types.hpp"
 #include "mcap/writer.hpp"
 
 McapConverter::TopicsMap McapConverter::open(std::filesystem::path file_in) {
+  input_stream_.open(file_in);
+  data_source_ = std::make_shared<mcap::FileStreamReader>(input_stream_);
   reader_ = std::make_shared<mcap::McapReader>();
-  auto res = reader_->open(file_in.string());
+  auto res = reader_->open(*data_source_);
   if (!res.ok()) {
     reader_.reset();
     throw std::runtime_error("Error opening MCAP file: " + res.message);
@@ -121,24 +126,46 @@ void McapConverter::encodePointClouds(
     throw std::runtime_error("McapReader is not initialized. Call open() first.");
   }
 
+  mcap::Status status{};
+
   mcap::McapWriter writer;
   mcap::McapWriterOptions writer_options(reader_->header()->profile);
+  // writer_options.noMetadataIndex = true;  // we don't need metadata index for this conversion
+
   writer_options.compression = toMcapCompression(mcap_writer_compression);
 
-  auto status = writer.open(file_out.string(), writer_options);
+  status = writer.open(file_out.string(), writer_options);
   if (!status.ok()) {
     throw std::runtime_error("Error opening MCAP file for writing: " + status.message);
   }
 
   duplicateSchemasAndChannels(*reader_, writer, true);
 
-  mcap::ReadMessageOptions options;
+  // copy the metadata from the reader to the writer
+  for (const auto& [metadata_index_name, metadata_index] : reader_->metadataIndexes()) {
+    mcap::Record mcap_record;
+    status = mcap::McapReader::ReadRecord(*data_source_, metadata_index.offset, &mcap_record);
+    if (!status.ok()) {
+      throw std::runtime_error("Error reading MCAP metadata record: " + status.message);
+    }
+    mcap::Metadata mcap_metadata;
+    status = mcap::McapReader::ParseMetadata(mcap_record, &mcap_metadata);
+    if (!status.ok()) {
+      throw std::runtime_error("Error parsing MCAP metadata record: " + status.message);
+    }
+    status = writer.write(mcap_metadata);
+    if (!status.ok()) {
+      throw std::runtime_error("Error copying MCAP metadata: " + status.message);
+    }
+  }
+
+  mcap::ReadMessageOptions reader_options;
   mcap::ProblemCallback problem = [](const mcap::Status&) {};
 
   std::vector<uint8_t> compressed_cloud;
   std::vector<uint8_t> compressed_dds_msg;
 
-  for (const auto& msg : reader_->readMessages(problem, options)) {
+  for (const auto& msg : reader_->readMessages(problem, reader_options)) {
     mcap::Message new_msg = msg.message;
     new_msg.channelId = old_to_new_channel_id_.at(msg.channel->id);
     // default case (not a point cloud)

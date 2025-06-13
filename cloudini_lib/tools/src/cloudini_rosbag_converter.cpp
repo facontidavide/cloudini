@@ -14,16 +14,13 @@
  * limitations under the License.
  */
 
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 
+#include "cloudini_lib/cloudini.hpp"
 #include "cxxopts.hpp"
 #include "mcap_converter.hpp"
-
-#define MCAP_IMPLEMENTATION
-#include "cloudini_lib/cloudini.hpp"
-#include "mcap/reader.hpp"
-#include "mcap/types.hpp"
-#include "mcap/writer.hpp"
 
 int main(int argc, char** argv) {
   cxxopts::Options options("cloudini_rosbag_converter", "Encode/Decode PointCloud2 messages in MCAP files");
@@ -126,7 +123,7 @@ int main(int argc, char** argv) {
   // clang-format off
   const auto compression_options_map = std::unordered_map<std::string, Cloudini::CompressionOption>{
       {"none", Cloudini::CompressionOption::NONE},
-      {"lz4", Cloudini::CompressionOption::LZ4}, 
+      {"lz4", Cloudini::CompressionOption::LZ4},
       {"zstd", Cloudini::CompressionOption::ZSTD}};
   // clang-format on
 
