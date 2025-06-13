@@ -142,15 +142,13 @@ void McapConverter::encodePointClouds(
   duplicateSchemasAndChannels(*reader_, writer, true);
 
   // copy the metadata from the reader to the writer
-  const auto& mcap_metadatas = reader_->metadataIndexes();
-  mcap::Metadata mcap_metadata;
-  mcap::Record mcap_record;
-
-  for (const auto& [metadata_index_name, metadata_index] : mcap_metadatas) {
+  for (const auto& [metadata_index_name, metadata_index] : reader_->metadataIndexes()) {
+    mcap::Record mcap_record;
     status = mcap::McapReader::ReadRecord(*data_source_, metadata_index.offset, &mcap_record);
     if (!status.ok()) {
       throw std::runtime_error("Error reading MCAP metadata record: " + status.message);
     }
+    mcap::Metadata mcap_metadata;
     status = mcap::McapReader::ParseMetadata(mcap_record, &mcap_metadata);
     if (!status.ok()) {
       throw std::runtime_error("Error parsing MCAP metadata record: " + status.message);
