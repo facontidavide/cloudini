@@ -198,7 +198,9 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
 }
 
 size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t>& output) {
-  output.resize(header_.size() + cloud_data.size());
+  // maximum compressed size in worst case single-pass scenario
+  size_t max_compressed_size = ZSTD_compressBound(cloud_data.size());
+  output.resize(header_.size() + max_compressed_size);
   BufferView output_view(output.data(), output.size());
   auto new_size = encode(cloud_data, output_view);
   output.resize(new_size);
@@ -253,6 +255,12 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output_
     } break;
 
     case CompressionOption::ZSTD: {
+      size_t const max_compressed_size = ZSTD_compressBound(src_size);
+      if (dest_capacity < max_compressed_size) {
+        throw std::runtime_error("Destination buffer too small for ZSTD compression. Required: " +
+                               std::to_string(max_compressed_size) +
+                               ", Available: " + std::to_string(dest_capacity));
+      }
       size_t compressed_size = ZSTD_compress(dest_ptr, dest_capacity, src_ptr, src_size, 1);
       if (ZSTD_isError(compressed_size)) {
         throw std::runtime_error("ZSTD compression failed");
