@@ -9,6 +9,8 @@ if(NOT TARGET mcap)
     # mcap has no CMake support, so we create our own target
     add_library(mcap INTERFACE)
     target_include_directories(mcap INTERFACE "${mcap_SOURCE_DIR}/cpp/mcap/include")
+    ## create alias mcap::mcap
+    add_library(mcap::mcap ALIAS mcap)
 endif()
 
 
@@ -19,12 +21,14 @@ target_include_directories(mcap_converter
    $<BUILD_INTERFACE:${LZ4_INCLUDE_DIR}>
    $<BUILD_INTERFACE:${ZSTD_INCLUDE_DIR}>
 )
+
 target_link_libraries(mcap_converter
   PUBLIC
    cloudini_lib
+  PRIVATE
    ${LZ4_LIBRARY}
    ${ZSTD_LIBRARY}
-   mcap
+   mcap::mcap
 )
 
 ########################################################
