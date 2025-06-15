@@ -10,3 +10,4 @@
 /cloudini_lib/build/
 *.mcap
 /cloudini_lib/build*
+/build*

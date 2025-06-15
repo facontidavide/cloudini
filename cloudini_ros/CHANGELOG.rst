@@ -2,6 +2,11 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* updated README
+* Contributors: Davide Faconti
+
 0.3.3 (2025-06-11)
 ------------------
 
