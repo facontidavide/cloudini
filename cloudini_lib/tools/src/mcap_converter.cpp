@@ -104,6 +104,24 @@ void McapConverter::duplicateSchemasAndChannels(
     writer.addChannel(new_channel);
     old_to_new_channel_id_.insert({channel_ptr->id, new_channel.id});
   }
+
+  // copy the metadata from the reader to the writer
+  for (const auto& [metadata_index_name, metadata_index] : reader_->metadataIndexes()) {
+    mcap::Record mcap_record;
+    auto status = mcap::McapReader::ReadRecord(*data_source_, metadata_index.offset, &mcap_record);
+    if (!status.ok()) {
+      throw std::runtime_error("Error reading MCAP metadata record: " + status.message);
+    }
+    mcap::Metadata mcap_metadata;
+    status = mcap::McapReader::ParseMetadata(mcap_record, &mcap_metadata);
+    if (!status.ok()) {
+      throw std::runtime_error("Error parsing MCAP metadata record: " + status.message);
+    }
+    status = writer.write(mcap_metadata);
+    if (!status.ok()) {
+      throw std::runtime_error("Error copying MCAP metadata: " + status.message);
+    }
+  }
 }
 
 mcap::Compression toMcapCompression(Cloudini::CompressionOption compression) {
@@ -130,9 +148,8 @@ void McapConverter::encodePointClouds(
 
   mcap::McapWriter writer;
   mcap::McapWriterOptions writer_options(reader_->header()->profile);
-  // writer_options.noMetadataIndex = true;  // we don't need metadata index for this conversion
-
   writer_options.compression = toMcapCompression(mcap_writer_compression);
+  writer_options.chunkSize = 2 * 1024 * 1024;  // 2 MB chunk size
 
   status = writer.open(file_out.string(), writer_options);
   if (!status.ok()) {
@@ -140,24 +157,6 @@ void McapConverter::encodePointClouds(
   }
 
   duplicateSchemasAndChannels(*reader_, writer, true);
-
-  // copy the metadata from the reader to the writer
-  for (const auto& [metadata_index_name, metadata_index] : reader_->metadataIndexes()) {
-    mcap::Record mcap_record;
-    status = mcap::McapReader::ReadRecord(*data_source_, metadata_index.offset, &mcap_record);
-    if (!status.ok()) {
-      throw std::runtime_error("Error reading MCAP metadata record: " + status.message);
-    }
-    mcap::Metadata mcap_metadata;
-    status = mcap::McapReader::ParseMetadata(mcap_record, &mcap_metadata);
-    if (!status.ok()) {
-      throw std::runtime_error("Error parsing MCAP metadata record: " + status.message);
-    }
-    status = writer.write(mcap_metadata);
-    if (!status.ok()) {
-      throw std::runtime_error("Error copying MCAP metadata: " + status.message);
-    }
-  }
 
   mcap::ReadMessageOptions reader_options;
   mcap::ProblemCallback problem = [](const mcap::Status&) {};
@@ -225,6 +224,7 @@ void McapConverter::decodePointClouds(
   mcap::McapWriter writer;
   mcap::McapWriterOptions writer_options(reader_->header()->profile);
   writer_options.compression = toMcapCompression(mcap_writer_compression);
+  writer_options.chunkSize = 2 * 1024 * 1024;  // 10 MB chunk size
 
   auto status = writer.open(file_out.string(), writer_options);
   if (!status.ok()) {
@@ -233,13 +233,13 @@ void McapConverter::decodePointClouds(
 
   duplicateSchemasAndChannels(*reader_, writer, false);
 
-  mcap::ReadMessageOptions options;
+  mcap::ReadMessageOptions reader_options;
   mcap::ProblemCallback problem = [](const mcap::Status&) {};
 
   std::vector<uint8_t> decoded_cloud;
   std::vector<uint8_t> decoded_dds_msg;
 
-  for (const auto& msg : reader_->readMessages(problem, options)) {
+  for (const auto& msg : reader_->readMessages(problem, reader_options)) {
     mcap::Message new_msg = msg.message;
     new_msg.channelId = old_to_new_channel_id_.at(msg.channel->id);
     // default case (not a point cloud)
