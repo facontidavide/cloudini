@@ -71,7 +71,7 @@ EncodingInfo ConvertToEncodingInfo<pcl::PointXYZI>(
 
   pcl::PointXYZI dummy;
   const size_t intensity_offset = reinterpret_cast<uint8_t*>(&dummy.intensity) - reinterpret_cast<uint8_t*>(&dummy.x);
-  info.fields.push_back(PointField{"intensity", intensity_offset, FieldType::FLOAT32, std::nullopt});
+  info.fields.push_back(PointField{"intensity", static_cast<uint32_t>(intensity_offset), FieldType::FLOAT32, std::nullopt});
   return info;
 }
 
