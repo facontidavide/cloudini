@@ -191,6 +191,11 @@ void McapConverter::encodePointClouds(
 
     auto encoding_info = Cloudini::toEncodingInfo(pc_info);
 
+    // no need to do ZSTD compression twice
+    if (mcap_writer_compression == Cloudini::CompressionOption::ZSTD) {
+      encoding_info.compression_opt = Cloudini::CompressionOption::NONE;
+    }
+
     // Start encoding the pointcloud data[]
     Cloudini::PointcloudEncoder pc_encoder(encoding_info);
     auto new_size = pc_encoder.encode(pc_info.data, compressed_cloud);
