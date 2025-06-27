@@ -147,7 +147,7 @@ else()
   )
 
   set_target_properties(cloudini_wasm PROPERTIES
-    LINK_FLAGS "-s EXPORTED_FUNCTIONS=['_ComputeCompressedSize','_malloc','_free'] -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8'] -s MODULARIZE=1 -s EXPORT_NAME='CloudiniModule'"
+    LINK_FLAGS "-s EXPORTED_FUNCTIONS=['_ComputeCompressedSize','_DecompressPointCloudBuffer','_malloc','_free'] -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8'] -s MODULARIZE=1 -s EXPORT_NAME='CloudiniModule'"
   )
 
 endif(NOT EMSCRIPTEN)

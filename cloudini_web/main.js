@@ -1,10 +1,17 @@
 import { McapIndexedReader } from '@mcap/core';
 import { BlobReadable } from '@mcap/browser';
+// This is needed for compressed bags, but could not make it work with vite
+// import { loadDecompressHandlers } from "@mcap/support";
 
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
 const status = document.getElementById('status');
 const results = document.getElementById('results');
+
+// Variable binding to the cloudini wasm module
+let wasmModule;
+
+
 
 dropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
@@ -58,6 +65,21 @@ function enableDropZone() {
     });
 }
 
+
+async function loadCloudiniWasm(){
+    const script = document.createElement('script');
+    script.src = '/cloudini_wasm.js';
+
+    await new Promise((resolve, reject) => {
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+    });
+
+    // The module is now available as CloudiniModule
+    wasmModule = await CloudiniModule();
+}  
+
 async function handleFile(file) {
     if (!file.name.endsWith('.mcap')) {
         status.innerHTML = 'Error: Please select an MCAP file';
@@ -69,9 +91,15 @@ async function handleFile(file) {
     results.innerHTML = '';
 
     try {
+        //const decompressHandlers = await loadDecompressHandlers();
+
         const reader = await McapIndexedReader.Initialize({
             readable: new BlobReadable(file),
+            // decompressHandlers,
         });
+
+        const mode = document.querySelector('input[name="mode"]:checked').value;
+        console.log('Selected mode:', mode);
 
         await analyzeFile(reader, file);
 
@@ -83,29 +111,89 @@ async function handleFile(file) {
     }
 }
 
+
+
+function compressPointCloudBuffer(bufferData){
+    let compressedSize;
+    let dataSize = bufferData.byteLength;
+    if (wasmModule._malloc && wasmModule._free && wasmModule.HEAPU8) {
+        // Direct memory approach (Option 1)
+        const dataPtr = wasmModule._malloc(dataSize);
+        const wasmView = new Uint8Array(wasmModule.HEAPU8.buffer, dataPtr, dataSize);
+        wasmView.set(bufferData);
+
+        compressedSize = wasmModule._ComputeCompressedSize(dataPtr, dataSize);
+        wasmModule._free(dataPtr);
+    } else {
+        // Fallback to ccall approach
+        compressedSize = wasmModule.ccall(
+            'ComputeCompressedSize',
+            'number',
+            ['array', 'number'],
+            [dataView, dataSize]
+        );
+    }
+
+    return compressedSize;
+}
+
+function decompressPointCloudBuffer(bufferData) {
+    const { _malloc, _free, HEAPU8, _DecompressPointCloudBuffer } = wasmModule;
+    const bufferSize = bufferData.byteLength;
+  
+    const dataPtr = _malloc(bufferSize);
+    HEAPU8.set(bufferData, dataPtr);
+  
+    const SAFETY_FACTOR = 8;
+    const guessSize = bufferSize * SAFETY_FACTOR;
+    const outPtr = _malloc(guessSize);
+  
+    const decompressedSize = _DecompressPointCloudBuffer(dataPtr, bufferSize, outPtr);
+    if (decompressedSize === 0) {
+      _free(dataPtr);
+      _free(outPtr);
+      throw new Error('Decompression failed or input was empty');
+    }
+    if (decompressedSize > guessSize) {
+      _free(dataPtr);
+      _free(outPtr);
+      throw new Error(
+        `Decompressed data (${decompressedSize} bytes) exceeded max allocated size of (${guessSize}).`
+      );
+    }
+  
+    const result = HEAPU8.subarray(outPtr, outPtr + decompressedSize);
+    const decompressed = new Uint8Array(result);
+  
+    _free(dataPtr);
+    _free(outPtr);
+    return decompressed;
+}
+
 async function analyzeFile(reader, file) {
-    const targetSchema = 'sensor_msgs/msg/PointCloud2';
+
+    const mode = document.querySelector('input[name="mode"]:checked').value;
+    
+    let compress = false;
+    if (mode === 'compress') {
+        compress = true;
+        console.log("Compressing point clouds.");
+    } else if (mode === 'decompress') {
+        console.log("Decompressing point clouds.");
+    } else {
+        status.innerHTML = `Selected unsupported mode: ${mode}`;
+    }
+
+    const targetSchema = compress ? 'sensor_msgs/msg/PointCloud2' : 'point_cloud_interfaces/msg/CompressedPointCloud2';
+    
     let foundChannels = [];
     let totalChannels = 0;
     const allSchemas = new Set();
 
     // Load WASM module
     status.innerHTML = 'Loading WASM module...';
-    let wasmModule;
     try {
-        // Create a script element to load the WASM module
-        const script = document.createElement('script');
-        script.src = '/cloudini_wasm.js';
-
-        await new Promise((resolve, reject) => {
-            script.onload = resolve;
-            script.onerror = reject;
-            document.head.appendChild(script);
-        });
-
-        // The module is now available as CloudiniModule
-        wasmModule = await CloudiniModule();
-
+        await loadCloudiniWasm();
         // Debug: log available properties
         console.log('WASM module loaded. Available properties:', Object.keys(wasmModule));
         console.log('Has HEAPU8:', !!wasmModule.HEAPU8);
@@ -139,7 +227,7 @@ async function analyzeFile(reader, file) {
         }
     }
 
-    status.innerHTML = `Processing PointCloud2 channels inside the rosbag...`;
+    status.innerHTML = `Processing ${targetSchema.split('/').pop()} channels inside the rosbag...`;
 
     if (foundChannels.length > 0) {
         // Process messages for each found channel
@@ -148,7 +236,7 @@ async function analyzeFile(reader, file) {
         for (const channel of foundChannels) {
             let messageCount = 0;
             let totalSize = 0;
-            let totalCompressedSize = 0;
+            let totalFinalSize = 0;
 
             for await (const message of reader.readMessages({
                 startTime: reader.start,
@@ -176,27 +264,13 @@ async function analyzeFile(reader, file) {
                         }
                     }
 
-                    let compressedSize;
-
-                    if (wasmModule._malloc && wasmModule._free && wasmModule.HEAPU8) {
-                        // Direct memory approach (Option 1)
-                        const dataPtr = wasmModule._malloc(dataSize);
-                        const wasmView = new Uint8Array(wasmModule.HEAPU8.buffer, dataPtr, dataSize);
-                        wasmView.set(dataView);
-
-                        compressedSize = wasmModule._ComputeCompressedSize(dataPtr, dataSize);
-                        wasmModule._free(dataPtr);
+                    if (compress){
+                        totalFinalSize += compressPointCloudBuffer(dataView);
                     } else {
-                        // Fallback to ccall approach
-                        compressedSize = wasmModule.ccall(
-                            'ComputeCompressedSize',
-                            'number',
-                            ['array', 'number'],
-                            [dataView, dataSize]
-                        );
+                        decompressedData = decompressPointCloudBuffer(dataView);
+                        totalFinalSize += decompressedData.byteLength
                     }
 
-                    totalCompressedSize += compressedSize;
                 } catch (error) {
                     console.error('Error calling WASM function:', error);
                     console.error('Data size:', dataSize);
@@ -209,8 +283,8 @@ async function analyzeFile(reader, file) {
                 ...channel,
                 messageCount,
                 totalSize,
-                totalCompressedSize,
-                compressionRatio: totalSize > 0 ? (totalCompressedSize / totalSize).toFixed(3) : 0
+                totalFinalSize,
+                compressionRatio: totalSize > 0 ? (totalFinalSize / totalSize).toFixed(3) : 0
             });
         }
 
@@ -218,8 +292,9 @@ async function analyzeFile(reader, file) {
 
         // Calculate totals across all channels
         const grandTotalSize = channelResults.reduce((sum, ch) => sum + ch.totalSize, 0);
-        const grandTotalCompressed = channelResults.reduce((sum, ch) => sum + ch.totalCompressedSize, 0);
-        const grandCompressionRatio = grandTotalSize > 0 ? (grandTotalCompressed / grandTotalSize).toFixed(3) : 0;
+        const grandTotalFinal = channelResults.reduce((sum, ch) => sum + ch.totalFinalSize, 0);
+        const ratio = grandTotalSize > 0 ? (grandTotalFinal / grandTotalSize).toFixed(3) : 0;
+        const grandCompressionRatio = compress ? ratio : 1.0 / ratio;
 
         results.innerHTML = `
             <div class="results-container">
@@ -252,15 +327,15 @@ async function analyzeFile(reader, file) {
                         Quantization used: 1 millimeter</div>
                     <div class="compression-stats">
                         <div class="stat-card">
-                            <div class="stat-label">Original Size (uncompressed)</div>
+                            <div class="stat-label">Original Size (${compress? 'uncompressed' : 'compressed'})</div>
                             <div class="stat-value">${(grandTotalSize / (1024 * 1024)).toFixed(1)} MB</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-label">Compressed Size</div>
-                            <div class="stat-value">${(grandTotalCompressed / (1024 * 1024)).toFixed(1)} MB</div>
+                            <div class="stat-label">${compress? 'Compressed' : 'Decompressed'} Size</div>
+                            <div class="stat-value">${(grandTotalFinal / (1024 * 1024)).toFixed(1)} MB</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-label">Compression Ratio</div>
+                            <div class="stat-label">${compress? 'Compression' : 'Decompression'} Ratio</div>
                             <div class="stat-value">${grandCompressionRatio}</div>
                         </div>
                     </div>
