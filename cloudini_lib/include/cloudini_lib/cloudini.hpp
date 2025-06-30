@@ -83,7 +83,7 @@ struct EncodingInfo {
   }
 };
 
-constexpr const char* kMagicHeader = "CLOUDINI_V01";
+constexpr const char* kMagicHeader = "CLOUDINI_V02";
 
 // pre-compute the size of the header, to allocate memory
 size_t ComputeHeaderSize(const std::vector<PointField>& fields);

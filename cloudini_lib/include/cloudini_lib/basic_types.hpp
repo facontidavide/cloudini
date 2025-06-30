@@ -66,9 +66,13 @@ inline int constexpr SizeOf(const FieldType& type) {
     case FieldType::UINT32:
       return sizeof(uint32_t);
     case FieldType::FLOAT32:
-      return 4;
+      return sizeof(float);
     case FieldType::FLOAT64:
-      return 8;
+      return sizeof(double);
+    case FieldType::INT64:
+      return sizeof(int64_t);
+    case FieldType::UINT64:
+      return sizeof(uint64_t);
     default:
       return 0;
   }
@@ -92,6 +96,12 @@ inline const char* ToString(const FieldType& type) {
       return "FLOAT32";
     case FieldType::FLOAT64:
       return "FLOAT64";
+    case FieldType::INT64:
+      return "INT64";
+    case FieldType::UINT64:
+      return "UINT64";
+
+    case FieldType::UNKNOWN:
     default:
       return "UNKNOWN";
   }
