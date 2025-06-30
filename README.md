@@ -124,12 +124,12 @@ If you keep the the quantization error low enough, it will not affect your resul
 
 Look at the specifications of your sensor and use that value as a reference.
 
-Considering that LiDArs accuracy is usually in the order of **+/- 1 cm** and that the resoultion used in Cloudini is in meters:
+Considering that LiDARs accuracy is usually in the order of **+/- 1 cm** and that the resolution used in Cloudini is in meters:
 
 - If the goal of the recorded pointcloud is to do visualization, use a resolution of **0.01 (1 cm)**.
-- If you want to record "raw data", a resolution of **0.001 (1mm)** will be more than enough.
-- If you are stubborn, and you don't believe a single word I said, use a resolution of **0.0001 (100 microns)**.
-  But you are being paranoid...
+- If you want to record "raw data", a resolution of **0.001 (1 mm)** is the perfect default value.
+- If you are stubborn and you don't believe a single word I said, you can go as low as **0.0001 (100 microns)** and still
+  see significant compression. But you are being paranoid...
 
 ### How does it perform, compared to Draco?
 
