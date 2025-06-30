@@ -59,7 +59,7 @@ There is a pre-compiled Linux [AppImage](https://appimage.org/) that can be down
 
 Alternatively, you can test the obtainable compression ratio in your browser here: https://cloudini.netlify.app/
 
-NOTE: your data will **not** be uploaded to the cloud. The applications runs 100% inside your browser.
+NOTE: your data will **not** be uploaded to the cloud. The application runs 100% inside your browser.
 
 [![cloudini_web.png](cloudini_web.png)](https://cloudini.netlify.app/)
 
@@ -111,14 +111,14 @@ For more information, see the [cloudini_ros/README.md](cloudini_ros/README.md)
 
 # Frequently Asked Questions
 
-### I want to record "raw data". Since Cloudini is "lossy", I think i should not use it...
+### I want to record "raw data". Since Cloudini is "lossy", I think I should not use it...
 
-I don't agree: you are working with noisy data in the first place.
+I disagree: you are working with noisy data in the first place.
 
-Furthermore, I am pretty sure that your pointcloud processing algorithm is applying some sort of Voxel-based downsampling much larger
+Furthermore, I am pretty sure that your pointcloud processing algorithm is applying some sort of Voxel-based downsampling larger
 than the quantization applied by this library.
 
-If you keep the the quantization error low enough, it will not affect your results in any meaningful way.
+If you keep the quantization error low enough, it will not affect your results in any meaningful way.
 
 ### So, which resolution do you recommend?
 
