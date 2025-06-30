@@ -11,3 +11,4 @@
 *.mcap
 /cloudini_lib/build*
 /build*
+/cloudini_web/node_modules
