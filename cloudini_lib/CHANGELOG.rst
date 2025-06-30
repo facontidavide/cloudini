@@ -2,8 +2,8 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.5.0 (2025-06-30)
+------------------
 * fix 64 bits types
 * don't create an encoder at each loop
 * add mcap cutter utility
