@@ -2,6 +2,16 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* fix 64 bits types
+* don't create an encoder at each loop
+* add mcap cutter utility
+* speedup in rosbag conversion
+* fix compilation (clang++ 20) (`#18 <https://github.com/facontidavide/cloudini/issues/18>`_)
+  Co-authored-by: Giuseppe Rizzi <giuseppe.rizzi@ascento.ch>
+* Contributors: Davide Faconti, Giuseppe Rizzi
+
 0.4.0 (2025-06-15)
 ------------------
 * downgrade MCAP for compatibility with ROS2 Jazzy
