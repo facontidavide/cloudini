@@ -40,6 +40,11 @@ class FieldEncoder {
   virtual size_t encode(const ConstBufferView& point_view, BufferView& output) = 0;
 
   virtual void reset() = 0;
+
+  // Flush any remaining buffered data. Default implementation does nothing.
+  virtual size_t flush(BufferView& /*output*/) {
+    return 0;
+  }
 };
 
 //------------------------------------------------------------------------------------------

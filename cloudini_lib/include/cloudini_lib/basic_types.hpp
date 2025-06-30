@@ -23,6 +23,9 @@ enum class FieldType : uint8_t {
 
   FLOAT32 = 7,
   FLOAT64 = 8,
+
+  INT64 = 9,
+  UINT64 = 10,
 };
 
 struct PointField {
@@ -38,6 +41,13 @@ struct PointField {
   // optionally used by non integer types, when encoding is lossy.
   // IMPORTANT: the maximum quantization error is equal to (0.5 * resolution)
   std::optional<float> resolution;
+
+  bool operator==(const PointField& other) const {
+    return name == other.name && offset == other.offset && type == other.type && resolution == other.resolution;
+  }
+  bool operator!=(const PointField& other) const {
+    return !(*this == other);
+  }
 };
 
 // If the value of PointField::offset is equal to this one, it means that the field was encoded, but we don't want to
