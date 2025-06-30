@@ -77,10 +77,8 @@ Now, I know that when you read the word "lossy" you may think about grainy JPEGS
 
 The encoder applies a quantization using a resolution provided by the user.
 
-Typical LiDARs have an accuracy/noise in the order of +/- 2 cm.
+Typical LiDARs have an accuracy/noise in the order of +/- 1 cm.
 Therefore, using a resolution of **1 mm** (+/- 0.5 mm max quantization error) is usually a very conservative option.
-
-But, if you are **really** paranoid, and decide to use a resolution of **100 microns**, you still achieve excellent compression ratios!
 
 It should also be noted that this two-step compression strategy has a
 negative overhead, i.e. it is actually **faster** than using LZ4 or ZSTD alone.
@@ -113,6 +111,26 @@ For more information, see the [cloudini_ros/README.md](cloudini_ros/README.md)
 
 # Frequently Asked Questions
 
+### I want to record "raw data". Since Cloudini is "lossy", I think i should not use it...
+
+I don't agree: you are working with noisy data in the first place.
+
+Furthermore, I am pretty sure that your pointcloud processing algorithm is applying some sort of Voxel-based downsampling much larger
+than the quantization applied by this library.
+
+If you keep the the quantization error low enough, it will not affect your results in any meaningful way.
+
+### So, which resolution do you recommend?
+
+Look at the specifications of your sensor and use that value as a reference.
+
+Considering that LiDArs accuracy is usually in the order of **+/- 1 cm** and that the resoultion used in Cloudini is in meters:
+
+- If the goal of the recorded pointcloud is to do visualization, use a resolution of **0.01 (1 cm)**.
+- If you want to record "raw data", a resolution of **0.001 (1mm)** will be more than enough.
+- If you are stubborn, and you don't believe a single word I said, use a resolution of **0.0001 (100 microns)**.
+  But you are being paranoid...
+
 ### How does it perform, compared to Draco?
 
 [Google Draco](https://github.com/google/draco) has two main encoding methods: SEQUENTIAL and KD_TREE.
@@ -123,6 +141,7 @@ of the points in the point cloud.
 Compared with the Draco sequential mode, Cloudini achieves approximately the same compression, but is considerably faster in
 my (currently limited) benchmark.
 
-### Does the decoder need to know if LZ4 or ZSTD was used?
+### Does the decoder need to know the parameters used while encoding?
 
-No, that information is stored in the header of the compressed data, and the decoder will automatically select the right library.
+No, that information is stored in the header of the compressed data, and the decoder will automatically select the right
+decompression algorithm.
