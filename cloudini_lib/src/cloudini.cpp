@@ -325,9 +325,33 @@ void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
     }
   };
 
-  decoders_.resize(info.fields.size());
-  for (size_t i = 0; i < info.fields.size(); ++i) {
-    decoders_[i] = create_decoder(info.fields[i]);
+  decoders_.clear();
+
+  // special case: first 3 or 4 fields are consecutive FLOAT32 fields
+  size_t start_index = 0;
+
+  if (info.encoding_opt == EncodingOptions::LOSSY) {
+    size_t floats_count = 0;
+    for (size_t i = 0; i < info.fields.size(); ++i) {
+      if (info.fields[i].type != FieldType::FLOAT32 || !info.fields[i].resolution.has_value()) {
+        break;
+      }
+      floats_count++;
+    }
+    if (floats_count == 3 || floats_count == 4) {
+      start_index = floats_count;
+      std::vector<FieldDecoderFloatN_Lossy::FieldData> field_data;
+      field_data.reserve(floats_count);
+      for (size_t i = 0; i < floats_count; ++i) {
+        field_data.emplace_back(info.fields[i].offset, info.fields[i].resolution.value());
+      }
+      decoders_.push_back(std::make_unique<FieldDecoderFloatN_Lossy>(field_data));
+    }
+  }
+
+  // do remaining fields
+  for (size_t index = start_index; index < info.fields.size(); ++index) {
+    decoders_.push_back(create_decoder(info.fields[index]));
   }
 }
 

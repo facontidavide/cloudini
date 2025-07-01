@@ -298,3 +298,16 @@ inline Vector4i cast_vector4f_to_vector4i(const Vector4f& float_vec) {
       static_cast<int32_t>(std::round(float_vec.data.v[3])));
 #endif
 }
+
+inline Vector4f cast_vector4i_to_vector4f(const Vector4i& intint_vect) {
+#if defined(__SSE4_1__)  // Requires SSE2
+  // Converts four 32-bit signed integers (__m128i) to four floats (__m128)
+  return _mm_cvtepi32_ps(intint_vect.data.m);
+#else
+  return Vector4f(
+      static_cast<float>(intint_vect.data.v[0]),  //
+      static_cast<float>(intint_vect.data.v[1]),  //
+      static_cast<float>(intint_vect.data.v[2]),  //
+      static_cast<float>(intint_vect.data.v[3]));
+#endif
+}
