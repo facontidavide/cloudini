@@ -51,8 +51,7 @@ void FieldDecoderFloatN_Lossy::decode(ConstBufferView& input, BufferView dest_po
   // Store results, handling NaN cases
   for (size_t i = 0; i < fields_count_; ++i) {
     if (offset_[i] != kDecodeButSkipStore) {
-      float value_to_store = float_vect[i];
-      memcpy(dest_point_view.data() + offset_[i], &value_to_store, sizeof(float));
+      memcpy(dest_point_view.data() + offset_[i], &float_vect[i], sizeof(float));
     }
   }
 

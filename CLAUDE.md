@@ -18,8 +18,8 @@ The project consists of three main components:
 
 ### Core Library (Standalone)
 ```bash
-cmake -B build -S cloudini_lib -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel
+cmake -B build_release -S cloudini_lib -DCMAKE_BUILD_TYPE=Release
+cmake --build build_release --parallel
 ```
 
 ### Debug Build with Sanitizers
@@ -52,16 +52,18 @@ npm run build  # Production build
 
 ```bash
 # Core library tests
-cd build && ctest
-
-# ROS integration tests (requires ROS environment)
-colcon test --packages-select cloudini_lib cloudini_ros
+cd build_debug && ctest
 
 # Run specific benchmark
-./build/benchmarks/pcd_benchmark
+./build_release/benchmarks/pcd_benchmark
+```
 
-# ROS bag benchmark (requires test data)
-./build_jazzy/test/rosbag_benchmark path/to/rosbag.mcap
+There might also be a subfoldr called `DATA`that contains .mcap files (rosbags).
+
+You can use that to benchmark "cloudini_rosbag_converter" using the command
+
+```
+./build_release/tools/cloudini_rosbag_converter -c -y -f DATA/<name_of_the_file>
 ```
 
 ## Key Dependencies
