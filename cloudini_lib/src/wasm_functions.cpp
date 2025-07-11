@@ -28,42 +28,30 @@ size_t ComputeCompressedSize(uintptr_t dataPtr, size_t size) {
 }
 
 size_t DecompressPointCloudBuffer(uintptr_t compressedPtr, size_t compressedSize, uintptr_t outputPtr) {
-  EM_ASM({
-    console.log('Compressed point cloud with size: ' + $0);
-  }, compressedPtr);
-
-  if (!compressedPtr || !compressedSize){
-    EM_ASM({
-      console.error('Failed to compress point cloud. The input cloud is empty.');
-    });
-    return 0;
-  }
-
   const uint8_t* compressed_data = reinterpret_cast<const uint8_t*>(compressedPtr);
-  Cloudini::ConstBufferView input_view(compressed_data, compressedSize);
 
+  Cloudini::ConstBufferView raw_dds_msg(compressed_data, compressedSize);
+  auto compressed_cloud = Cloudini::readCompressedPointCloud2Message(raw_dds_msg);
+
+  
   Cloudini::EncodingInfo info;
   try {
-    info = Cloudini::DecodeHeader(input_view);
+    info = Cloudini::DecodeHeader(compressed_cloud. compressed_data);
   } catch (...) {
     EM_ASM({
       console.error('Failed to decode header.');
     });
     return 0;
   }
-  size_t decompressed_size = info.width * info.height * info.point_step;
-  if (!outputPtr) {
-    EM_ASM({
-      console.error('Failed to decompress point cloud. The output pointer is empty.');
-    });
-    return 0;
-  }
 
+  size_t decompressed_size = info.width * info.height * info.point_step;
   uint8_t* output_data = reinterpret_cast<uint8_t*>(outputPtr);
   Cloudini::BufferView output_view(output_data, decompressed_size);
+
   try {
     Cloudini::PointcloudDecoder decoder;
-    decoder.decode(info, input_view, output_view);
+    Cloudini::ConstBufferView compressed_view(compressed_cloud.compressed_data.data(), compressed_cloud.compressed_data.size());
+    decoder.decode(info, compressed_view, output_view);
   } catch (...) {
     EM_ASM({
       console.error('Failed to decompress point cloud.');
@@ -71,4 +59,11 @@ size_t DecompressPointCloudBuffer(uintptr_t compressedPtr, size_t compressedSize
     return 0;
   }
   return decompressed_size;
+}
+
+size_t GetDecompressedSize(uintptr_t compressedPtr, size_t compressedSize) {
+  const uint8_t* compressed_data = reinterpret_cast<const uint8_t*>(compressedPtr);
+  Cloudini::ConstBufferView raw_dds_msg(compressed_data, compressedSize);
+  auto compressed_cloud = Cloudini::readCompressedPointCloud2Message(raw_dds_msg);
+  return compressed_cloud.height * compressed_cloud.width * compressed_cloud.point_step;
 }

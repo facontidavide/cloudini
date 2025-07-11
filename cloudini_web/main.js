@@ -138,36 +138,52 @@ function compressPointCloudBuffer(bufferData){
 }
 
 function decompressPointCloudBuffer(bufferData) {
-    const { _malloc, _free, HEAPU8, _DecompressPointCloudBuffer } = wasmModule;
-    const bufferSize = bufferData.byteLength;
-  
-    const dataPtr = _malloc(bufferSize);
-    HEAPU8.set(bufferData, dataPtr);
-  
-    const SAFETY_FACTOR = 8;
-    const guessSize = bufferSize * SAFETY_FACTOR;
-    const outPtr = _malloc(guessSize);
-  
-    const decompressedSize = _DecompressPointCloudBuffer(dataPtr, bufferSize, outPtr);
-    if (decompressedSize === 0) {
-      _free(dataPtr);
-      _free(outPtr);
-      throw new Error('Decompression failed or input was empty');
+    let inputDataPtr = null;
+    let outputDataPtr = null;
+    try{
+        const bufferSize = bufferData.byteLength;
+        console.info("Decompressing point cloud buffer of size:", bufferSize);
+
+        // Check if data is too large for WASM memory
+        if (wasmModule.HEAPU8) {
+            const maxAllowedSize = wasmModule.HEAPU8.length / 4;
+            if (bufferSize > maxAllowedSize) {
+                throw new Error(`Message too large (${bufferSize} bytes > ${maxAllowedSize} bytes)`);
+            }
+        }
+
+
+        // Allocate memory for input data
+        inputDataPtr = wasmModule._malloc(bufferSize);
+        if (!inputDataPtr) {
+            throw new Error('Failed to allocate memory for input data');
+        }
+        
+        const wasmInputView = new Uint8Array(wasmModule.HEAPU8.buffer, inputDataPtr, bufferSize);
+        wasmInputView.set(bufferData);
+
+        const decompressedSize = wasmModule._GetDecompressedSize(inputDataPtr, bufferSize);
+        console.info("Decompressed size:", decompressedSize);
+            
+        outputDataPtr = wasmModule._malloc(decompressedSize); // allow for some extra space
+        if (!outputDataPtr) {
+            throw new Error('Failed to allocate memory for output data');
+        }
+
+        const actualSize = wasmModule._DecompressPointCloudBuffer(inputDataPtr, bufferSize, outputDataPtr);
+        if (actualSize === 0) {
+            throw new Error('Decompression failed - function returned 0');
+        }
+
+        // Copy the result to a JavaScript array
+        const result = new Uint8Array(wasmModule.HEAPU8.buffer, outputDataPtr, actualSize);
+        const decompressed = new Uint8Array(result);
+        
+        return actualSize;
+    } finally {
+        if (inputDataPtr) wasmModule._free(inputDataPtr);
+        if (outputDataPtr) wasmModule._free(outputDataPtr);
     }
-    if (decompressedSize > guessSize) {
-      _free(dataPtr);
-      _free(outPtr);
-      throw new Error(
-        `Decompressed data (${decompressedSize} bytes) exceeded max allocated size of (${guessSize}).`
-      );
-    }
-  
-    const result = HEAPU8.subarray(outPtr, outPtr + decompressedSize);
-    const decompressed = new Uint8Array(result);
-  
-    _free(dataPtr);
-    _free(outPtr);
-    return decompressed;
 }
 
 async function analyzeFile(reader, file) {
@@ -185,7 +201,8 @@ async function analyzeFile(reader, file) {
     }
 
     const targetSchema = compress ? 'sensor_msgs/msg/PointCloud2' : 'point_cloud_interfaces/msg/CompressedPointCloud2';
-    
+    console.log("Searching for schema:", targetSchema);
+
     let foundChannels = [];
     let totalChannels = 0;
     const allSchemas = new Set();
@@ -215,7 +232,7 @@ async function analyzeFile(reader, file) {
 
         if (schema) {
             allSchemas.add(schema.name);
-
+            console.log("Found schema:", JSON.stringify(schema));
             if (schema.name === targetSchema) {
                 foundChannels.push({
                     channelId,
@@ -227,7 +244,8 @@ async function analyzeFile(reader, file) {
         }
     }
 
-    status.innerHTML = `Processing ${targetSchema.split('/').pop()} channels inside the rosbag...`;
+    const schemaName = targetSchema.split('/').pop();
+    status.innerHTML = `Processing ${schemaName} channels inside the rosbag...`;
 
     if (foundChannels.length > 0) {
         // Process messages for each found channel
@@ -250,8 +268,6 @@ async function analyzeFile(reader, file) {
 
                 // Call WASM function
                 try {
-                    // Create a Uint8Array view over the message data
-                    const dataView = new Uint8Array(message.data);
 
                     // Check if HEAPU8 is available for memory size checking
                     if (wasmModule.HEAPU8) {
@@ -265,10 +281,17 @@ async function analyzeFile(reader, file) {
                     }
 
                     if (compress){
+                        // Create a Uint8Array view over the message data
+                        const dataView = new Uint8Array(message.data);
                         totalFinalSize += compressPointCloudBuffer(dataView);
                     } else {
-                        decompressedData = decompressPointCloudBuffer(dataView);
-                        totalFinalSize += decompressedData.byteLength
+                        try{
+                            const dataView = new Uint8Array(message.data);
+                            totalFinalSize += decompressPointCloudBuffer(dataView)
+                        } catch (error) {
+                            console.error('Error decompressing point cloud:', error);
+                            continue;
+                        }
                     }
 
                 } catch (error) {
@@ -294,12 +317,12 @@ async function analyzeFile(reader, file) {
         const grandTotalSize = channelResults.reduce((sum, ch) => sum + ch.totalSize, 0);
         const grandTotalFinal = channelResults.reduce((sum, ch) => sum + ch.totalFinalSize, 0);
         const ratio = grandTotalSize > 0 ? (grandTotalFinal / grandTotalSize).toFixed(3) : 0;
-        const grandCompressionRatio = compress ? ratio : 1.0 / ratio;
+        const grandCompressionRatio = (ratio * 1.0).toFixed(3);
 
         results.innerHTML = `
             <div class="results-container">
                 <h3 class="results-title">
-                    ✅ Found ${foundChannels.length} PointCloud2 Channel${foundChannels.length !== 1 ? 's' : ''}
+                    ✅ Found ${foundChannels.length} ${schemaName} Channel${foundChannels.length !== 1 ? 's' : ''}
                 </h3>
                 <div class="channels-grid">
                     ${channelResults.map(ch =>
@@ -348,7 +371,7 @@ async function analyzeFile(reader, file) {
             <div class="no-results">
                 <div class="no-results-card">
                     <div class="no-results-icon">🔍</div>
-                    <h3 class="no-results-title">No PointCloud2 Channels Found</h3>
+                    <h3 class="no-results-title">No ${schemaName} Channels Found</h3>
                     <p class="no-results-text">This MCAP file doesn't contain any sensor_msgs/msg/PointCloud2 data.</p>
                 </div>
 

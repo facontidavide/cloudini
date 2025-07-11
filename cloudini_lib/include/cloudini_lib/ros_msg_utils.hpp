@@ -43,6 +43,20 @@ struct RosPointCloud2 {
   bool is_dense = true;  // whether all points are valid
 };
 
+// This structure mimics the point_cloud_interfaces/msg/CompressedPointCloud2 message fields
+struct RosCompressedPointCloud2 {
+  nanocdr::CdrHeader cdr_header;
+  RosHeader ros_header;            // ROS header
+  uint32_t height = 1;             // default to unorganized point cloud
+  uint32_t width = 0;              // number of points when height == 1
+  std::vector<PointField> fields;  // point fields
+  uint32_t point_step = 0;         // size of a single point in bytes
+  uint32_t row_step = 0;           // size of a single row in bytes (not used)
+  ConstBufferView compressed_data;
+  bool is_dense = true;  // whether all points are valid
+  std::string format;    // format of the compressed data
+};
+
 // Resolutions to be applied to the fields in RosPointCloud2 or EncodingInfo.
 // Note that a resolution is 0, the entire field will be removed
 using ResolutionProfile = std::map<std::string, float>;
@@ -62,6 +76,8 @@ void applyResolutionProfile(
 EncodingInfo toEncodingInfo(const RosPointCloud2& pc_info);
 
 RosPointCloud2 readPointCloud2Message(ConstBufferView raw_dds_msg);
+
+RosCompressedPointCloud2 readCompressedPointCloud2Message(ConstBufferView raw_dds_msg);
 
 //------------------------------------------------------------------------
 

@@ -15,5 +15,5 @@ extern "C" {
 
 WASM_EXPORT size_t ComputeCompressedSize(uintptr_t dataPtr, size_t size);
 WASM_EXPORT size_t DecompressPointCloudBuffer(uintptr_t compressedPtr, size_t compressedSize, uintptr_t outputPtr);
-
+WASM_EXPORT size_t GetDecompressedSize(uintptr_t compressedPtr, size_t compressedSize);
 }

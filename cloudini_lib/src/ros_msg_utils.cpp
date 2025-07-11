@@ -82,6 +82,51 @@ RosPointCloud2 readPointCloud2Message(ConstBufferView raw_dds_msg) {
   return result;
 }
 
+RosCompressedPointCloud2 readCompressedPointCloud2Message(ConstBufferView raw_dds_msg) {
+  nanocdr::Decoder cdr(raw_dds_msg);
+
+  RosCompressedPointCloud2 result;
+
+  //----- read the header -----
+  cdr.decode(result.ros_header.stamp_sec);
+  cdr.decode(result.ros_header.stamp_nsec);
+  cdr.decode(result.ros_header.frame_id);
+
+  //----- pointcloud info -----
+  cdr.decode(result.height);
+  cdr.decode(result.width);
+
+  //----- fields -----
+  uint32_t num_fields = 0;
+  cdr.decode(num_fields);
+
+  for (uint32_t i = 0; i < num_fields; ++i) {
+    PointField field;
+    cdr.decode(field.name);
+    cdr.decode(field.offset);
+    uint8_t type = 0;
+    cdr.decode(type);
+    field.type = static_cast<FieldType>(type);
+
+    uint32_t count = 0;  // not used
+    cdr.decode(count);
+
+    result.fields.push_back(std::move(field));
+  }
+  bool is_bigendian = false;  // not used
+  cdr.decode(is_bigendian);
+
+  cdr.decode(result.point_step);
+  cdr.decode(result.row_step);
+
+  cdr.decode(result.compressed_data);
+  cdr.decode(result.is_dense);
+  cdr.decode(result.format);
+
+  result.cdr_header = cdr.header();
+  return result;
+}
+
 void writePointCloud2Header(nanocdr::Encoder& encoder, const RosPointCloud2& pc_info) {
   //----- write the header -----
   encoder.encode(pc_info.ros_header.stamp_sec);   // header_stamp_sec
