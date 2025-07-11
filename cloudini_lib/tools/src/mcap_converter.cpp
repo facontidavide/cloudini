@@ -89,7 +89,7 @@ void McapConverter::duplicateSchemasAndChannels(
     }
     if (!encoding && schema_name == compressed_schema_name) {
       schema_name = pointcloud_schema_name;
-      copy_string_to_vector(pointcloud_schema_name, schema_data);
+      copy_string_to_vector(pointcloud_schema_data, schema_data);
     }
 
     mcap::Schema new_schema(schema_name, schema_ptr->encoding, schema_data);
