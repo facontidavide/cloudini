@@ -147,7 +147,7 @@ else()
   )
 
   set_target_properties(cloudini_wasm PROPERTIES
-    LINK_FLAGS "-sNO_DISABLE_EXCEPTION_CATCHING -sASSERTIONS -s EXPORTED_FUNCTIONS=['_ComputeCompressedSize','_DecompressPointCloudBuffer','_GetDecompressedSize','_malloc','_free'] -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8'] -s MODULARIZE=1 -s EXPORT_NAME='CloudiniModule' -s INITIAL_MEMORY=67108864 -s MAXIMUM_MEMORY=134217728 -s ALLOW_MEMORY_GROWTH=1"
+    LINK_FLAGS "-s SINGLE_FILE=1 -sNO_DISABLE_EXCEPTION_CATCHING -sASSERTIONS -s EXPORTED_FUNCTIONS=['_ComputeCompressedSize','_DecodePointCloudBuffer','_DecodePointCloudMessage','_GetDecompressedSize','_malloc','_free'] -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8'] -s MODULARIZE=1 -s EXPORT_NAME='CloudiniModule' -s INITIAL_MEMORY=67108864 -s MAXIMUM_MEMORY=134217728 -s ALLOW_MEMORY_GROWTH=1"
   )
 
 endif(NOT EMSCRIPTEN)

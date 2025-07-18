@@ -13,7 +13,8 @@
 
 extern "C" {
 
-WASM_EXPORT size_t ComputeCompressedSize(uintptr_t dataPtr, size_t size);
-WASM_EXPORT size_t DecompressPointCloudBuffer(uintptr_t compressedPtr, size_t compressedSize, uintptr_t outputPtr);
-WASM_EXPORT size_t GetDecompressedSize(uintptr_t compressedPtr, size_t compressedSize);
+WASM_EXPORT size_t ComputeCompressedSize(uintptr_t data_ptr, size_t size);
+WASM_EXPORT size_t DecodePointCloudMessage(uintptr_t msg_ptr, size_t msg_size, uintptr_t output_ptr);
+WASM_EXPORT size_t DecodePointCloudBuffer(uintptr_t encoded_ptr, size_t encoded_size, uintptr_t output_ptr);
+WASM_EXPORT size_t GetDecompressedSize(uintptr_t encoded_ptr, size_t encoded_size);
 }
