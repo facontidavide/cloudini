@@ -170,7 +170,7 @@ function decompressPointCloudBuffer(bufferData) {
             throw new Error('Failed to allocate memory for output data');
         }
 
-        const actualSize = wasmModule._DecompressPointCloudBuffer(inputDataPtr, bufferSize, outputDataPtr);
+        const actualSize = wasmModule._DecodePointCloudMessage(inputDataPtr, bufferSize, outputDataPtr);
         if (actualSize === 0) {
             throw new Error('Decompression failed - function returned 0');
         }
