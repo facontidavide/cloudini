@@ -92,12 +92,24 @@ To avoid downloading them again when your rebuild your project, I suggest settin
 To build the main library (`cloudini_lib`)
 
 ```
-cmake -B build -S cloudini_lib -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel
+cmake -B build/release -S cloudini_lib -DCMAKE_BUILD_TYPE=Release
+cmake --build build/release --parallel
 ```
 
-To compile it with ROS, just pull this repo into your **ws/src** folder and execute `colcon build` as usual.
+## Compiling the WASM module
 
+Cloduni in your web browser! The following instructions assume that you have
+[Emscripten installed](https://emscripten.org/docs/getting_started/downloads.html).
+
+```
+emcmake cmake -B build/wasm -S ./cloudini_lib -DCLOUDINI_BUILD_TOOLS=OFF
+cd build/wasm
+emmake make
+```
+
+## ROS compilation
+
+To compile it with ROS, just pull this repo into your **ws/src** folder and execute `colcon build` as usual.
 
 # ROS specific utilities
 
