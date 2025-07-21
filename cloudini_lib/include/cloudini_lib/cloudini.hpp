@@ -65,9 +65,25 @@ struct EncodingInfo {
 
   // the second step is a general purpose compression
   CompressionOption compression_opt = CompressionOption::ZSTD;
+
+  bool operator==(const EncodingInfo& other) const {
+    if (fields.size() != other.fields.size()) {
+      return false;
+    }
+    for (size_t i = 0; i < fields.size(); ++i) {
+      if (fields[i] != other.fields[i]) {
+        return false;
+      }
+    }
+    return width == other.width && height == other.height && point_step == other.point_step &&
+           encoding_opt == other.encoding_opt && compression_opt == other.compression_opt;
+  }
+  bool operator!=(const EncodingInfo& other) const {
+    return !(*this == other);
+  }
 };
 
-constexpr const char* kMagicHeader = "CLOUDINI_V01";
+constexpr const char* kMagicHeader = "CLOUDINI_V02";
 
 // pre-compute the size of the header, to allocate memory
 size_t ComputeHeaderSize(const std::vector<PointField>& fields);
@@ -112,6 +128,10 @@ class PointcloudEncoder {
 
   // version that will not allocate any memory in output. Use it at your own risk
   size_t encode(ConstBufferView cloud_data, BufferView& output);
+
+  const EncodingInfo& getEncodingInfo() const {
+    return info_;
+  }
 
  private:
   EncodingInfo info_;

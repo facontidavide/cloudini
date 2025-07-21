@@ -171,7 +171,7 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
         if (info_.encoding_opt == EncodingOptions::LOSSY && field.resolution.has_value()) {
           encoders_.push_back(std::make_unique<FieldEncoderFloat_Lossy<double>>(offset, *field.resolution));
         } else {
-          encoders_.push_back(std::make_unique<FieldEncoderCopy>(offset, field.type));
+          encoders_.push_back(std::make_unique<FieldEncoderFloat_XOR<double>>(offset));
         }
       } break;
 
@@ -186,6 +186,12 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
         break;
       case FieldType::UINT32:
         encoders_.push_back(std::make_unique<FieldEncoderInt<uint32_t>>(offset));
+        break;
+      case FieldType::UINT64:
+        encoders_.push_back(std::make_unique<FieldEncoderInt<uint64_t>>(offset));
+        break;
+      case FieldType::INT64:
+        encoders_.push_back(std::make_unique<FieldEncoderInt<int64_t>>(offset));
         break;
       case FieldType::INT8:
       case FieldType::UINT8:
@@ -231,6 +237,11 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output_
       cloud_data.trim_front(info_.point_step);
     }
 
+    // Flush any remaining buffered data from encoders
+    for (auto& encoder : encoders_) {
+      serialized_size += encoder->flush(encoding_view);
+    }
+
     // if there is no 2nd stage, we have done already
     if (info_.compression_opt == CompressionOption::NONE) {
       return serialized_size + header_.size();
@@ -257,9 +268,9 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output_
     case CompressionOption::ZSTD: {
       size_t const max_compressed_size = ZSTD_compressBound(src_size);
       if (dest_capacity < max_compressed_size) {
-        throw std::runtime_error("Destination buffer too small for ZSTD compression. Required: " +
-                               std::to_string(max_compressed_size) +
-                               ", Available: " + std::to_string(dest_capacity));
+        throw std::runtime_error(
+            "Destination buffer too small for ZSTD compression. Required: " + std::to_string(max_compressed_size) +
+            ", Available: " + std::to_string(dest_capacity));
       }
       size_t compressed_size = ZSTD_compress(dest_ptr, dest_capacity, src_ptr, src_size, 1);
       if (ZSTD_isError(compressed_size)) {
@@ -291,7 +302,7 @@ void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
         if (field.resolution) {
           return std::make_unique<FieldDecoderFloat_Lossy<double>>(offset, *field.resolution);
         } else {
-          return std::make_unique<FieldDecoderCopy>(offset, field.type);
+          return std::make_unique<FieldDecoderFloat_XOR<double>>(offset);
         }
         break;
       case FieldType::INT16:
@@ -302,6 +313,10 @@ void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
         return std::make_unique<FieldDecoderInt<uint16_t>>(offset);
       case FieldType::UINT32:
         return std::make_unique<FieldDecoderInt<uint32_t>>(offset);
+      case FieldType::UINT64:
+        return std::make_unique<FieldDecoderInt<uint64_t>>(offset);
+      case FieldType::INT64:
+        return std::make_unique<FieldDecoderInt<int64_t>>(offset);
       case FieldType::INT8:
       case FieldType::UINT8:
         return std::make_unique<FieldDecoderCopy>(field.offset, field.type);
@@ -310,9 +325,33 @@ void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
     }
   };
 
-  decoders_.resize(info.fields.size());
-  for (size_t i = 0; i < info.fields.size(); ++i) {
-    decoders_[i] = create_decoder(info.fields[i]);
+  decoders_.clear();
+
+  // special case: first 3 or 4 fields are consecutive FLOAT32 fields
+  size_t start_index = 0;
+
+  if (info.encoding_opt == EncodingOptions::LOSSY) {
+    size_t floats_count = 0;
+    for (size_t i = 0; i < info.fields.size(); ++i) {
+      if (info.fields[i].type != FieldType::FLOAT32 || !info.fields[i].resolution.has_value()) {
+        break;
+      }
+      floats_count++;
+    }
+    if (floats_count == 3 || floats_count == 4) {
+      start_index = floats_count;
+      std::vector<FieldDecoderFloatN_Lossy::FieldData> field_data;
+      field_data.reserve(floats_count);
+      for (size_t i = 0; i < floats_count; ++i) {
+        field_data.emplace_back(info.fields[i].offset, info.fields[i].resolution.value());
+      }
+      decoders_.push_back(std::make_unique<FieldDecoderFloatN_Lossy>(field_data));
+    }
+  }
+
+  // do remaining fields
+  for (size_t index = start_index; index < info.fields.size(); ++index) {
+    decoders_.push_back(create_decoder(info.fields[index]));
   }
 }
 

@@ -118,19 +118,23 @@ class FieldDecoderFloat_Lossy : public FieldDecoder {
 
 //------------------------------------------------------------------------------------------
 // Specialization for floating point types and lossless compression
+template <typename FloatType>
 class FieldDecoderFloat_XOR : public FieldDecoder {
  public:
-  FieldDecoderFloat_XOR(size_t field_offset) : offset_(field_offset) {}
+  FieldDecoderFloat_XOR(size_t field_offset) : offset_(field_offset) {
+    static_assert(std::is_floating_point<FloatType>::value, "FieldDecoderFloat_XOR requires a floating point type");
+  }
 
   void decode(ConstBufferView& input, BufferView dest_point_view) override;
 
   void reset() override {
-    prev_value_bits_ = 0;
+    prev_bits_ = 0;
   }
 
  private:
-  size_t offset_ = 0;
-  uint32_t prev_value_bits_ = 0;
+  using IntType = std::conditional_t<std::is_same<FloatType, float>::value, uint32_t, uint64_t>;
+  size_t offset_;
+  IntType prev_bits_ = 0;
 };
 
 //------------------------------------------------------------------------------------------
@@ -184,4 +188,19 @@ inline void FieldDecoderFloat_Lossy<FloatType>::decode(ConstBufferView& input, B
   input.trim_front(count);
 }
 
+template <typename FloatType>
+inline void FieldDecoderFloat_XOR<FloatType>::decode(ConstBufferView& input, BufferView dest_point_view) {
+  IntType residual = 0;
+  memcpy(&residual, input.data(), sizeof(IntType));
+  input.trim_front(sizeof(IntType));
+
+  // XOR the residual with the previous bits to recover the current value
+  const IntType current_bits = residual ^ prev_bits_;
+  prev_bits_ = current_bits;
+
+  // Convert back to float and store in destination
+  if (offset_ != kDecodeButSkipStore) {
+    memcpy(dest_point_view.data() + offset_, &current_bits, sizeof(FloatType));
+  }
+}
 }  // namespace Cloudini

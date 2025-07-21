@@ -23,6 +23,9 @@ enum class FieldType : uint8_t {
 
   FLOAT32 = 7,
   FLOAT64 = 8,
+
+  INT64 = 9,
+  UINT64 = 10,
 };
 
 struct PointField {
@@ -38,6 +41,13 @@ struct PointField {
   // optionally used by non integer types, when encoding is lossy.
   // IMPORTANT: the maximum quantization error is equal to (0.5 * resolution)
   std::optional<float> resolution;
+
+  bool operator==(const PointField& other) const {
+    return name == other.name && offset == other.offset && type == other.type && resolution == other.resolution;
+  }
+  bool operator!=(const PointField& other) const {
+    return !(*this == other);
+  }
 };
 
 // If the value of PointField::offset is equal to this one, it means that the field was encoded, but we don't want to
@@ -56,9 +66,13 @@ inline int constexpr SizeOf(const FieldType& type) {
     case FieldType::UINT32:
       return sizeof(uint32_t);
     case FieldType::FLOAT32:
-      return 4;
+      return sizeof(float);
     case FieldType::FLOAT64:
-      return 8;
+      return sizeof(double);
+    case FieldType::INT64:
+      return sizeof(int64_t);
+    case FieldType::UINT64:
+      return sizeof(uint64_t);
     default:
       return 0;
   }
@@ -82,6 +96,12 @@ inline const char* ToString(const FieldType& type) {
       return "FLOAT32";
     case FieldType::FLOAT64:
       return "FLOAT64";
+    case FieldType::INT64:
+      return "INT64";
+    case FieldType::UINT64:
+      return "UINT64";
+
+    case FieldType::UNKNOWN:
     default:
       return "UNKNOWN";
   }

@@ -3,7 +3,7 @@ if(NOT TARGET mcap)
     CPMAddPackage(
         NAME mcap
         GITHUB_REPOSITORY foxglove/mcap
-        GIT_TAG releases/cpp/v1.3.0
+        GIT_TAG releases/cpp/v1.3.1
         DOWNLOAD_ONLY YES
     )
     # mcap has no CMake support, so we create our own target
@@ -41,6 +41,18 @@ add_executable(cloudini_rosbag_converter
 target_link_libraries(cloudini_rosbag_converter
   PRIVATE
    mcap_converter
+   cxxopts
+)
+
+add_executable(mcap_cutter
+ src/mcap_cutter.cpp)
+
+target_link_libraries(mcap_cutter
+  PRIVATE
+   cloudini_lib
+   ${LZ4_LIBRARY}
+   ${ZSTD_LIBRARY}
+   mcap::mcap
    cxxopts
 )
 

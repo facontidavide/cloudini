@@ -89,7 +89,7 @@ void McapConverter::duplicateSchemasAndChannels(
     }
     if (!encoding && schema_name == compressed_schema_name) {
       schema_name = pointcloud_schema_name;
-      copy_string_to_vector(pointcloud_schema_name, schema_data);
+      copy_string_to_vector(pointcloud_schema_data, schema_data);
     }
 
     mcap::Schema new_schema(schema_name, schema_ptr->encoding, schema_data);
@@ -164,6 +164,8 @@ void McapConverter::encodePointClouds(
   std::vector<uint8_t> compressed_cloud;
   std::vector<uint8_t> compressed_dds_msg;
 
+  std::unordered_map<mcap::ChannelId, std::unique_ptr<Cloudini::PointcloudEncoder>> pc_encoders;
+
   for (const auto& msg : reader_->readMessages(problem, reader_options)) {
     mcap::Message new_msg = msg.message;
     new_msg.channelId = old_to_new_channel_id_.at(msg.channel->id);
@@ -196,9 +198,14 @@ void McapConverter::encodePointClouds(
       encoding_info.compression_opt = Cloudini::CompressionOption::NONE;
     }
 
+    auto& pc_encoder = pc_encoders[new_msg.channelId];
+    if (!pc_encoder || pc_encoder->getEncodingInfo() != encoding_info) {
+      // create a new encoder with the new encoding info
+      pc_encoder = std::make_unique<Cloudini::PointcloudEncoder>(encoding_info);
+    }
+
     // Start encoding the pointcloud data[]
-    Cloudini::PointcloudEncoder pc_encoder(encoding_info);
-    auto new_size = pc_encoder.encode(pc_info.data, compressed_cloud);
+    auto new_size = pc_encoder->encode(pc_info.data, compressed_cloud);
     compressed_cloud.resize(new_size);
 
     // substitute the data view
