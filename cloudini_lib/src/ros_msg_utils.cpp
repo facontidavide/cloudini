@@ -38,11 +38,8 @@ namespace Cloudini {
 //     uint8  datatype
 //     uint32 count
 
-RosPointCloud2 readPointCloud2Message(ConstBufferView raw_dds_msg) {
-  nanocdr::Decoder cdr(raw_dds_msg);
-
-  RosPointCloud2 result;
-
+template <typename CloudType>
+void readPointCloud2MessageCommon(nanocdr::Decoder& cdr, CloudType& result) {
   //----- read the header -----
   cdr.decode(result.ros_header.stamp_sec);
   cdr.decode(result.ros_header.stamp_nsec);
@@ -69,14 +66,36 @@ RosPointCloud2 readPointCloud2Message(ConstBufferView raw_dds_msg) {
 
     result.fields.push_back(std::move(field));
   }
+
   bool is_bigendian = false;  // not used
   cdr.decode(is_bigendian);
 
   cdr.decode(result.point_step);
   cdr.decode(result.row_step);
+}
 
+RosPointCloud2 readPointCloud2Message(ConstBufferView raw_dds_msg) {
+  RosPointCloud2 result;
+  nanocdr::Decoder cdr(raw_dds_msg);
+  readPointCloud2MessageCommon(cdr, result);
+
+  // remaining fields
   cdr.decode(result.data);
   cdr.decode(result.is_dense);
+
+  result.cdr_header = cdr.header();
+  return result;
+}
+
+RosCompressedPointCloud2 readCompressedPointCloud2Message(ConstBufferView raw_dds_msg) {
+  RosCompressedPointCloud2 result;
+  nanocdr::Decoder cdr(raw_dds_msg);
+  readPointCloud2MessageCommon(cdr, result);
+
+  // remaining fields
+  cdr.decode(result.compressed_data);
+  cdr.decode(result.is_dense);
+  cdr.decode(result.format);
 
   result.cdr_header = cdr.header();
   return result;

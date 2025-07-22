@@ -96,17 +96,6 @@ cmake -B build/release -S cloudini_lib -DCMAKE_BUILD_TYPE=Release
 cmake --build build/release --parallel
 ```
 
-## Compiling the WASM module
-
-Cloduni in your web browser! The following instructions assume that you have
-[Emscripten installed](https://emscripten.org/docs/getting_started/downloads.html).
-
-```
-emcmake cmake -B build/wasm -S ./cloudini_lib -DCLOUDINI_BUILD_TOOLS=OFF
-cd build/wasm
-emmake make
-```
-
 ## ROS compilation
 
 To compile it with ROS, just pull this repo into your **ws/src** folder and execute `colcon build` as usual.
@@ -120,6 +109,27 @@ For more information, see the [cloudini_ros/README.md](cloudini_ros/README.md)
 - **cloudini_topic_converter**: a node that subscribes to a compressed `point_cloud_interfaces/CompressedPointCloud2` and publishes a `sensor_msgs/PointCloud2`.
 
 - **cloudini_rosbag_converter**: a command line tool that, given a rosbag (limited to MCAP format), converts all `sensor_msgs/PointCloud2` topics into compressed `point_cloud_interfaces/CompressedPointCloud2` of vice-versa.
+
+## Compiling the WASM module
+
+Cloduni in your web browser! The following instructions assume that you have
+[Emscripten installed](https://emscripten.org/docs/getting_started/downloads.html).
+
+```
+emcmake cmake -B build/wasm -S ./cloudini_lib -DCLOUDINI_BUILD_TOOLS=OFF
+cd build/wasm
+emmake make
+```
+
+To test the **cloudini_web** move back to the `cloudini`main folder and do:
+
+```
+cp -r cloudini_web build/web_deploy
+cp build/wasm/cloudini_wasm.js build/web_deploy/public/
+cd build/web_deploy
+npm install
+npm run dev
+```
 
 # Frequently Asked Questions
 

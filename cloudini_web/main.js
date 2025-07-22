@@ -184,15 +184,16 @@ async function analyzeFile(reader, file) {
                         const wasmView = new Uint8Array(wasmModule.HEAPU8.buffer, dataPtr, dataSize);
                         wasmView.set(dataView);
 
-                        compressedSize = wasmModule._ComputeCompressedSize(dataPtr, dataSize);
+                        // Use the correct WASM function name with resolution parameter (1mm = 0.001)
+                        compressedSize = wasmModule._cldn_ComputeCompressedSize(dataPtr, dataSize, 0.001);
                         wasmModule._free(dataPtr);
                     } else {
-                        // Fallback to ccall approach
+                        // Fallback to ccall approach with resolution parameter
                         compressedSize = wasmModule.ccall(
-                            'ComputeCompressedSize',
+                            'cldn_ComputeCompressedSize',
                             'number',
-                            ['array', 'number'],
-                            [dataView, dataSize]
+                            ['array', 'number', 'number'],
+                            [dataView, dataSize, 0.001]
                         );
                     }
 

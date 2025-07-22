@@ -147,7 +147,7 @@ else()
   )
 
   set_target_properties(cloudini_wasm PROPERTIES
-    LINK_FLAGS "-s EXPORTED_FUNCTIONS=['_ComputeCompressedSize','_malloc','_free'] -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8'] -s MODULARIZE=1 -s EXPORT_NAME='CloudiniModule'"
+    LINK_FLAGS "-s SINGLE_FILE=1 -sNO_DISABLE_EXCEPTION_CATCHING -sASSERTIONS -s EXPORTED_FUNCTIONS=['_cldn_ComputeCompressedSize','_cldn_GetDecompressedSize','_cldn_DecodeCompressedMessage','_cldn_DecodeCompressedData','_malloc','_free'] -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8','HEAP8','UTF8ToString'] -s MODULARIZE=1 -s EXPORT_NAME='CloudiniModule' -s INITIAL_MEMORY=67108864 -s MAXIMUM_MEMORY=134217728 -s ALLOW_MEMORY_GROWTH=1 -s TOTAL_STACK=1048576"
   )
 
 endif(NOT EMSCRIPTEN)
