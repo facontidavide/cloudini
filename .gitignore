@@ -12,3 +12,4 @@
 /cloudini_lib/build*
 /build*
 /cloudini_web/node_modules
+/cloudini_foxglove/src/cloudini_wasm.js

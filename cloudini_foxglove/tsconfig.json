@@ -1,0 +1,33 @@
+{
+  "extends": "create-foxglove-extension/tsconfig/tsconfig.json",
+
+  "include": ["./src/**/*", "src/cloudini_wasm.d.ts"],
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "lib": ["dom"],
+    "jsx": "react",
+
+    // These two settings prevent typescript from emitting .d.ts files we don't need in
+    // the compiled extension.
+    "composite": false,
+    "declaration": false,
+
+    // Additional TypeScript error reporting checks are enabled by default to improve code quality.
+    // Enable/disable these checks as necessary to suit your coding preferences or work with
+    // existing code
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "allowJs": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "module": "esnext",
+    "moduleResolution": "node"
+  }
+}
