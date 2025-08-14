@@ -15,7 +15,7 @@
     "lint:ci": "eslint .",
     "lint:fix": "eslint --fix .",
     "local-install": "foxglove-extension install",
-    "package": "foxglove-extension package",
+    "package": "foxglove-extension package -o release/cloudini.foxglove-cloudini-converter-$npm_package_version.foxe",
     "pretest": "foxglove-extension pretest"
   },
   "devDependencies": {
