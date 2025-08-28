@@ -27,14 +27,14 @@ namespace Cloudini {
 /// First stage of the encoding, using custom encoding
 enum class EncodingOptions : uint8_t {
   // Do nothing. Compression is done in the second stage only.
-  // We kee pthis only for benchmarking purposes.
+  // We need this only for benchmarking purposes.
   NONE = 0,
   // Will apply lossy compression to FLOAT32 fields
   LOSSY = 1,
   // Lossless compression (e.g. XoR for FLOAT32).
   // Currently it has very poor performance, so it is not recommended.
   // Keeping it for future improvemnts
-  LOSSLES = 2,
+  LOSSLESS = 2,
 };
 
 /// Second stage of the encoding, using general purpose compression
@@ -75,8 +75,11 @@ struct EncodingInfo {
         return false;
       }
     }
-    return width == other.width && height == other.height && point_step == other.point_step &&
-           encoding_opt == other.encoding_opt && compression_opt == other.compression_opt;
+    return width == other.width &&                //
+           height == other.height &&              //
+           point_step == other.point_step &&      //
+           encoding_opt == other.encoding_opt &&  //
+           compression_opt == other.compression_opt;
   }
   bool operator!=(const EncodingInfo& other) const {
     return !(*this == other);

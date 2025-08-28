@@ -327,6 +327,13 @@ void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
 
   decoders_.clear();
 
+  if (info.encoding_opt == EncodingOptions::NONE) {
+    for (const auto& field : info.fields) {
+      decoders_.push_back(std::make_unique<FieldDecoderCopy>(field.offset, field.type));
+    }
+    return;
+  }
+
   // special case: first 3 or 4 fields are consecutive FLOAT32 fields
   size_t start_index = 0;
 
@@ -355,7 +362,7 @@ void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
   }
 }
 
-void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compressed_data, BufferView output) {
+void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compressed_data, BufferView output_buffer) {
   // read the header
   updateDecoders(info);
 
@@ -401,11 +408,17 @@ void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compres
                           ? ConstBufferView(compressed_data)
                           : ConstBufferView(buffer_.data(), buffer_.size());
 
-  for (size_t i = 0; i < info.width * info.height; ++i) {
-    BufferView point_view(output.data() + i * info.point_step, info.point_step);
+  size_t decoded_points = 0;
+  while (encoded_view.size() > 0) {
+    if (output_buffer.size() < info.point_step) {
+      throw std::runtime_error("Output buffer is too small to hold the decoded data");
+    }
+    BufferView point_view(output_buffer.data(), info.point_step);
     for (auto& decoder : decoders_) {
       decoder->decode(encoded_view, point_view);
     }
+    output_buffer.trim_front(info.point_step);
+    decoded_points++;
   }
 }
 

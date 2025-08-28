@@ -88,11 +88,17 @@ class Span {
   }
 
   void trim_front(size_t n) {
+    if (n > size_) {
+      throw std::runtime_error("Cannot trim more than the current size");
+    }
     data_ += n;
     size_ -= n;
   }
 
   void trim_back(size_t n) {
+    if (n > size_) {
+      throw std::runtime_error("Cannot trim more than the current size");
+    }
     size_ -= n;
   }
 

@@ -140,7 +140,7 @@ inline void PointcloudDecode(ConstBufferView serialized_data, pcl::PointCloud<Po
   }
 
   // decode the data
-  BufferView output_view(reinterpret_cast<uint8_t*>(cloud.points.data()), cloud.points.size());
+  BufferView output_view(reinterpret_cast<uint8_t*>(cloud.points.data()), cloud.points.size() * sizeof(PointT));
   PointcloudDecoder decoder;
   decoder.decode(header_info, serialized_data, output_view);
 }
