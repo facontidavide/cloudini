@@ -2,8 +2,8 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.6.1 (2025-08-28)
+------------------
 * bug fix (memory boundaries) and typo addressed
 * better benchmark print
 * Contributors: Davide Faconti
