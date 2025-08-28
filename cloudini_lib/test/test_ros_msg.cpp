@@ -106,7 +106,7 @@ TEST(Cloudini, DDS_Roundtrip) {
       .point_step = 26,
       .encoding_opt = EncodingOptions::LOSSY,
       .compression_opt = CompressionOption::ZSTD,
-  };
+      .version = kEncodingVersion};
 
   //-----------------------------------------------------------------------------
   // read the DDS message

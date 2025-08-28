@@ -16,7 +16,11 @@
 
 #pragma once
 
+#include <condition_variable>
 #include <memory>
+#include <mutex>
+#include <thread>
+#include <vector>
 
 #include "cloudini_lib/encoding_utils.hpp"
 #include "cloudini_lib/field_decoder.hpp"
@@ -47,6 +51,8 @@ enum class CompressionOption : uint8_t {
   ZSTD = 2
 };
 
+constexpr const uint8_t kEncodingVersion = 3;
+
 struct EncodingInfo {
   // Fields in the point cloud
   std::vector<PointField> fields;
@@ -65,6 +71,8 @@ struct EncodingInfo {
 
   // the second step is a general purpose compression
   CompressionOption compression_opt = CompressionOption::ZSTD;
+
+  uint8_t version = kEncodingVersion;
 
   bool operator==(const EncodingInfo& other) const {
     if (fields.size() != other.fields.size()) {
@@ -86,7 +94,8 @@ struct EncodingInfo {
   }
 };
 
-constexpr const char* kMagicHeader = "CLOUDINI_V02";
+constexpr const char* kMagicHeader = "CLOUDINI_V";
+constexpr int kMagicHeaderLength = 10;
 
 // pre-compute the size of the header, to allocate memory
 size_t ComputeHeaderSize(const std::vector<PointField>& fields);
@@ -129,18 +138,42 @@ class PointcloudEncoder {
    */
   size_t encode(ConstBufferView cloud_data, std::vector<uint8_t>& output);
 
-  // version that will not allocate any memory in output. Use it at your own risk
+  // version that will not allocate any memory in output (must be pre-allocated). Use it at your own risk
   size_t encode(ConstBufferView cloud_data, BufferView& output);
 
   const EncodingInfo& getEncodingInfo() const {
     return info_;
   }
 
+  ~PointcloudEncoder();
+
  private:
+  void compressionWorker();
+  void waitForCompressionComplete();
+
   EncodingInfo info_;
   std::vector<std::unique_ptr<FieldEncoder>> encoders_;
   std::vector<uint8_t> buffer_;
   std::vector<uint8_t> header_;
+
+  // Double buffering and threading
+  static constexpr size_t POINTS_PER_CHUNK = 32 * 1024;  // Fixed chunk size in points
+
+  std::vector<uint8_t> buffer_compressing_;
+
+  // Thread synchronization
+  std::mutex mutex_;
+  std::thread compressing_thread_;
+  std::condition_variable cv_ready_to_compress_;
+  std::condition_variable cv_done_compressing_;
+
+  // Thread state management
+  bool has_data_to_compress_ = false;
+  bool compression_done_ = false;
+  bool should_exit_ = false;
+  size_t compressed_size_ = 0;
+
+  BufferView output_view_;
 };
 
 /**
@@ -168,7 +201,9 @@ class PointcloudDecoder {
  private:
   void updateDecoders(const EncodingInfo& info);
 
+  void decodeChunk(const EncodingInfo& info, ConstBufferView compressed_data, BufferView& output);
+
   std::vector<std::unique_ptr<FieldDecoder>> decoders_;
-  std::vector<uint8_t> buffer_;
+  std::vector<uint8_t> decompressed_buffer_;
 };
 }  // namespace Cloudini
