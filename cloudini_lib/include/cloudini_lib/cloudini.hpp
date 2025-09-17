@@ -97,8 +97,7 @@ struct EncodingInfo {
 constexpr const char* kMagicHeader = "CLOUDINI_V";
 constexpr int kMagicHeaderLength = 10;
 
-// pre-compute the size of the header, to allocate memory
-size_t ComputeHeaderSize(const std::vector<PointField>& fields);
+enum class HeaderEncoding { BINARY, JSON };
 
 /**
  * @brief Encode the header into the output buffer. Called by PointcloudEncode (exposed here for testing)
@@ -108,7 +107,8 @@ size_t ComputeHeaderSize(const std::vector<PointField>& fields);
  * the header.
  * @return The size of the encoded header.
  */
-size_t EncodeHeader(const EncodingInfo& header, BufferView& output);
+void EncodeHeader(
+    const EncodingInfo& header, std::vector<uint8_t>& output, HeaderEncoding encoding = HeaderEncoding::JSON);
 
 /**
  * @brief Decode the header from the input buffer.
@@ -117,6 +117,12 @@ size_t EncodeHeader(const EncodingInfo& header, BufferView& output);
  * @return HeaderInfo The decoded header information.
  */
 EncodingInfo DecodeHeader(ConstBufferView& input);
+
+/// Convert EncodingInfo to JSON. Used by EncodeHeader when HeaderEncoding::JSON is selected
+std::string EncodingInfoToJSON(const EncodingInfo& info);
+
+/// Read EncodingInfo from JSON.
+EncodingInfo EncodingInfoFromJSON(std::string_view json);
 
 /**
  * @brief PointcloudEncoder is used to encode a point cloud into a compressed format.
@@ -139,10 +145,15 @@ class PointcloudEncoder {
   size_t encode(ConstBufferView cloud_data, std::vector<uint8_t>& output);
 
   // version that will not allocate any memory in output (must be pre-allocated). Use it at your own risk
-  size_t encode(ConstBufferView cloud_data, BufferView& output);
+  // Optionally, you can decide to write the header or not, in case you did that already before.
+  size_t encode(ConstBufferView cloud_data, BufferView& output, bool write_header);
 
   const EncodingInfo& getEncodingInfo() const {
     return info_;
+  }
+
+  const std::vector<uint8_t>& getHeader() const {
+    return header_;
   }
 
   ~PointcloudEncoder();

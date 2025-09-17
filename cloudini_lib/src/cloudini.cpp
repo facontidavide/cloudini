@@ -19,6 +19,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <sstream>
 #include <stdexcept>
 
 #include "cloudini_lib/encoding_utils.hpp"
@@ -28,6 +29,141 @@
 #include "zstd.h"
 
 namespace Cloudini {
+
+std::string EncodingInfoToJSON(const EncodingInfo& info) {
+  std::ostringstream json;
+  json << "{\n";
+  json << "  \"version\": " << static_cast<int>(info.version) << ",\n";
+  json << "  \"width\": " << info.width << ",\n";
+  json << "  \"height\": " << info.height << ",\n";
+  json << "  \"point_step\": " << info.point_step << ",\n";
+  json << "  \"encoding_opt\": " << static_cast<int>(info.encoding_opt) << ",\n";
+  json << "  \"compression_opt\": " << static_cast<int>(info.compression_opt) << ",\n";
+  json << "  \"fields\": [\n";
+
+  for (size_t i = 0; i < info.fields.size(); ++i) {
+    const auto& field = info.fields[i];
+    json << "    {\n";
+    json << "      \"name\": \"" << field.name << "\",\n";
+    json << "      \"offset\": " << field.offset << ",\n";
+    json << "      \"type\": " << static_cast<int>(field.type);
+    if (field.resolution.has_value()) {
+      json << ",\n      \"resolution\": " << field.resolution.value();
+    }
+    json << "\n    }";
+    if (i < info.fields.size() - 1) {
+      json << ",";
+    }
+    json << "\n";
+  }
+
+  json << "  ]\n";
+  json << "}";
+  return json.str();
+}
+
+EncodingInfo EncodingInfoFromJSON(std::string_view json) {
+  EncodingInfo info;
+
+  auto find_value = [&json](const std::string& key, size_t start = 0) -> size_t {
+    size_t key_pos = json.find("\"" + key + "\"", start);
+    if (key_pos == std::string::npos) {
+      return std::string::npos;
+    }
+    size_t colon_pos = json.find(":", key_pos);
+    if (colon_pos == std::string::npos) {
+      return std::string::npos;
+    }
+    size_t value_start = json.find_first_not_of(" \t\n\r", colon_pos + 1);
+    return value_start;
+  };
+
+  auto parse_int = [&json](size_t pos) -> int {
+    size_t end = json.find_first_of(",}\n]", pos);
+    std::string value(json.substr(pos, end - pos));
+    return std::stoi(value);
+  };
+
+  auto parse_float = [&](size_t pos) -> float {
+    size_t end = json.find_first_of(",}\n]", pos);
+    std::string value(json.substr(pos, end - pos));
+    return std::stof(value);
+  };
+
+  auto parse_string = [&json](size_t pos) -> std::string_view {
+    if (json[pos] != '"') {
+      throw std::runtime_error("Expected string value");
+    }
+    size_t end = json.find("\"", pos + 1);
+    return json.substr(pos + 1, end - pos - 1);
+  };
+
+  size_t pos = find_value("version");
+  if (pos != std::string::npos) {
+    info.version = static_cast<uint8_t>(parse_int(pos));
+  }
+
+  pos = find_value("width");
+  if (pos != std::string::npos) {
+    info.width = static_cast<uint32_t>(parse_int(pos));
+  }
+
+  pos = find_value("height");
+  if (pos != std::string::npos) {
+    info.height = static_cast<uint32_t>(parse_int(pos));
+  }
+
+  pos = find_value("point_step");
+  if (pos != std::string::npos) {
+    info.point_step = static_cast<uint32_t>(parse_int(pos));
+  }
+
+  pos = find_value("encoding_opt");
+  if (pos != std::string::npos) {
+    info.encoding_opt = static_cast<EncodingOptions>(parse_int(pos));
+  }
+
+  pos = find_value("compression_opt");
+  if (pos != std::string::npos) {
+    info.compression_opt = static_cast<CompressionOption>(parse_int(pos));
+  }
+
+  pos = find_value("fields");
+  if (pos != std::string::npos) {
+    size_t array_start = json.find("[", pos);
+    size_t array_end = json.find("]", array_start);
+
+    size_t field_start = json.find("{", array_start);
+    while (field_start != std::string::npos && field_start < array_end) {
+      PointField field;
+      size_t field_end = json.find("}", field_start);
+
+      size_t name_pos = find_value("name", field_start);
+      if (name_pos != std::string::npos && name_pos < field_end) {
+        field.name = parse_string(name_pos);
+      }
+
+      size_t offset_pos = find_value("offset", field_start);
+      if (offset_pos != std::string::npos && offset_pos < field_end) {
+        field.offset = static_cast<uint32_t>(parse_int(offset_pos));
+      }
+
+      size_t type_pos = find_value("type", field_start);
+      if (type_pos != std::string::npos && type_pos < field_end) {
+        field.type = static_cast<FieldType>(parse_int(type_pos));
+      }
+
+      size_t resolution_pos = find_value("resolution", field_start);
+      if (resolution_pos != std::string::npos && resolution_pos < field_end) {
+        field.resolution = parse_float(resolution_pos);
+      }
+
+      info.fields.push_back(field);
+      field_start = json.find("{", field_end);
+    }
+  }
+  return info;
+}
 
 size_t ComputeHeaderSize(const std::vector<PointField>& fields) {
   size_t header_size = kMagicHeaderLength + 2;       // 2 bytes for version number
@@ -46,36 +182,54 @@ size_t ComputeHeaderSize(const std::vector<PointField>& fields) {
   return header_size;
 }
 
-size_t EncodeHeader(const EncodingInfo& header, BufferView& output) {
-  const size_t prev_size = output.size();
+void EncodeHeader(const EncodingInfo& header, std::vector<uint8_t>& output, HeaderEncoding encoding) {
+  output.clear();
 
-  memcpy(output.data(), kMagicHeader, kMagicHeaderLength);
-  output.trim_front(kMagicHeaderLength);
+  auto write_magic = [](BufferView& output_buffer) {
+    memcpy(output_buffer.data(), kMagicHeader, kMagicHeaderLength);
+    output_buffer.trim_front(kMagicHeaderLength);
+    // version as two ASCII digits
+    encode<char>('0' + (kEncodingVersion / 10), output_buffer);
+    encode<char>('0' + (kEncodingVersion % 10), output_buffer);
+  };
 
-  output.data()[0] = '0' + (header.version / 10);
-  output.data()[1] = '0' + (header.version % 10);
-  output.trim_front(2);
+  if (encoding == HeaderEncoding::JSON) {
+    const auto json_str = EncodingInfoToJSON(header);
+    // magic + \n + json + \0
+    output.resize(json_str.size() + 2 + kMagicHeaderLength + 2);
+    BufferView output_buffer(output.data(), output.size());
 
-  encode(header.width, output);
-  encode(header.height, output);
-  encode(header.point_step, output);
+    write_magic(output_buffer);
+    encode('\n', output_buffer);  // newline
+    memcpy(output_buffer.data(), json_str.data(), json_str.size());
+    output_buffer.trim_front(json_str.size());
+    encode('\0', output_buffer);  // null terminator
+  } else {
+    // Binary encoding
+    output.resize(ComputeHeaderSize(header.fields));
+    BufferView output_buffer(output.data(), output.size());
+    write_magic(output_buffer);
 
-  encode(static_cast<uint8_t>(header.encoding_opt), output);
-  encode(static_cast<uint8_t>(header.compression_opt), output);
-  encode(static_cast<uint16_t>(header.fields.size()), output);
+    encode(header.width, output_buffer);
+    encode(header.height, output_buffer);
+    encode(header.point_step, output_buffer);
 
-  for (const auto& field : header.fields) {
-    encode(field.name, output);
-    encode(field.offset, output);
-    encode(static_cast<uint8_t>(field.type), output);
-    if (field.resolution) {
-      encode(*field.resolution, output);
-    } else {
-      const float res = -1.0;
-      encode(res, output);
+    encode(static_cast<uint8_t>(header.encoding_opt), output_buffer);
+    encode(static_cast<uint8_t>(header.compression_opt), output_buffer);
+    encode(static_cast<uint16_t>(header.fields.size()), output_buffer);
+
+    for (const auto& field : header.fields) {
+      encode(field.name, output_buffer);
+      encode(field.offset, output_buffer);
+      encode(static_cast<uint8_t>(field.type), output_buffer);
+      if (field.resolution) {
+        encode(*field.resolution, output_buffer);
+      } else {
+        const float res = -1.0;
+        encode(res, output_buffer);
+      }
     }
   }
-  return prev_size - output.size();
 }
 
 auto char_to_num = [](char c) -> uint8_t {
@@ -96,15 +250,31 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
   input.trim_front(kMagicHeaderLength);
 
   // next 2 bytes contain the version number as string
-  uint8_t version = char_to_num(input.data()[0]) * 10 + char_to_num(input.data()[1]);
+  const uint8_t version = char_to_num(input.data()[0]) * 10 + char_to_num(input.data()[1]);
+  input.trim_front(2);
+
   if (version < 2 || version > kEncodingVersion) {
     throw std::runtime_error(
         "Unsupported encoding version. Current is:" + std::to_string(kEncodingVersion) +
         ", got: " + std::to_string(version));
   }
+
+  // check if encoded as JSON
+  if (input.size() > 2 && input.data()[0] == '\n' && input.data()[1] == '{') {
+    // JSON encoded header
+    input.trim_front(1);  // consume newline
+    std::string_view json_str(reinterpret_cast<const char*>(input.data()), input.size());
+    size_t null_pos = json_str.find('\0');
+    if (null_pos != std::string::npos) {
+      json_str = json_str.substr(0, null_pos);
+    }
+    input.trim_front(null_pos + 1);  // consume header + null terminator
+    return EncodingInfoFromJSON(json_str);
+  }
+
+  // Binary encoded header
   EncodingInfo header;
   header.version = version;
-  input.trim_front(2);
 
   decode(input, header.width);
   decode(input, header.height);
@@ -138,18 +308,14 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
 }
 
 PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
-  header_.resize(ComputeHeaderSize(info_.fields));
-  BufferView header_view(header_.data(), header_.size());
-  //-------------------------------------------------------------------------------------------
-  EncodeHeader(info_, header_view);
-
-  // Start the compression worker thread if we're using compression
-  compressing_thread_ = std::thread(&PointcloudEncoder::compressionWorker, this);
+  EncodeHeader(info_, header_);
 
   if (info_.encoding_opt == EncodingOptions::NONE) {
     for (const auto& field : info_.fields) {
       encoders_.push_back(std::make_unique<FieldEncoderCopy>(field.offset, field.type));
     }
+    // Start the compression worker thread if we're using compression
+    compressing_thread_ = std::thread(&PointcloudEncoder::compressionWorker, this);
     return;
   }
   //-------------------------------------------------------------------------------------------
@@ -223,6 +389,8 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
         throw std::runtime_error("Unsupported field type:" + std::to_string(static_cast<int>(field.type)));
     }
   }
+  // Start the compression worker thread if we're using compression
+  compressing_thread_ = std::thread(&PointcloudEncoder::compressionWorker, this);
 }
 
 PointcloudEncoder::~PointcloudEncoder() {
@@ -309,13 +477,18 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t
   const size_t chunk_size_bytes = 4 * chunks_count;
 
   output.resize(header_.size() + max_compressed_size + chunk_size_bytes);
+  // write the header
   BufferView output_view(output.data(), output.size());
-  auto new_size = encode(cloud_data, output_view);
+  memcpy(output_view.data(), header_.data(), header_.size());
+  output_view.trim_front(header_.size());
+
+  const size_t added_bytes = encode(cloud_data, output_view, false);
+  const size_t new_size = header_.size() + added_bytes;
   output.resize(new_size);
   return new_size;
 }
 
-size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output) {
+size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output, bool write_header) {
   // Reset the state of the encoders and the class attributes
   for (auto& encoder : encoders_) {
     encoder->reset();
@@ -327,10 +500,11 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output)
   compression_done_ = true;
 
   // Copy the header at the beginning of the output
-  memcpy(output_view_.data(), header_.data(), header_.size());
-  compressed_size_ += header_.size();
-  output_view_.trim_front(header_.size());
-
+  if (write_header) {
+    memcpy(output_view_.data(), header_.data(), header_.size());
+    compressed_size_ += header_.size();
+    output_view_.trim_front(header_.size());
+  }
   const size_t kChunkSize = POINTS_PER_CHUNK * info_.point_step;
 
   buffer_.resize(kChunkSize);

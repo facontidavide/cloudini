@@ -32,7 +32,36 @@ EncodingInfo ConvertToEncodingInfo(const pcl::PCLPointCloud2& cloud, double reso
     PointField point_field;
     point_field.name = field.name;
     point_field.offset = field.offset;
-    point_field.type = static_cast<FieldType>(field.datatype);
+
+    switch (field.datatype) {
+      case pcl::PCLPointField::FLOAT32:
+        point_field.type = FieldType::FLOAT32;
+        break;
+      case pcl::PCLPointField::FLOAT64:
+        point_field.type = FieldType::FLOAT64;
+        break;
+      case pcl::PCLPointField::INT8:
+        point_field.type = FieldType::INT8;
+        break;
+      case pcl::PCLPointField::INT16:
+        point_field.type = FieldType::INT16;
+        break;
+      case pcl::PCLPointField::INT32:
+        point_field.type = FieldType::INT32;
+        break;
+      case pcl::PCLPointField::UINT8:
+        point_field.type = FieldType::UINT8;
+        break;
+      case pcl::PCLPointField::UINT16:
+        point_field.type = FieldType::UINT16;
+        break;
+      case pcl::PCLPointField::UINT32:
+        point_field.type = FieldType::UINT32;
+        break;
+      default:
+        point_field.type = FieldType::UNKNOWN;
+        break;
+    }
 
     // If the field is a FLOAT32 and has a resolution, set it
     if (point_field.type == FieldType::FLOAT32 && resolution_XYZ > 0.0) {
@@ -71,8 +100,50 @@ EncodingInfo ConvertToEncodingInfo<pcl::PointXYZI>(
 
   pcl::PointXYZI dummy;
   const size_t intensity_offset = reinterpret_cast<uint8_t*>(&dummy.intensity) - reinterpret_cast<uint8_t*>(&dummy.x);
-  info.fields.push_back(PointField{"intensity", static_cast<uint32_t>(intensity_offset), FieldType::FLOAT32, std::nullopt});
+  info.fields.push_back(
+      PointField{"intensity", static_cast<uint32_t>(intensity_offset), FieldType::FLOAT32, std::nullopt});
   return info;
+}
+
+size_t PointcloudEncode(
+    const pcl::PCLPointCloud2& cloud, std::vector<uint8_t>& serialized_cloud, double resolution_XYZ) {
+  // get the encoding info
+  EncodingInfo info = ConvertToEncodingInfo(cloud, resolution_XYZ);
+  PointcloudEncoder encoder(info);
+  ConstBufferView data_view(cloud.data.data(), cloud.data.size());
+  return encoder.encode(data_view, serialized_cloud);
+}
+
+void PointcloudDecode(ConstBufferView serialized_data, pcl::PCLPointCloud2& cloud) {
+  // decode the header
+  EncodingInfo header_info = DecodeHeader(serialized_data);
+
+  // Set cloud metadata
+  cloud.width = header_info.width;
+  cloud.height = header_info.height;
+  cloud.point_step = header_info.point_step;
+  cloud.row_step = cloud.width * cloud.point_step;
+  cloud.is_dense = true;
+  cloud.is_bigendian = false;
+
+  // Resize data
+  cloud.data.resize(cloud.width * cloud.height * cloud.point_step);
+
+  // Convert fields
+  cloud.fields.clear();
+  for (const auto& field : header_info.fields) {
+    pcl::PCLPointField pcl_field;
+    pcl_field.name = field.name;
+    pcl_field.offset = field.offset;
+    pcl_field.datatype = static_cast<uint8_t>(field.type);
+    pcl_field.count = 1;
+    cloud.fields.push_back(pcl_field);
+  }
+
+  // decode the data
+  BufferView output_view(cloud.data.data(), cloud.data.size());
+  PointcloudDecoder decoder;
+  decoder.decode(header_info, serialized_data, output_view);
 }
 
 }  // namespace Cloudini

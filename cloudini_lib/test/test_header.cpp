@@ -17,15 +17,12 @@ TEST(Cloudini, Header) {
   header.fields.push_back({"z", 8, FieldType::FLOAT32, 0.01});
   header.fields.push_back({"intensity", 12, FieldType::FLOAT32, 0.01});
 
-  std::vector<uint8_t> buffer(ComputeHeaderSize(header.fields));
-  BufferView output(buffer.data(), buffer.size());
-
-  size_t encoded_size = EncodeHeader(header, output);
-
-  EXPECT_EQ(encoded_size, buffer.size());
+  std::vector<uint8_t> buffer;
+  EncodeHeader(header, buffer);
 
   ConstBufferView input(buffer.data(), buffer.size());
   auto decoded_header = DecodeHeader(input);
+
   ASSERT_EQ(decoded_header.width, header.width);
   ASSERT_EQ(decoded_header.height, header.height);
   ASSERT_EQ(decoded_header.point_step, header.point_step);

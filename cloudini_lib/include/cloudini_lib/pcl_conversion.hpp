@@ -97,12 +97,16 @@ template <typename PointT>
 inline size_t PointcloudEncode(
     const pcl::PointCloud<PointT>& cloud, std::vector<uint8_t>& serialized_cloud, double resolution_XYZ) {
   // get the encoding info
-  EncodingInfo info = ConvertToEncodingInfo(cloud, resolution_XYZ);
-  // size in bytes of the data
-  serialized_cloud.resize(ComputeHeaderSize(info.fields) + cloud.points.size() * sizeof(PointT));
+  std::cout << "  Cloud size: " << cloud.points.size() << std::endl;
 
-  ConstBufferView data_view(
-      reinterpret_cast<const uint8_t*>(cloud.points.data()), cloud.points.size() * sizeof(PointT));
+  EncodingInfo info = ConvertToEncodingInfo(cloud, resolution_XYZ);
+  const auto points_data_size = cloud.points.size() * sizeof(PointT);
+
+  // size in bytes of the data
+  serialized_cloud.resize(points_data_size + 1024);  // leave some space for the header
+
+  ConstBufferView data_view(reinterpret_cast<const uint8_t*>(cloud.points.data()), points_data_size);
+
   PointcloudEncoder encoder(info);
   return encoder.encode(data_view, serialized_cloud);
 }
