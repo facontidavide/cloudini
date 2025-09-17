@@ -21,6 +21,7 @@
 #include <memory>
 #include <sstream>
 #include <stdexcept>
+#include <type_traits>
 
 #include "cloudini_lib/encoding_utils.hpp"
 #include "cloudini_lib/field_decoder.hpp"
@@ -30,137 +31,202 @@
 
 namespace Cloudini {
 
-std::string EncodingInfoToJSON(const EncodingInfo& info) {
-  std::ostringstream json;
-  json << "{\n";
-  json << "  \"version\": " << static_cast<int>(info.version) << ",\n";
-  json << "  \"width\": " << info.width << ",\n";
-  json << "  \"height\": " << info.height << ",\n";
-  json << "  \"point_step\": " << info.point_step << ",\n";
-  json << "  \"encoding_opt\": " << static_cast<int>(info.encoding_opt) << ",\n";
-  json << "  \"compression_opt\": " << static_cast<int>(info.compression_opt) << ",\n";
-  json << "  \"fields\": [\n";
+const char* ToString(const FieldType& type) {
+  switch (type) {
+    case FieldType::INT8:
+      return "INT8";
+    case FieldType::UINT8:
+      return "UINT8";
+    case FieldType::INT16:
+      return "INT16";
+    case FieldType::UINT16:
+      return "UINT16";
+    case FieldType::INT32:
+      return "INT32";
+    case FieldType::UINT32:
+      return "UINT32";
+    case FieldType::FLOAT32:
+      return "FLOAT32";
+    case FieldType::FLOAT64:
+      return "FLOAT64";
+    case FieldType::INT64:
+      return "INT64";
+    case FieldType::UINT64:
+      return "UINT64";
 
-  for (size_t i = 0; i < info.fields.size(); ++i) {
-    const auto& field = info.fields[i];
-    json << "    {\n";
-    json << "      \"name\": \"" << field.name << "\",\n";
-    json << "      \"offset\": " << field.offset << ",\n";
-    json << "      \"type\": " << static_cast<int>(field.type);
-    if (field.resolution.has_value()) {
-      json << ",\n      \"resolution\": " << field.resolution.value();
-    }
-    json << "\n    }";
-    if (i < info.fields.size() - 1) {
-      json << ",";
-    }
-    json << "\n";
+    case FieldType::UNKNOWN:
+    default:
+      return "UNKNOWN";
   }
-
-  json << "  ]\n";
-  json << "}";
-  return json.str();
 }
 
-EncodingInfo EncodingInfoFromJSON(std::string_view json) {
+inline const char* ToString(const EncodingOptions& opt) {
+  switch (opt) {
+    case EncodingOptions::NONE:
+      return "NONE";
+    case EncodingOptions::LOSSY:
+      return "LOSSY";
+    case EncodingOptions::LOSSLESS:
+      return "LOSSLESS";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+inline const char* ToString(const CompressionOption& opt) {
+  switch (opt) {
+    case CompressionOption::NONE:
+      return "NONE";
+    case CompressionOption::LZ4:
+      return "LZ4";
+    case CompressionOption::ZSTD:
+      return "ZSTD";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+EncodingOptions EncodingOptionsFromString(std::string_view str) {
+  if (str == "NONE") {
+    return EncodingOptions::NONE;
+  } else if (str == "LOSSY") {
+    return EncodingOptions::LOSSY;
+  } else if (str == "LOSSLESS") {
+    return EncodingOptions::LOSSLESS;
+  } else {
+    int val = std::stoi(std::string(str));
+    if (val >= static_cast<int>(EncodingOptions::NONE) && val <= static_cast<int>(EncodingOptions::LOSSLESS)) {
+      return static_cast<EncodingOptions>(val);
+    }
+  }
+  throw std::runtime_error("Invalid EncodingOptions string: " + std::string(str));
+}
+
+FieldType FieldTypeFromString(std::string_view str) {
+  if (str == "INT8") {
+    return FieldType::INT8;
+  } else if (str == "UINT8") {
+    return FieldType::UINT8;
+  } else if (str == "INT16") {
+    return FieldType::INT16;
+  } else if (str == "UINT16") {
+    return FieldType::UINT16;
+  } else if (str == "INT32") {
+    return FieldType::INT32;
+  } else if (str == "UINT32") {
+    return FieldType::UINT32;
+  } else if (str == "FLOAT32") {
+    return FieldType::FLOAT32;
+  } else if (str == "FLOAT64") {
+    return FieldType::FLOAT64;
+  } else if (str == "INT64") {
+    return FieldType::INT64;
+  } else if (str == "UINT64") {
+    return FieldType::UINT64;
+  } else {
+    int val = std::stoi(std::string(str));
+    if (val >= static_cast<int>(FieldType::UNKNOWN) && val <= static_cast<int>(FieldType::UINT64)) {
+      return static_cast<FieldType>(val);
+    }
+  }
+  throw std::runtime_error("Invalid FieldType string: " + std::string(str));
+}
+
+CompressionOption CompressionOptionFromString(std::string_view str) {
+  if (str == "NONE") {
+    return CompressionOption::NONE;
+  } else if (str == "LZ4") {
+    return CompressionOption::LZ4;
+  } else if (str == "ZSTD") {
+    return CompressionOption::ZSTD;
+  } else {
+    int val = std::stoi(std::string(str));
+    if (val >= static_cast<int>(CompressionOption::NONE) && val <= static_cast<int>(CompressionOption::ZSTD)) {
+      return static_cast<CompressionOption>(val);
+    }
+  }
+  throw std::runtime_error("Invalid CompressionOption string: " + std::string(str));
+}
+
+std::string EncodingInfoToYAML(const EncodingInfo& info) {
+  std::ostringstream yaml;
+  yaml << "version: " << static_cast<int>(info.version) << "\n";
+  yaml << "width: " << info.width << "\n";
+  yaml << "height: " << info.height << "\n";
+  yaml << "point_step: " << info.point_step << "\n";
+  yaml << "encoding_opt: " << ToString(info.encoding_opt) << "\n";
+  yaml << "compression_opt: " << ToString(info.compression_opt) << "\n";
+  yaml << "fields:\n";
+
+  for (const auto& field : info.fields) {
+    yaml << "  - name: " << field.name << "\n";
+    yaml << "    offset: " << field.offset << "\n";
+    yaml << "    type: " << ToString(field.type) << "\n";
+    if (field.resolution.has_value()) {
+      yaml << "    resolution: " << field.resolution.value() << "\n";
+    } else {
+      yaml << "    resolution: null\n";
+    }
+  }
+  return yaml.str();
+}
+
+EncodingInfo EncodingInfoFromYAML(std::string_view yaml) {
   EncodingInfo info;
 
-  auto find_value = [&json](const std::string& key, size_t start = 0) -> size_t {
-    size_t key_pos = json.find("\"" + key + "\"", start);
-    if (key_pos == std::string::npos) {
-      return std::string::npos;
+  auto read_value_from_line = [&yaml](size_t& pos, const char* key) -> std::string {
+    const size_t new_line_pos = yaml.find('\n', pos);
+    std::string_view line = yaml.substr(pos, new_line_pos - pos);
+    // remove comments in this line
+    size_t comment_pos = line.find('#');
+    if (comment_pos != std::string::npos) {
+      line = line.substr(0, comment_pos);
     }
-    size_t colon_pos = json.find(":", key_pos);
-    if (colon_pos == std::string::npos) {
-      return std::string::npos;
+    size_t colon_pos = line.find(':');
+    std::string_view key_view = line.substr(0, colon_pos);
+    key_view = key_view.substr(
+        key_view.find_first_not_of(" \t"),  //
+        key_view.find_last_not_of(" \t") + 1);
+
+    if (key_view != key) {
+      throw std::runtime_error("Expected key: [" + std::string(key) + "], got: [" + std::string(key_view) + "]");
     }
-    size_t value_start = json.find_first_not_of(" \t\n\r", colon_pos + 1);
-    return value_start;
+    pos = new_line_pos;
+    if (new_line_pos != std::string::npos) {
+      pos++;
+    }
+    if (line.size() <= colon_pos + 1) {
+      return "";
+    }
+    std::string_view value_view = line.substr(colon_pos + 1);
+    value_view = value_view.substr(
+        value_view.find_first_not_of(" \t"),  //
+        value_view.find_last_not_of(" \t") + 1);
+    return std::string(value_view);
   };
 
-  auto parse_int = [&json](size_t pos) -> int {
-    size_t end = json.find_first_of(",}\n]", pos);
-    std::string value(json.substr(pos, end - pos));
-    return std::stoi(value);
-  };
+  // read line by line
+  size_t pos = 0;
 
-  auto parse_float = [&](size_t pos) -> float {
-    size_t end = json.find_first_of(",}\n]", pos);
-    std::string value(json.substr(pos, end - pos));
-    return std::stof(value);
-  };
+  info.version = static_cast<uint8_t>(std::stoi(read_value_from_line(pos, "version")));
+  info.width = static_cast<uint32_t>(std::stoi(read_value_from_line(pos, "width")));
+  info.height = static_cast<uint32_t>(std::stoi(read_value_from_line(pos, "height")));
+  info.point_step = static_cast<uint32_t>(std::stoi(read_value_from_line(pos, "point_step")));
+  info.encoding_opt = EncodingOptionsFromString(read_value_from_line(pos, "encoding_opt"));
+  info.compression_opt = CompressionOptionFromString(read_value_from_line(pos, "compression_opt"));
 
-  auto parse_string = [&json](size_t pos) -> std::string_view {
-    if (json[pos] != '"') {
-      throw std::runtime_error("Expected string value");
+  read_value_from_line(pos, "fields");  // just to move pos forward
+
+  while (pos != std::string::npos && pos < yaml.size()) {
+    PointField field;
+    field.name = read_value_from_line(pos, "- name");
+    field.offset = static_cast<uint32_t>(std::stoi(read_value_from_line(pos, "offset")));
+    field.type = FieldTypeFromString(read_value_from_line(pos, "type"));
+    std::string res_str = read_value_from_line(pos, "resolution");
+    if (res_str != "null") {
+      field.resolution = std::stof(res_str);
     }
-    size_t end = json.find("\"", pos + 1);
-    return json.substr(pos + 1, end - pos - 1);
-  };
-
-  size_t pos = find_value("version");
-  if (pos != std::string::npos) {
-    info.version = static_cast<uint8_t>(parse_int(pos));
-  }
-
-  pos = find_value("width");
-  if (pos != std::string::npos) {
-    info.width = static_cast<uint32_t>(parse_int(pos));
-  }
-
-  pos = find_value("height");
-  if (pos != std::string::npos) {
-    info.height = static_cast<uint32_t>(parse_int(pos));
-  }
-
-  pos = find_value("point_step");
-  if (pos != std::string::npos) {
-    info.point_step = static_cast<uint32_t>(parse_int(pos));
-  }
-
-  pos = find_value("encoding_opt");
-  if (pos != std::string::npos) {
-    info.encoding_opt = static_cast<EncodingOptions>(parse_int(pos));
-  }
-
-  pos = find_value("compression_opt");
-  if (pos != std::string::npos) {
-    info.compression_opt = static_cast<CompressionOption>(parse_int(pos));
-  }
-
-  pos = find_value("fields");
-  if (pos != std::string::npos) {
-    size_t array_start = json.find("[", pos);
-    size_t array_end = json.find("]", array_start);
-
-    size_t field_start = json.find("{", array_start);
-    while (field_start != std::string::npos && field_start < array_end) {
-      PointField field;
-      size_t field_end = json.find("}", field_start);
-
-      size_t name_pos = find_value("name", field_start);
-      if (name_pos != std::string::npos && name_pos < field_end) {
-        field.name = parse_string(name_pos);
-      }
-
-      size_t offset_pos = find_value("offset", field_start);
-      if (offset_pos != std::string::npos && offset_pos < field_end) {
-        field.offset = static_cast<uint32_t>(parse_int(offset_pos));
-      }
-
-      size_t type_pos = find_value("type", field_start);
-      if (type_pos != std::string::npos && type_pos < field_end) {
-        field.type = static_cast<FieldType>(parse_int(type_pos));
-      }
-
-      size_t resolution_pos = find_value("resolution", field_start);
-      if (resolution_pos != std::string::npos && resolution_pos < field_end) {
-        field.resolution = parse_float(resolution_pos);
-      }
-
-      info.fields.push_back(field);
-      field_start = json.find("{", field_end);
-    }
+    info.fields.push_back(field);
   }
   return info;
 }
@@ -193,16 +259,16 @@ void EncodeHeader(const EncodingInfo& header, std::vector<uint8_t>& output, Head
     encode<char>('0' + (kEncodingVersion % 10), output_buffer);
   };
 
-  if (encoding == HeaderEncoding::JSON) {
-    const auto json_str = EncodingInfoToJSON(header);
-    // magic + \n + json + \0
-    output.resize(json_str.size() + 2 + kMagicHeaderLength + 2);
+  if (encoding == HeaderEncoding::YAML) {
+    const auto yaml_str = EncodingInfoToYAML(header);
+    // magic + \n + yaml + \0
+    output.resize(yaml_str.size() + 2 + kMagicHeaderLength + 2);
     BufferView output_buffer(output.data(), output.size());
 
     write_magic(output_buffer);
     encode('\n', output_buffer);  // newline
-    memcpy(output_buffer.data(), json_str.data(), json_str.size());
-    output_buffer.trim_front(json_str.size());
+    memcpy(output_buffer.data(), yaml_str.data(), yaml_str.size());
+    output_buffer.trim_front(yaml_str.size());
     encode('\0', output_buffer);  // null terminator
   } else {
     // Binary encoding
@@ -259,17 +325,17 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
         ", got: " + std::to_string(version));
   }
 
-  // check if encoded as JSON
-  if (input.size() > 2 && input.data()[0] == '\n' && input.data()[1] == '{') {
-    // JSON encoded header
+  // check if encoded as YAML (starts with newline after version, then non-brace character)
+  if (input.size() > 2 && input.data()[0] == '\n' && input.data()[1] != '{') {
+    // YAML encoded header
     input.trim_front(1);  // consume newline
-    std::string_view json_str(reinterpret_cast<const char*>(input.data()), input.size());
-    size_t null_pos = json_str.find('\0');
+    std::string_view yaml_str(reinterpret_cast<const char*>(input.data()), input.size());
+    size_t null_pos = yaml_str.find('\0');
     if (null_pos != std::string::npos) {
-      json_str = json_str.substr(0, null_pos);
+      yaml_str = yaml_str.substr(0, null_pos);
     }
     input.trim_front(null_pos + 1);  // consume header + null terminator
-    return EncodingInfoFromJSON(json_str);
+    return EncodingInfoFromYAML(yaml_str);
   }
 
   // Binary encoded header
