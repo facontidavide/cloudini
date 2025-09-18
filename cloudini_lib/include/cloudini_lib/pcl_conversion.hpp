@@ -21,6 +21,10 @@
 #include <pcl/point_types.h>
 
 #include <cloudini_lib/cloudini.hpp>
+#include <filesystem>
+#include <map>
+#include <string>
+#include <vector>
 
 namespace Cloudini {
 
@@ -28,6 +32,9 @@ EncodingInfo ConvertToEncodingInfo(const pcl::PCLPointCloud2& cloud, double reso
 
 template <typename PointT>
 EncodingInfo ConvertToEncodingInfo(const pcl::PointCloud<PointT>& cloud, double resolution_XYZ);
+
+// PCD reading may not recognize UINT64 and INT64 fields. This function is used by the fallback strategy
+std::map<std::string, FieldType> ReadEncodingInfoFromPCD(std::istream& stream);
 
 //-------------------------------------------------------------------
 // IMPORTANT: currently we specialized only these point types.
@@ -50,7 +57,7 @@ EncodingInfo ConvertToEncodingInfo<pcl::PointXYZI>(  //
  * @param resolution_XYZ The resolution for the XYZ coordinates, used for lossy encoding.
  * @return The size of the serialized data in bytes.
  */
-size_t PointcloudEncode(
+size_t PCLPointCloudEncode(
     const pcl::PCLPointCloud2& cloud, std::vector<uint8_t>& serialized_cloud, double resolution_XYZ);
 
 /**
@@ -64,8 +71,13 @@ size_t PointcloudEncode(
  * @return The size of the serialized data in bytes.
  */
 template <typename PointT>
-size_t PointcloudEncode(
+size_t PCLPointCloudEncode(
     const pcl::PointCloud<PointT>& cloud, std::vector<uint8_t>& serialized_cloud, double resolution_XYZ);
+
+// Use this function to convert a PCD file directly. This is particularly recommended when the pointcloud contains
+// UINT64 or INT64 fields
+size_t PCLPointCloudEncode(
+    const std::filesystem::path& input_pcd_file, std::vector<uint8_t>& serialized_cloud, double resolution_XYZ);
 
 /**
  * @brief Decodes a serialized point cloud into a pcl::PCLPointCloud2 object.
@@ -73,7 +85,7 @@ size_t PointcloudEncode(
  * @param serialized_data The input serialized data to decode.
  * @param cloud The output pcl::PCLPointCloud2 object where the decoded data will be stored.
  */
-void PointcloudDecode(ConstBufferView serialized_data, pcl::PCLPointCloud2& cloud);
+void PCLPointCloudDecode(ConstBufferView serialized_data, pcl::PCLPointCloud2& cloud);
 
 /**
  * @brief Decodes a serialized point cloud into a pcl::PointCloud<PointT> object.
@@ -84,7 +96,7 @@ void PointcloudDecode(ConstBufferView serialized_data, pcl::PCLPointCloud2& clou
  * @param cloud The output pcl::PointCloud<PointT> object where the decoded data will be stored.
  */
 template <typename PointT>
-void PointcloudDecode(ConstBufferView serialized_data, pcl::PointCloud<PointT>& cloud);
+void PCLPointCloudDecode(ConstBufferView serialized_data, pcl::PointCloud<PointT>& cloud);
 
 //-------------------------------------------------------------------
 //-------------------------------------------------------------------

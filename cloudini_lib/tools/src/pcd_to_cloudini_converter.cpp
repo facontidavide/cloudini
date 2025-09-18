@@ -28,13 +28,13 @@
 #include "cxxopts.hpp"
 
 int main(int argc, char** argv) {
-  cxxopts::Options options("pcd_to_cloudini_converter", "Convert PCD files to Cloudini compressed format (.cld_pcl)");
+  cxxopts::Options options("pcd_to_cloudini_converter", "Convert PCD files to Cloudini compressed format (.cldn)");
 
   options.add_options()                                                                   //
       ("h,help", "Print usage")                                                           //
       ("y,yes", "Auto-confirm overwrite of files")                                        //
       ("f,filename", "Input PCD file name", cxxopts::value<std::string>())                //
-      ("o,output", "Output file name (default: input_name.cld_pcl)",                      //
+      ("o,output", "Output file name (default: input_name.cldn)",                         //
        cxxopts::value<std::string>())                                                     //
       ("r,resolution", "Resolution applied to XYZ coordinates (meters)",                  //
        cxxopts::value<double>()->default_value("0.001"))                                  //
@@ -129,73 +129,17 @@ int main(int argc, char** argv) {
     }
 
     try {
-      // Load the PCD file
-      pcl::PCLPointCloud2 cloud_blob;
-      if (pcl::io::loadPCDFile(input_file.string(), cloud_blob) == -1) {
-        std::cerr << "Error: Failed to load PCD file: " << input_file << std::endl;
-        return false;
-      }
-
-      if (verbose) {
-        std::cout << "Loaded PCD file: " << input_file << std::endl;
-        std::cout << "  Points: " << cloud_blob.width * cloud_blob.height << std::endl;
-        std::cout << "  Width: " << cloud_blob.width << std::endl;
-        std::cout << "  Height: " << cloud_blob.height << std::endl;
-      }
-
-      // Get encoding info from the cloud
-      Cloudini::EncodingInfo info = Cloudini::ConvertToEncodingInfo(cloud_blob, resolution_xyz);
-      info.encoding_opt = encoding_opt;
-      info.compression_opt = compression_opt;
-
-      // Adjust intensity resolution if present
-      for (auto& field : info.fields) {
-        if (field.name == "intensity" || field.name == "i") {
-          field.resolution = resolution_intensity;
-        }
-      }
-
-      if (verbose) {
-        std::cout << "Encoding settings:" << std::endl;
-        std::cout << "  Encoding: " << encoding_str << std::endl;
-        std::cout << "  Compression: " << compression_str << std::endl;
-        std::cout << "  XYZ resolution: " << resolution_xyz << " m" << std::endl;
-        std::cout << "  Fields:" << std::endl;
-        for (const auto& field : info.fields) {
-          std::cout << "    " << field.name;
-          if (field.resolution.has_value()) {
-            std::cout << " (resolution: " << field.resolution.value() << ")";
-          }
-          std::cout << std::endl;
-        }
-      }
-
       // Encode the point cloud
       std::vector<uint8_t> serialized_cloud;
-      size_t encoded_size = Cloudini::PointcloudEncode(cloud_blob, serialized_cloud, resolution_xyz);
-
-      std::cout << "  Encoded size: " << encoded_size << " bytes" << std::endl;
-
+      const size_t encoded_size = Cloudini::PCLPointCloudEncode(input_file, serialized_cloud, resolution_xyz);
       // Write to output file
       std::ofstream output_stream(output_file, std::ios::binary);
       if (!output_stream) {
         std::cerr << "Error: Failed to open output file: " << output_file << std::endl;
         return false;
       }
-
       output_stream.write(reinterpret_cast<const char*>(serialized_cloud.data()), serialized_cloud.size());
       output_stream.close();
-
-      const size_t original_size = cloud_blob.data.size();
-      const double compression_ratio = (double)encoded_size / original_size * 100.0;
-
-      std::cout << "Successfully converted: " << input_file.filename() << std::endl;
-      std::cout << "  Original size: " << original_size << " bytes" << std::endl;
-      std::cout << "  Compressed size: " << encoded_size << " bytes" << std::endl;
-      std::cout << "  Compression ratio: " << std::fixed << std::setprecision(2) << compression_ratio << "%"
-                << std::endl;
-      std::cout << "  Output: " << output_file << std::endl;
-
       return true;
 
     } catch (const std::exception& e) {
@@ -217,17 +161,22 @@ int main(int argc, char** argv) {
     if (parse_result.count("output")) {
       output_file = parse_result["output"].as<std::string>();
     } else {
-      output_file = input_file.parent_path() / (input_file.stem().string() + ".cld_pcl");
+      output_file = input_file.parent_path() / (input_file.stem().string() + ".cldn");
     }
 
     // Ensure output has correct extension
-    if (output_file.extension() != ".cld_pcl") {
-      output_file.replace_extension(".cld_pcl");
+    if (output_file.extension() != ".cldn") {
+      output_file.replace_extension(".cldn");
     }
 
     if (!convert_file(input_file, output_file)) {
       return 1;
     }
+    const size_t input_file_size = std::filesystem::file_size(input_file);
+    const size_t output_file_size = std::filesystem::file_size(output_file);
+    std::cout << "Successfully converted " << input_file << " to " << output_file << std::endl;
+    std::cout << "  Size reduced from: " << input_file_size / 1024 << " Kb to " << output_file_size / 1024 << " Kb"
+              << " ratio:" << static_cast<double>(output_file_size) / static_cast<double>(input_file_size) << std::endl;
 
   } else if (batch_mode) {
     const std::filesystem::path batch_dir = parse_result["batch"].as<std::string>();
@@ -244,7 +193,7 @@ int main(int argc, char** argv) {
 
     for (const auto& entry : std::filesystem::directory_iterator(batch_dir)) {
       if (entry.path().extension() == ".pcd") {
-        std::filesystem::path output_file = entry.path().parent_path() / (entry.path().stem().string() + ".cld_pcl");
+        std::filesystem::path output_file = entry.path().parent_path() / (entry.path().stem().string() + ".cldn");
 
         if (convert_file(entry.path(), output_file)) {
           processed++;
