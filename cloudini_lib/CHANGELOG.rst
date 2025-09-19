@@ -2,6 +2,17 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Merge pull request `#27 <https://github.com/facontidavide/cloudini/issues/27>`_ from facontidavide/yaml_encoding
+  Yaml encoding
+* each chunk should reset the state of encoders/decoders to allow parallel extraction
+* fix PCD conversion
+* use YAML instead
+* add JSON encoding to header and WIP pcl_converter
+* version 03: add multi-threading and chunks
+* Contributors: Davide Faconti
+
 0.6.1 (2025-08-28)
 ------------------
 * bug fix (memory boundaries) and typo addressed
