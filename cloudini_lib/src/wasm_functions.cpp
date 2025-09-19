@@ -6,6 +6,26 @@
 #include "cloudini_lib/ros_message_definitions.hpp"
 #include "cloudini_lib/ros_msg_utils.hpp"
 
+size_t cldn_GetHeaderAsJSON(uintptr_t encoded_data_ptr, size_t encoded_data_size, uintptr_t output_json_ptr) {
+  try {
+    const uint8_t* encoded_data = reinterpret_cast<const uint8_t*>(encoded_data_ptr);
+    Cloudini::ConstBufferView encoded_view(encoded_data, encoded_data_size);
+
+    Cloudini::EncodingInfo info = Cloudini::DecodeHeader(encoded_view);
+    std::string json_str = Cloudini::EncodingInfoToJSON(info);
+
+    // Copy the JSON string to the output buffer
+    char* output_json = reinterpret_cast<char*>(output_json_ptr);
+    size_t json_size = json_str.size();
+    std::memcpy(output_json, json_str.data(), json_size);
+
+    return json_size;
+  } catch (const std::exception& e) {
+    EM_ASM({ console.error('Exception in cldn_GetHeaderAsJSON:', UTF8ToString($0)); }, e.what());
+    return 0;
+  }
+}
+
 size_t cldn_ComputeCompressedSize(uintptr_t dds_msg_ptr, size_t dds_msg_size, float resolution) {
   try {
     const uint8_t* raw_msg_data = reinterpret_cast<const uint8_t*>(dds_msg_ptr);

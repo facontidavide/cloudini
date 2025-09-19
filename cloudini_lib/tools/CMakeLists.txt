@@ -62,6 +62,40 @@ install(TARGETS cloudini_rosbag_converter
 install(FILES cloudini_converter.desktop
         DESTINATION share/applications)
 
+########################################################
+# PCD to Cloudini converter tool
+
+find_package(PCL QUIET COMPONENTS common io)
+
+if(PCL_FOUND)
+  add_executable(pcd_to_cloudini_converter
+    src/pcd_to_cloudini_converter.cpp)
+
+  target_link_libraries(pcd_to_cloudini_converter
+    PRIVATE
+      cloudini_lib
+      cxxopts
+      ${PCL_LIBRARIES}
+  )
+
+  target_include_directories(pcd_to_cloudini_converter
+    PRIVATE
+      ${PCL_INCLUDE_DIRS}
+  )
+
+  target_compile_definitions(pcd_to_cloudini_converter
+    PRIVATE
+      ${PCL_DEFINITIONS}
+  )
+
+  install(TARGETS pcd_to_cloudini_converter
+          RUNTIME DESTINATION bin)
+
+  message(STATUS "PCL found - building pcd_to_cloudini_converter")
+else()
+  message(STATUS "PCL not found - skipping pcd_to_cloudini_converter")
+endif()
+
 
 #find_package(Qt6 COMPONENTS Core Gui Widgets REQUIRED)
 #option(COMPILING_TO_WASM "Set to ON if compiling to WASM" OFF)

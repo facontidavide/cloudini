@@ -19,7 +19,9 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <sstream>
 #include <stdexcept>
+#include <type_traits>
 
 #include "cloudini_lib/encoding_utils.hpp"
 #include "cloudini_lib/field_decoder.hpp"
@@ -28,6 +30,206 @@
 #include "zstd.h"
 
 namespace Cloudini {
+
+const char* ToString(const FieldType& type) {
+  switch (type) {
+    case FieldType::INT8:
+      return "INT8";
+    case FieldType::UINT8:
+      return "UINT8";
+    case FieldType::INT16:
+      return "INT16";
+    case FieldType::UINT16:
+      return "UINT16";
+    case FieldType::INT32:
+      return "INT32";
+    case FieldType::UINT32:
+      return "UINT32";
+    case FieldType::FLOAT32:
+      return "FLOAT32";
+    case FieldType::FLOAT64:
+      return "FLOAT64";
+    case FieldType::INT64:
+      return "INT64";
+    case FieldType::UINT64:
+      return "UINT64";
+
+    case FieldType::UNKNOWN:
+    default:
+      return "UNKNOWN";
+  }
+}
+
+inline const char* ToString(const EncodingOptions& opt) {
+  switch (opt) {
+    case EncodingOptions::NONE:
+      return "NONE";
+    case EncodingOptions::LOSSY:
+      return "LOSSY";
+    case EncodingOptions::LOSSLESS:
+      return "LOSSLESS";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+inline const char* ToString(const CompressionOption& opt) {
+  switch (opt) {
+    case CompressionOption::NONE:
+      return "NONE";
+    case CompressionOption::LZ4:
+      return "LZ4";
+    case CompressionOption::ZSTD:
+      return "ZSTD";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+EncodingOptions EncodingOptionsFromString(std::string_view str) {
+  if (str == "NONE") {
+    return EncodingOptions::NONE;
+  } else if (str == "LOSSY") {
+    return EncodingOptions::LOSSY;
+  } else if (str == "LOSSLESS") {
+    return EncodingOptions::LOSSLESS;
+  } else {
+    int val = std::stoi(std::string(str));
+    if (val >= static_cast<int>(EncodingOptions::NONE) && val <= static_cast<int>(EncodingOptions::LOSSLESS)) {
+      return static_cast<EncodingOptions>(val);
+    }
+  }
+  throw std::runtime_error("Invalid EncodingOptions string: " + std::string(str));
+}
+
+FieldType FieldTypeFromString(std::string_view str) {
+  if (str == "INT8") {
+    return FieldType::INT8;
+  } else if (str == "UINT8") {
+    return FieldType::UINT8;
+  } else if (str == "INT16") {
+    return FieldType::INT16;
+  } else if (str == "UINT16") {
+    return FieldType::UINT16;
+  } else if (str == "INT32") {
+    return FieldType::INT32;
+  } else if (str == "UINT32") {
+    return FieldType::UINT32;
+  } else if (str == "FLOAT32") {
+    return FieldType::FLOAT32;
+  } else if (str == "FLOAT64") {
+    return FieldType::FLOAT64;
+  } else if (str == "INT64") {
+    return FieldType::INT64;
+  } else if (str == "UINT64") {
+    return FieldType::UINT64;
+  } else {
+    int val = std::stoi(std::string(str));
+    if (val >= static_cast<int>(FieldType::UNKNOWN) && val <= static_cast<int>(FieldType::UINT64)) {
+      return static_cast<FieldType>(val);
+    }
+  }
+  throw std::runtime_error("Invalid FieldType string: " + std::string(str));
+}
+
+CompressionOption CompressionOptionFromString(std::string_view str) {
+  if (str == "NONE") {
+    return CompressionOption::NONE;
+  } else if (str == "LZ4") {
+    return CompressionOption::LZ4;
+  } else if (str == "ZSTD") {
+    return CompressionOption::ZSTD;
+  } else {
+    int val = std::stoi(std::string(str));
+    if (val >= static_cast<int>(CompressionOption::NONE) && val <= static_cast<int>(CompressionOption::ZSTD)) {
+      return static_cast<CompressionOption>(val);
+    }
+  }
+  throw std::runtime_error("Invalid CompressionOption string: " + std::string(str));
+}
+
+std::string EncodingInfoToYAML(const EncodingInfo& info) {
+  std::ostringstream yaml;
+  yaml << "version: " << static_cast<int>(info.version) << "\n";
+  yaml << "width: " << info.width << "\n";
+  yaml << "height: " << info.height << "\n";
+  yaml << "point_step: " << info.point_step << "\n";
+  yaml << "encoding_opt: " << ToString(info.encoding_opt) << "\n";
+  yaml << "compression_opt: " << ToString(info.compression_opt) << "\n";
+  yaml << "fields:\n";
+
+  for (const auto& field : info.fields) {
+    yaml << "  - name: " << field.name << "\n";
+    yaml << "    offset: " << field.offset << "\n";
+    yaml << "    type: " << ToString(field.type) << "\n";
+    if (field.resolution.has_value()) {
+      yaml << "    resolution: " << field.resolution.value() << "\n";
+    } else {
+      yaml << "    resolution: null\n";
+    }
+  }
+  return yaml.str();
+}
+
+EncodingInfo EncodingInfoFromYAML(std::string_view yaml) {
+  EncodingInfo info;
+
+  auto read_value_from_line = [&yaml](size_t& pos, const char* key) -> std::string {
+    const size_t new_line_pos = yaml.find('\n', pos);
+    std::string_view line = yaml.substr(pos, new_line_pos - pos);
+    // remove comments in this line
+    size_t comment_pos = line.find('#');
+    if (comment_pos != std::string::npos) {
+      line = line.substr(0, comment_pos);
+    }
+    size_t colon_pos = line.find(':');
+    std::string_view key_view = line.substr(0, colon_pos);
+    key_view = key_view.substr(
+        key_view.find_first_not_of(" \t"),  //
+        key_view.find_last_not_of(" \t") + 1);
+
+    if (key_view != key) {
+      throw std::runtime_error("Expected key: [" + std::string(key) + "], got: [" + std::string(key_view) + "]");
+    }
+    pos = new_line_pos;
+    if (new_line_pos != std::string::npos) {
+      pos++;
+    }
+    if (line.size() <= colon_pos + 1) {
+      return "";
+    }
+    std::string_view value_view = line.substr(colon_pos + 1);
+    value_view = value_view.substr(
+        value_view.find_first_not_of(" \t"),  //
+        value_view.find_last_not_of(" \t") + 1);
+    return std::string(value_view);
+  };
+
+  // read line by line
+  size_t pos = 0;
+
+  info.version = static_cast<uint8_t>(std::stoi(read_value_from_line(pos, "version")));
+  info.width = static_cast<uint32_t>(std::stoi(read_value_from_line(pos, "width")));
+  info.height = static_cast<uint32_t>(std::stoi(read_value_from_line(pos, "height")));
+  info.point_step = static_cast<uint32_t>(std::stoi(read_value_from_line(pos, "point_step")));
+  info.encoding_opt = EncodingOptionsFromString(read_value_from_line(pos, "encoding_opt"));
+  info.compression_opt = CompressionOptionFromString(read_value_from_line(pos, "compression_opt"));
+
+  read_value_from_line(pos, "fields");  // just to move pos forward
+
+  while (pos != std::string::npos && pos < yaml.size()) {
+    PointField field;
+    field.name = read_value_from_line(pos, "- name");
+    field.offset = static_cast<uint32_t>(std::stoi(read_value_from_line(pos, "offset")));
+    field.type = FieldTypeFromString(read_value_from_line(pos, "type"));
+    std::string res_str = read_value_from_line(pos, "resolution");
+    if (res_str != "null") {
+      field.resolution = std::stof(res_str);
+    }
+    info.fields.push_back(field);
+  }
+  return info;
+}
 
 size_t ComputeHeaderSize(const std::vector<PointField>& fields) {
   size_t header_size = kMagicHeaderLength + 2;       // 2 bytes for version number
@@ -46,36 +248,54 @@ size_t ComputeHeaderSize(const std::vector<PointField>& fields) {
   return header_size;
 }
 
-size_t EncodeHeader(const EncodingInfo& header, BufferView& output) {
-  const size_t prev_size = output.size();
+void EncodeHeader(const EncodingInfo& header, std::vector<uint8_t>& output, HeaderEncoding encoding) {
+  output.clear();
 
-  memcpy(output.data(), kMagicHeader, kMagicHeaderLength);
-  output.trim_front(kMagicHeaderLength);
+  auto write_magic = [](BufferView& output_buffer) {
+    memcpy(output_buffer.data(), kMagicHeader, kMagicHeaderLength);
+    output_buffer.trim_front(kMagicHeaderLength);
+    // version as two ASCII digits
+    encode<char>('0' + (kEncodingVersion / 10), output_buffer);
+    encode<char>('0' + (kEncodingVersion % 10), output_buffer);
+  };
 
-  output.data()[0] = '0' + (header.version / 10);
-  output.data()[1] = '0' + (header.version % 10);
-  output.trim_front(2);
+  if (encoding == HeaderEncoding::YAML) {
+    const auto yaml_str = EncodingInfoToYAML(header);
+    // magic + \n + yaml + \0
+    output.resize(yaml_str.size() + 2 + kMagicHeaderLength + 2);
+    BufferView output_buffer(output.data(), output.size());
 
-  encode(header.width, output);
-  encode(header.height, output);
-  encode(header.point_step, output);
+    write_magic(output_buffer);
+    encode('\n', output_buffer);  // newline
+    memcpy(output_buffer.data(), yaml_str.data(), yaml_str.size());
+    output_buffer.trim_front(yaml_str.size());
+    encode('\0', output_buffer);  // null terminator
+  } else {
+    // Binary encoding
+    output.resize(ComputeHeaderSize(header.fields));
+    BufferView output_buffer(output.data(), output.size());
+    write_magic(output_buffer);
 
-  encode(static_cast<uint8_t>(header.encoding_opt), output);
-  encode(static_cast<uint8_t>(header.compression_opt), output);
-  encode(static_cast<uint16_t>(header.fields.size()), output);
+    encode(header.width, output_buffer);
+    encode(header.height, output_buffer);
+    encode(header.point_step, output_buffer);
 
-  for (const auto& field : header.fields) {
-    encode(field.name, output);
-    encode(field.offset, output);
-    encode(static_cast<uint8_t>(field.type), output);
-    if (field.resolution) {
-      encode(*field.resolution, output);
-    } else {
-      const float res = -1.0;
-      encode(res, output);
+    encode(static_cast<uint8_t>(header.encoding_opt), output_buffer);
+    encode(static_cast<uint8_t>(header.compression_opt), output_buffer);
+    encode(static_cast<uint16_t>(header.fields.size()), output_buffer);
+
+    for (const auto& field : header.fields) {
+      encode(field.name, output_buffer);
+      encode(field.offset, output_buffer);
+      encode(static_cast<uint8_t>(field.type), output_buffer);
+      if (field.resolution) {
+        encode(*field.resolution, output_buffer);
+      } else {
+        const float res = -1.0;
+        encode(res, output_buffer);
+      }
     }
   }
-  return prev_size - output.size();
 }
 
 auto char_to_num = [](char c) -> uint8_t {
@@ -96,15 +316,31 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
   input.trim_front(kMagicHeaderLength);
 
   // next 2 bytes contain the version number as string
-  uint8_t version = char_to_num(input.data()[0]) * 10 + char_to_num(input.data()[1]);
+  const uint8_t version = char_to_num(input.data()[0]) * 10 + char_to_num(input.data()[1]);
+  input.trim_front(2);
+
   if (version < 2 || version > kEncodingVersion) {
     throw std::runtime_error(
         "Unsupported encoding version. Current is:" + std::to_string(kEncodingVersion) +
         ", got: " + std::to_string(version));
   }
+
+  // check if encoded as YAML (starts with newline after version, then non-brace character)
+  if (input.size() > 2 && input.data()[0] == '\n' && input.data()[1] != '{') {
+    // YAML encoded header
+    input.trim_front(1);  // consume newline
+    std::string_view yaml_str(reinterpret_cast<const char*>(input.data()), input.size());
+    size_t null_pos = yaml_str.find('\0');
+    if (null_pos != std::string::npos) {
+      yaml_str = yaml_str.substr(0, null_pos);
+    }
+    input.trim_front(null_pos + 1);  // consume header + null terminator
+    return EncodingInfoFromYAML(yaml_str);
+  }
+
+  // Binary encoded header
   EncodingInfo header;
   header.version = version;
-  input.trim_front(2);
 
   decode(input, header.width);
   decode(input, header.height);
@@ -138,18 +374,14 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
 }
 
 PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
-  header_.resize(ComputeHeaderSize(info_.fields));
-  BufferView header_view(header_.data(), header_.size());
-  //-------------------------------------------------------------------------------------------
-  EncodeHeader(info_, header_view);
-
-  // Start the compression worker thread if we're using compression
-  compressing_thread_ = std::thread(&PointcloudEncoder::compressionWorker, this);
+  EncodeHeader(info_, header_);
 
   if (info_.encoding_opt == EncodingOptions::NONE) {
     for (const auto& field : info_.fields) {
       encoders_.push_back(std::make_unique<FieldEncoderCopy>(field.offset, field.type));
     }
+    // Start the compression worker thread if we're using compression
+    compressing_thread_ = std::thread(&PointcloudEncoder::compressionWorker, this);
     return;
   }
   //-------------------------------------------------------------------------------------------
@@ -223,6 +455,8 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
         throw std::runtime_error("Unsupported field type:" + std::to_string(static_cast<int>(field.type)));
     }
   }
+  // Start the compression worker thread if we're using compression
+  compressing_thread_ = std::thread(&PointcloudEncoder::compressionWorker, this);
 }
 
 PointcloudEncoder::~PointcloudEncoder() {
@@ -309,13 +543,18 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t
   const size_t chunk_size_bytes = 4 * chunks_count;
 
   output.resize(header_.size() + max_compressed_size + chunk_size_bytes);
+  // write the header
   BufferView output_view(output.data(), output.size());
-  auto new_size = encode(cloud_data, output_view);
+  memcpy(output_view.data(), header_.data(), header_.size());
+  output_view.trim_front(header_.size());
+
+  const size_t added_bytes = encode(cloud_data, output_view, false);
+  const size_t new_size = header_.size() + added_bytes;
   output.resize(new_size);
   return new_size;
 }
 
-size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output) {
+size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output, bool write_header) {
   // Reset the state of the encoders and the class attributes
   for (auto& encoder : encoders_) {
     encoder->reset();
@@ -327,10 +566,11 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output)
   compression_done_ = true;
 
   // Copy the header at the beginning of the output
-  memcpy(output_view_.data(), header_.data(), header_.size());
-  compressed_size_ += header_.size();
-  output_view_.trim_front(header_.size());
-
+  if (write_header) {
+    memcpy(output_view_.data(), header_.data(), header_.size());
+    compressed_size_ += header_.size();
+    output_view_.trim_front(header_.size());
+  }
   const size_t kChunkSize = POINTS_PER_CHUNK * info_.point_step;
 
   buffer_.resize(kChunkSize);
@@ -366,7 +606,11 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output)
         }
         cv_ready_to_compress_.notify_one();
       }
+
       // clean up current buffer and buffer_view
+      for (auto& encoder : encoders_) {
+        encoder->reset();
+      }
       buffer_.resize(kChunkSize);
       buffer_view = BufferView(buffer_);
       points_in_current_chunk = 0;
@@ -521,6 +765,9 @@ void PointcloudDecoder::decodeChunk(const EncodingInfo& info, ConstBufferView ch
   // decode the data (first stage).
   auto encoded_view = (info.compression_opt == CompressionOption::NONE) ? ConstBufferView(chunk_data)
                                                                         : ConstBufferView(decompressed_buffer_);
+  for (auto& decoder : decoders_) {
+    decoder->reset();
+  }
 
   size_t decoded_points = 0;
   while (encoded_view.size() > 0) {

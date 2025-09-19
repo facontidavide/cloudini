@@ -13,6 +13,9 @@
 
 extern "C" {
 
+// retrieves a JSON representation of Cloudini::EncodingInfo
+size_t cldn_GetHeaderAsJSON(uintptr_t encoded_data_ptr, size_t encoded_data_size, uintptr_t output_json_ptr);
+
 // Performs a full compression of the point cloud data, but return only the size of the
 // compressed data, not the data itself. Used mainly for testing purposes.
 WASM_EXPORT size_t cldn_ComputeCompressedSize(uintptr_t dds_msg_ptr, size_t dds_msg_size, float resolution);
