@@ -606,7 +606,11 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
         }
         cv_ready_to_compress_.notify_one();
       }
+
       // clean up current buffer and buffer_view
+      for (auto& encoder : encoders_) {
+        encoder->reset();
+      }
       buffer_.resize(kChunkSize);
       buffer_view = BufferView(buffer_);
       points_in_current_chunk = 0;
@@ -761,6 +765,9 @@ void PointcloudDecoder::decodeChunk(const EncodingInfo& info, ConstBufferView ch
   // decode the data (first stage).
   auto encoded_view = (info.compression_opt == CompressionOption::NONE) ? ConstBufferView(chunk_data)
                                                                         : ConstBufferView(decompressed_buffer_);
+  for (auto& decoder : decoders_) {
+    decoder->reset();
+  }
 
   size_t decoded_points = 0;
   while (encoded_view.size() > 0) {

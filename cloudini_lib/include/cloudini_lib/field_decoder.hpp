@@ -152,7 +152,6 @@ class FieldDecoderFloatN_Lossy : public FieldDecoder {
 
   void reset() override {
     prev_vect_ = Vector4i(0, 0, 0, 0);
-    multiplier_ = Vector4f(0, 0, 0, 0);
   }
 
  private:
