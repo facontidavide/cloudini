@@ -2,8 +2,8 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.7.0 (2025-09-19)
+------------------
 * Merge pull request `#27 <https://github.com/facontidavide/cloudini/issues/27>`_ from facontidavide/yaml_encoding
   Yaml encoding
 * each chunk should reset the state of encoders/decoders to allow parallel extraction
