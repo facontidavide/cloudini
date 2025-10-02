@@ -1,18 +1,4 @@
 
-if(NOT TARGET mcap)
-    CPMAddPackage(
-        NAME mcap
-        GITHUB_REPOSITORY foxglove/mcap
-        GIT_TAG releases/cpp/v1.3.1
-        DOWNLOAD_ONLY YES
-    )
-    # mcap has no CMake support, so we create our own target
-    add_library(mcap INTERFACE)
-    target_include_directories(mcap INTERFACE "${mcap_SOURCE_DIR}/cpp/mcap/include")
-    ## create alias mcap::mcap
-    add_library(mcap::mcap ALIAS mcap)
-endif()
-
 
 add_library(mcap_converter src/mcap_converter.cpp)
 target_include_directories(mcap_converter
@@ -26,8 +12,8 @@ target_link_libraries(mcap_converter
   PUBLIC
    cloudini_lib
   PRIVATE
-   ${LZ4_LIBRARY}
-   ${ZSTD_LIBRARY}
+   LZ4::lz4_static
+   zstd::libzstd_static
    mcap::mcap
 )
 
@@ -49,11 +35,11 @@ add_executable(mcap_cutter
 
 target_link_libraries(mcap_cutter
   PRIVATE
-   cloudini_lib
-   ${LZ4_LIBRARY}
-   ${ZSTD_LIBRARY}
-   mcap::mcap
-   cxxopts
+    cloudini_lib
+    LZ4::lz4_static
+    zstd::libzstd_static
+    mcap::mcap
+    cxxopts
 )
 
 install(TARGETS cloudini_rosbag_converter

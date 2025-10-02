@@ -1,3 +1,15 @@
+// Copyright (c) 2025 Davide Faconti
+//
+// This file is part of Cloudini.
+//
+// Licensed under the FSL-1.1-MIT License.
+// You may obtain a copy of the License at
+// https://fsl.software/
+//
+// Two years from the release date of this software, you may use
+// this file in accordance with the MIT License, as described in
+// the LICENSE file in the root of this repository.
+
 #include "cloudini_lib/field_decoder.hpp"
 
 #include <cmath>
@@ -26,7 +38,7 @@ FieldDecoderFloatN_Lossy::FieldDecoderFloatN_Lossy(const std::vector<FieldData>&
 void FieldDecoderFloatN_Lossy::decode(ConstBufferView& input, BufferView dest_point_view) {
   const uint8_t* ptr_in = input.data();
 
-  Vector4i new_vect;
+  Vector4i new_vect{};
   Vector4f float_vect;
 
   // Decode deltas for each field

@@ -36,11 +36,12 @@ int main(int argc, char** argv) {
        cxxopts::value<std::string>())                                 //
       ("c,compress", "Convert PointCloud2 to CompressedPointCloud2")  //
       ("d,decode", "Convert CompressedPointCloud2 to PointCloud2")    //
+      ("s,stats", "Print compression statistics")                     //
       ("m,method", "Compression method to use when writing data back to mcap ('lz4' or 'zstd', 'none')",
-       cxxopts::value<std::string>()->default_value("zstd"));
+       cxxopts::value<std::string>()->default_value("zstd"))  //
+      ;
 
   auto parse_result = options.parse(argc, argv);
-
   if (parse_result.count("help")) {
     std::cout << options.help() << std::endl;
 
@@ -89,7 +90,8 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  std::string output_filename = input_file.stem().string() + (encode ? "_encoded.mcap" : "_decoded.mcap");
+  std::string output_filename = input_file.stem().string();
+  output_filename += (encode ? "_compressed.mcap" : "_decompressed.mcap");
   if (parse_result.count("output")) {
     output_filename = parse_result["output"].as<std::string>();
   }
@@ -115,7 +117,7 @@ int main(int argc, char** argv) {
       return 0;
     }
   }
-  std::cout << "Input file: " << input_file << std::endl;
+  std::cout << "----------------------\nInput file: " << input_file << std::endl;
 
   // Parse the mcap writer compression method
   Cloudini::CompressionOption mcap_writer_compression;
@@ -190,6 +192,10 @@ int main(int argc, char** argv) {
       converter.decodePointClouds(output_filename, mcap_writer_compression);
     }
     std::cout << "\nFile saved as: " << output_filename << std::endl;
+    if (parse_result.count("stats")) {
+      std::cout << "\n";
+      converter.printStatistics();
+    }
 
   } catch (const std::exception& e) {
     std::cerr << "Error: " << e.what() << std::endl;

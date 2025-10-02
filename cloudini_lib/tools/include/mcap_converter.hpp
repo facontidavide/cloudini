@@ -59,6 +59,8 @@ class McapConverter {
 
   std::vector<std::pair<std::string, float>> getProfile() const;
 
+  void printStatistics() const;
+
  private:
   std::ifstream input_stream_;
   std::shared_ptr<mcap::FileStreamReader> data_source_;
@@ -70,4 +72,9 @@ class McapConverter {
   std::map<uint16_t, uint16_t> old_to_new_schema_id_;
   std::map<uint16_t, uint16_t> old_to_new_channel_id_;
   std::map<std::string, float> profile_resolutions_;
+
+  size_t processed_messages_ = 0;
+  size_t total_input_bytes_ = 0;
+  size_t total_output_bytes_ = 0;
+  std::chrono::microseconds total_processing_time_ = std::chrono::microseconds(0);
 };

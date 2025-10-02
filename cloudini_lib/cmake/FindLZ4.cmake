@@ -20,22 +20,44 @@
 # LZ4_LIBRARY
 #
 
-find_path(LZ4_INCLUDE_DIR NAMES lz4.h)
-
-find_library(LZ4_LIBRARY_DEBUG NAMES lz4d)
-find_library(LZ4_LIBRARY_RELEASE NAMES lz4)
-
-include(SelectLibraryConfigurations)
-SELECT_LIBRARY_CONFIGURATIONS(LZ4)
-
-include(FindPackageHandleStandardArgs)
-FIND_PACKAGE_HANDLE_STANDARD_ARGS(
-    LZ4 DEFAULT_MSG
-    LZ4_LIBRARY LZ4_INCLUDE_DIR
-)
-
-if (LZ4_FOUND)
-    message(STATUS "Found LZ4: ${LZ4_LIBRARY}")
+if(UNIX)
+  find_package(PkgConfig QUIET)
+  pkg_search_module(PC_LZ4 lz4)
 endif()
 
-mark_as_advanced(LZ4_INCLUDE_DIR LZ4_LIBRARY)
+find_path(LZ4_INCLUDE_DIR
+  NAMES lz4.h
+  HINTS
+    ${PC_LZ4_INCLUDEDIR}
+    ${PC_LZ4_INCLUDE_DIRS}
+)
+
+# find shared and static libraries
+find_library(LZ4_STATIC_LIBRARY
+  NAMES ${CMAKE_STATIC_LIBRARY_PREFIX}lz4${CMAKE_STATIC_LIBRARY_SUFFIX}
+  HINTS
+    ${PC_LZ4_LIBDIR}
+    ${PC_LZ4_LIBRARY_DIRS}
+)
+
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(LZ4
+  DEFAULT_MSG
+  LZ4_INCLUDE_DIR
+  LZ4_STATIC_LIBRARY
+)
+
+if(LZ4_FOUND)
+  message(STATUS "Found LZ4: static=${LZ4_STATIC_LIBRARY}")
+endif()
+
+mark_as_advanced(LZ4_INCLUDE_DIR LZ4_STATIC_LIBRARY)
+
+
+if(NOT TARGET LZ4::lz4_static)
+  add_library(LZ4::lz4_static STATIC IMPORTED GLOBAL)
+  set_target_properties(LZ4::lz4_static PROPERTIES
+    IMPORTED_LOCATION           "${LZ4_STATIC_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${LZ4_INCLUDE_DIR}"
+  )
+endif()

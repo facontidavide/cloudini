@@ -167,3 +167,19 @@ my (currently limited) benchmark.
 
 No, that information is stored in the header of the compressed data, and the decoder will automatically select the right
 decompression algorithm.
+
+# License
+
+I decided to temporary adopt the [Fair Code License](https://fsl.software/).
+
+This means that Cloudini is free (as in "beer") for:
+
+- Academia, students, researchers and hobbists.
+- Any company that uses it **internally** to save their own data.
+- Anyone (companies or individuals) using Cloudini on the *client-side* to compress their data before
+it is uploaded to the cloud.
+
+**It is NOT free for Cloud/Infrastructure providers that commercialize services using
+Cloudini internally**.
+
+If the latter is your case, please contact me at dfaconti@aurynrobotics.com to discuss licensing.
