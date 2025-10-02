@@ -33,6 +33,13 @@ find_path(LZ4_INCLUDE_DIR
 )
 
 # find shared and static libraries
+find_library(LZ4_SHARED_LIBRARY
+  NAMES ${CMAKE_SHARED_LIBRARY_PREFIX}lz4${CMAKE_SHARED_LIBRARY_SUFFIX}
+  HINTS
+    ${PC_LZ4_LIBDIR}
+    ${PC_LZ4_LIBRARY_DIRS}
+  )
+
 find_library(LZ4_STATIC_LIBRARY
   NAMES ${CMAKE_STATIC_LIBRARY_PREFIX}lz4${CMAKE_STATIC_LIBRARY_SUFFIX}
   HINTS
@@ -44,19 +51,32 @@ include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(LZ4
   DEFAULT_MSG
   LZ4_INCLUDE_DIR
+  LZ4_SHARED_LIBRARY
   LZ4_STATIC_LIBRARY
 )
 
 if(LZ4_FOUND)
-  message(STATUS "Found LZ4: static=${LZ4_STATIC_LIBRARY}")
-
-  if(NOT TARGET LZ4::lz4_static)
-    add_library(LZ4::lz4_static STATIC IMPORTED GLOBAL)
-    set_target_properties(LZ4::lz4_static PROPERTIES
-      IMPORTED_LOCATION           "${LZ4_STATIC_LIBRARY}"
-      INTERFACE_INCLUDE_DIRECTORIES "${LZ4_INCLUDE_DIR}"
-    )
-  endif()
+  message(STATUS "Found LZ4: shared=${LZ4_SHARED_LIBRARY}, static=${LZ4_STATIC_LIBRARY}")
+else()
+  message(STATUS "LZ4 not found")
+  return()
 endif()
 
-mark_as_advanced(LZ4_INCLUDE_DIR LZ4_STATIC_LIBRARY)
+# Create imported targets
+if(NOT TARGET LZ4::lz4_shared AND LZ4_SHARED_LIBRARY)
+  add_library(LZ4::lz4_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(LZ4::lz4_shared PROPERTIES
+    IMPORTED_LOCATION           "${LZ4_SHARED_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${LZ4_INCLUDE_DIR}"
+  )
+endif()
+
+if(NOT TARGET LZ4::lz4_static AND LZ4_STATIC_LIBRARY)
+  add_library(LZ4::lz4_static STATIC IMPORTED GLOBAL)
+  set_target_properties(LZ4::lz4_static PROPERTIES
+    IMPORTED_LOCATION           "${LZ4_STATIC_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${LZ4_INCLUDE_DIR}"
+  )
+endif()
+
+mark_as_advanced(LZ4_INCLUDE_DIR LZ4_SHARED_LIBRARY LZ4_STATIC_LIBRARY)

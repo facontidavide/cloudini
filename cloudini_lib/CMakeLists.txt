@@ -12,6 +12,7 @@ message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 option(CLOUDINI_BUILD_TOOLS "Build Tools" ON)
 option(CLOUDINI_FORCE_VENDORED_DEPS "Force vendored dependencies" OFF)
 
+
 # create compile_commands.json
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -161,7 +162,11 @@ else()
 endif(NOT EMSCRIPTEN)
 
 if(CLOUDINI_BUILD_TOOLS)
-  add_subdirectory(tools)
+  if(EMSCRIPTEN)
+    message(STATUS "Disabling tools build for Emscripten")
+  else()
+    add_subdirectory(tools)
+  endif()
 endif()
 
 INSTALL(TARGETS cloudini_lib

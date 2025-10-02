@@ -1,6 +1,6 @@
 function(find_or_download_lz4)
 
-  find_package (LZ4 QUIET)
+  find_package(LZ4 QUIET)
 
   # Check if LZ4 targets already exist (e.g., from Arrow)
   if(NOT TARGET LZ4::lz4_static)

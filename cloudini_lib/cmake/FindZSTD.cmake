@@ -28,6 +28,13 @@ find_path(ZSTD_INCLUDE_DIR zstd.h
     ${PC_ZSTD_INCLUDE_DIRS}
 )
 
+find_library(ZSTD_SHARED_LIBRARY
+  NAMES ${CMAKE_SHARED_LIBRARY_PREFIX}zstd${CMAKE_SHARED_LIBRARY_SUFFIX}
+  HINTS
+    ${PC_ZSTD_LIBDIR}
+    ${PC_ZSTD_LIBRARY_DIRS}
+)
+
 find_library(ZSTD_STATIC_LIBRARY
   NAMES ${CMAKE_STATIC_LIBRARY_PREFIX}zstd${CMAKE_STATIC_LIBRARY_SUFFIX}
   HINTS
@@ -39,19 +46,32 @@ include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(ZSTD
   DEFAULT_MSG
   ZSTD_INCLUDE_DIR
+  ZSTD_SHARED_LIBRARY
   ZSTD_STATIC_LIBRARY
 )
 
 if(ZSTD_FOUND)
-  message(STATUS "Found Zstd: static=${ZSTD_STATIC_LIBRARY}")
-
-  if(NOT TARGET zstd::libzstd_static)
-    add_library(zstd::libzstd_static STATIC IMPORTED GLOBAL)
-    set_target_properties(zstd::libzstd_static PROPERTIES
-      IMPORTED_LOCATION           "${ZSTD_STATIC_LIBRARY}"
-      INTERFACE_INCLUDE_DIRECTORIES "${ZSTD_INCLUDE_DIR}"
-    )
-  endif()
+  message(STATUS "Found Zstd: shared=${ZSTD_SHARED_LIBRARY}, static=${ZSTD_STATIC_LIBRARY}")
+else()
+  message(STATUS "ZSTD not found")
+  return()
 endif()
 
-mark_as_advanced(ZSTD_INCLUDE_DIR ZSTD_STATIC_LIBRARY)
+mark_as_advanced(ZSTD_INCLUDE_DIR ZSTD_SHARED_LIBRARY ZSTD_STATIC_LIBRARY)
+
+# Create imported targets
+if(NOT TARGET zstd::libzstd_shared AND ZSTD_SHARED_LIBRARY)
+  add_library(zstd::libzstd_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(zstd::libzstd_shared PROPERTIES
+    IMPORTED_LOCATION           "${ZSTD_SHARED_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${ZSTD_INCLUDE_DIR}"
+  )
+endif()
+
+if(NOT TARGET zstd::libzstd_static AND ZSTD_STATIC_LIBRARY)
+  add_library(zstd::libzstd_static STATIC IMPORTED GLOBAL)
+  set_target_properties(zstd::libzstd_static PROPERTIES
+    IMPORTED_LOCATION           "${ZSTD_STATIC_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${ZSTD_INCLUDE_DIR}"
+  )
+endif()

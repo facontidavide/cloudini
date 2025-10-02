@@ -22,7 +22,7 @@
 #include "cloudini_lib/ros_message_definitions.hpp"
 #include "cloudini_lib/ros_msg_utils.hpp"
 
-size_t cldn_GetHeaderAsJSON(uintptr_t encoded_data_ptr, size_t encoded_data_size, uintptr_t output_json_ptr) {
+size_t cldn_GetHeaderAsYAML(uintptr_t encoded_data_ptr, size_t encoded_data_size, uintptr_t output_yaml_ptr) {
   try {
     const uint8_t* encoded_data = reinterpret_cast<const uint8_t*>(encoded_data_ptr);
     Cloudini::ConstBufferView encoded_view(encoded_data, encoded_data_size);
@@ -30,14 +30,14 @@ size_t cldn_GetHeaderAsJSON(uintptr_t encoded_data_ptr, size_t encoded_data_size
     Cloudini::EncodingInfo info = Cloudini::DecodeHeader(encoded_view);
     std::string json_str = Cloudini::EncodingInfoToYAML(info);
 
-    // Copy the JSON string to the output buffer
-    char* output_json = reinterpret_cast<char*>(output_json_ptr);
-    size_t json_size = json_str.size();
-    std::memcpy(output_json, json_str.data(), json_size);
+    // Copy the YAML string to the output buffer
+    char* output_yaml = reinterpret_cast<char*>(output_yaml_ptr);
+    size_t yaml_size = json_str.size();
+    std::memcpy(output_yaml, json_str.data(), yaml_size);
 
-    return json_size;
+    return yaml_size;
   } catch (const std::exception& e) {
-    EM_ASM({ console.error('Exception in cldn_GetHeaderAsJSON:', UTF8ToString($0)); }, e.what());
+    EM_ASM({ console.error('Exception in cldn_GetHeaderAsYAML:', UTF8ToString($0)); }, e.what());
     return 0;
   }
 }
