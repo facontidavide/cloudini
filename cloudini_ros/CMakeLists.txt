@@ -12,7 +12,6 @@ find_package(pluginlib REQUIRED)
 find_package(point_cloud_interfaces REQUIRED)
 find_package(point_cloud_transport REQUIRED)
 
-
 set(PLUGIN_DEPS
   pluginlib::pluginlib
   rosbag2_cpp::rosbag2_cpp

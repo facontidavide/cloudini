@@ -38,10 +38,10 @@ int main(int argc, char** argv) {
       ("d,decode", "Convert CompressedPointCloud2 to PointCloud2")    //
       ("s,stats", "Print compression statistics")                     //
       ("m,method", "Compression method to use when writing data back to mcap ('lz4' or 'zstd', 'none')",
-       cxxopts::value<std::string>()->default_value("zstd"))  //
-      ;
+       cxxopts::value<std::string>()->default_value("zstd"));
 
   auto parse_result = options.parse(argc, argv);
+
   if (parse_result.count("help")) {
     std::cout << options.help() << std::endl;
 
@@ -90,8 +90,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  std::string output_filename = input_file.stem().string();
-  output_filename += (encode ? "_compressed.mcap" : "_decompressed.mcap");
+  std::string output_filename = input_file.stem().string() + (encode ? "_encoded.mcap" : "_decoded.mcap");
   if (parse_result.count("output")) {
     output_filename = parse_result["output"].as<std::string>();
   }

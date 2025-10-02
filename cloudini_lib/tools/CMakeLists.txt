@@ -4,8 +4,6 @@ add_library(mcap_converter src/mcap_converter.cpp)
 target_include_directories(mcap_converter
   PUBLIC
    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-   $<BUILD_INTERFACE:${LZ4_INCLUDE_DIR}>
-   $<BUILD_INTERFACE:${ZSTD_INCLUDE_DIR}>
 )
 
 target_link_libraries(mcap_converter

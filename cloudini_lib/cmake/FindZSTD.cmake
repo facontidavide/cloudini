@@ -44,14 +44,14 @@ find_package_handle_standard_args(ZSTD
 
 if(ZSTD_FOUND)
   message(STATUS "Found Zstd: static=${ZSTD_STATIC_LIBRARY}")
+
+  if(NOT TARGET zstd::libzstd_static)
+    add_library(zstd::libzstd_static STATIC IMPORTED GLOBAL)
+    set_target_properties(zstd::libzstd_static PROPERTIES
+      IMPORTED_LOCATION           "${ZSTD_STATIC_LIBRARY}"
+      INTERFACE_INCLUDE_DIRECTORIES "${ZSTD_INCLUDE_DIR}"
+    )
+  endif()
 endif()
 
 mark_as_advanced(ZSTD_INCLUDE_DIR ZSTD_STATIC_LIBRARY)
-
-if(NOT TARGET zstd::libzstd_static)
-  add_library(zstd::libzstd_static STATIC IMPORTED GLOBAL)
-  set_target_properties(zstd::libzstd_static PROPERTIES
-    IMPORTED_LOCATION           "${ZSTD_STATIC_LIBRARY}"
-    INTERFACE_INCLUDE_DIRECTORIES "${ZSTD_INCLUDE_DIR}"
-  )
-endif()
