@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(cloudini_ros)
 
 # find dependencies
+find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rosbag2_cpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -72,17 +73,6 @@ install(TARGETS cloudini_topic_converter
 )
 
 if(BUILD_TESTING)
-  # find_package(ament_lint_auto REQUIRED)
-  find_package(ament_cmake_clang_format REQUIRED)
-
-  set(ament_cmake_clang_format_CONFIG_FILE ../.clang-format)
-
-  # list(APPEND AMENT_LINT_AUTO_EXCLUDE
-  #   ament_cmake_cpplint
-  #  ament_cmake_uncrustify
-  #)
-
-  # ament_lint_auto_find_test_dependencies()
 
   ######### rosbag benchmark #########
   add_executable(rosbag_benchmark test/rosbag_benchmark.cpp)

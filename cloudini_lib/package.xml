@@ -16,7 +16,8 @@
 
   <depend>lz4</depend>
   <depend>libzstd-dev</depend>
-   <depend>pcl_ros</depend>
+  <depend>mcap_vendor</depend>
+  <depend>pcl_ros</depend>
 
   <export>
       <build_type >ament_cmake</build_type>

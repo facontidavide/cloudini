@@ -578,7 +578,6 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
 
   size_t points_in_current_chunk = 0;
   size_t serialized_size = 0;
-  size_t chunks_count = 0;
 
   while (cloud_data.size() > 0) {
     for (auto& encoder : encoders_) {
@@ -615,7 +614,6 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
       buffer_view = BufferView(buffer_);
       points_in_current_chunk = 0;
       serialized_size = 0;
-      chunks_count++;
     }
   }
 
@@ -712,7 +710,6 @@ void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compres
   }
 
   if (info.version >= 3) {
-    size_t chunk_index = 0;
     while (!compressed_data.empty()) {
       uint32_t chunk_size = 0;
       Cloudini::decode(compressed_data, chunk_size);
@@ -722,7 +719,6 @@ void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compres
       ConstBufferView chunk_view(compressed_data.data(), chunk_size);
       decodeChunk(info, chunk_view, output);
       compressed_data.trim_front(chunk_size);
-      chunk_index++;
     }
   } else {
     decodeChunk(info, compressed_data, output);
@@ -769,7 +765,6 @@ void PointcloudDecoder::decodeChunk(const EncodingInfo& info, ConstBufferView ch
     decoder->reset();
   }
 
-  size_t decoded_points = 0;
   while (encoded_view.size() > 0) {
     if (output_buffer.size() < info.point_step) {
       throw std::runtime_error("Output buffer is too small to hold the decoded data");
@@ -779,7 +774,6 @@ void PointcloudDecoder::decodeChunk(const EncodingInfo& info, ConstBufferView ch
       decoder->decode(encoded_view, point_view);
     }
     output_buffer.trim_front(info.point_step);
-    decoded_points++;
   }
 }
 

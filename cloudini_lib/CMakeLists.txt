@@ -10,6 +10,8 @@ endif()
 message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 
 option(CLOUDINI_BUILD_TOOLS "Build Tools" ON)
+option(CLOUDINI_FORCE_VENDORED_DEPS "Force vendored dependencies" OFF)
+
 
 # create compile_commands.json
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -20,20 +22,22 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # add cmake folder to path
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
+find_package(ament_cmake QUIET)
+if(ament_cmake_FOUND)
+  message(STATUS "Found ament_cmake")
+endif()
+
 include(FetchContent)
 include(cmake/CPM.cmake)
-include(cmake/download_deps.cmake)
 
-find_package(ament_cmake QUIET)
-
+include(cmake/find_or_download_zstd.cmake)
 find_or_download_zstd()
-message(STATUS "ZSTD_INCLUDE_DIR: ${ZSTD_INCLUDE_DIR}")
-message(STATUS "ZSTD_LIBRARY: ${ZSTD_LIBRARY}")
 
+include(cmake/find_or_download_lz4.cmake)
 find_or_download_lz4()
-message(STATUS "LZ4_INCLUDE_DIR: ${LZ4_INCLUDE_DIR}")
-message(STATUS "LZ4_LIBRARY: ${LZ4_LIBRARY}")
 
+include(cmake/find_or_download_mcap.cmake)
+find_or_download_mcap()
 
 ##################################################################################
 
@@ -75,13 +79,25 @@ endif()
 
 option(CLOUDINI_BUILD_BENCHMARKS "Build benchmarks" ON)
 
-add_library(cloudini_lib
+# Use SHARED library when building with ament, STATIC otherwise
+SET(CLOUDINI_SRC
   src/cloudini.cpp
   src/field_encoder.cpp
   src/field_decoder.cpp
   src/ros_msg_utils.cpp
-  ${PCL_SRC}
 )
+
+if(ament_cmake_FOUND)
+  add_library(cloudini_lib SHARED
+    ${CLOUDINI_SRC}
+    ${PCL_SRC}
+  )
+else()
+  add_library(cloudini_lib STATIC
+    ${CLOUDINI_SRC}
+    ${PCL_SRC}
+  )
+endif()
 
 target_compile_features(cloudini_lib PUBLIC cxx_std_20)
 
@@ -92,19 +108,14 @@ endif()
 target_include_directories(cloudini_lib
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${PCL_INCLUDE_DIRS}>
     $<INSTALL_INTERFACE:include>
-    ${PCL_INCLUDE_DIRS}
-  PRIVATE
-    $<BUILD_INTERFACE:${LZ4_INCLUDE_DIR}>
-    $<BUILD_INTERFACE:${ZSTD_INCLUDE_DIR}>
-    $<BUILD_INTERFACE:${DRACO_INCLUDE_DIR}>
 )
 
 target_link_libraries(cloudini_lib
   PRIVATE
-    ${LZ4_LIBRARY}
-    ${ZSTD_LIBRARY}
-    ${DRACO_LIBRARY}
+    $<BUILD_INTERFACE:LZ4::lz4_static>
+    $<BUILD_INTERFACE:zstd::libzstd_static>
   PUBLIC
     ${PCL_LIBRARIES}
 )
@@ -116,7 +127,8 @@ if(NOT EMSCRIPTEN)
     endif()
   endif()
 
-  if(CLOUDINI_BUILD_BENCHMARKS)
+  find_package(benchmarks QUIET)
+  if(CLOUDINI_BUILD_BENCHMARKS AND benchmarks_FOUND AND PCL_FOUND)
     add_subdirectory(benchmarks)
   endif()
 
@@ -137,8 +149,6 @@ else()
   target_include_directories(cloudini_wasm
     PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/include
-      ${LZ4_INCLUDE_DIR}
-      ${ZSTD_INCLUDE_DIR}
   )
 
   target_link_libraries(cloudini_wasm
@@ -146,14 +156,49 @@ else()
       cloudini_lib
   )
 
-  set_target_properties(cloudini_wasm PROPERTIES
-    LINK_FLAGS "-s SINGLE_FILE=1 -sNO_DISABLE_EXCEPTION_CATCHING -sASSERTIONS -s EXPORTED_FUNCTIONS=['_cldn_ComputeCompressedSize','_cldn_GetDecompressedSize','_cldn_DecodeCompressedMessage','_cldn_DecodeCompressedData','_malloc','_free'] -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8','HEAP8','UTF8ToString'] -s MODULARIZE=1 -s EXPORT_NAME='CloudiniModule' -s INITIAL_MEMORY=67108864 -s MAXIMUM_MEMORY=134217728 -s ALLOW_MEMORY_GROWTH=1 -s TOTAL_STACK=1048576"
-  )
+  set(CLD_EXPORTED_FUNCTIONS
+      "_malloc"
+      "_free"
+      "_cldn_GetHeaderAsYAML"
+      "_cldn_ComputeCompressedSize"
+      "_cldn_GetDecompressedSize"
+      "_cldn_DecodeCompressedMessage"
+      "_cldn_DecodeCompressedData"
+      "_cldn_EncodePointcloudData"
+      "_cldn_GetLastErrorMessage"
+    )
+  set(QUOTED_FUNCTIONS "")
+  FOREACH(Item IN LISTS CLD_EXPORTED_FUNCTIONS)
+    LIST(APPEND QUOTED_FUNCTIONS "'${Item}'")
+  ENDFOREACH()
 
+  STRING(JOIN ", " CLD_EXPORTED_FUNCTIONS_STR ${QUOTED_FUNCTIONS})
+
+  # joint these in a single string, adding commas between elements
+  message(STATUS "Exporting the following WASM functions: [${CLD_EXPORTED_FUNCTIONS_STR}]")
+
+  set_target_properties(cloudini_wasm PROPERTIES
+      LINK_FLAGS
+        " -s SINGLE_FILE=1"
+        " -s NO_DISABLE_EXCEPTION_CATCHING"
+        " -s ASSERTIONS"
+        " -s EXPORTED_FUNCTIONS=[${CLD_EXPORTED_FUNCTIONS_STR}]"
+        " -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8','HEAP8','UTF8ToString']"
+        " -s MODULARIZE=1"
+        " -s EXPORT_NAME='CloudiniModule'"
+        " -s INITIAL_MEMORY=67108864"
+        " -s MAXIMUM_MEMORY=134217728"
+        " -s ALLOW_MEMORY_GROWTH=1"
+        " -s TOTAL_STACK=1048576"
+  )
 endif(NOT EMSCRIPTEN)
 
 if(CLOUDINI_BUILD_TOOLS)
-  add_subdirectory(tools)
+  if(EMSCRIPTEN)
+    message(STATUS "Disabling tools build for Emscripten")
+  else()
+    add_subdirectory(tools)
+  endif()
 endif()
 
 INSTALL(TARGETS cloudini_lib

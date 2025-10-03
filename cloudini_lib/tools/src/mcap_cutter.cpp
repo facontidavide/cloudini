@@ -143,7 +143,7 @@ void McapCutter::cut(
   std::cout << "\nSummary:" << std::endl;
   std::cout << "Total messages written: " << total_messages_written << std::endl;
   for (const auto& [channel_id, count] : message_counts) {
-    const auto& channel = reader->channels().at(channel_id);
+    const auto channel = reader->channels().at(channel_id);
     std::cout << "  " << channel->topic << ": " << count << " messages" << std::endl;
   }
 }
