@@ -12,6 +12,6 @@ In this folder:
 3. Open the extension manager in Foxglove: "Settings -> Extensions".
 4. Drag and drop the `*.foxe` file into the extension manager.
 
-## 🚨 Important Notice
+## Acknoledgment
 
-Further development on this project is limited to the priorities of Ascento AG. This work is intended mainly for internal use. We appreciate your interest, but please be aware that we do not currently plan to support external contributions or ongoing community maintenance.
+Thanks **Ascento AG** for providing the initial version of this code.

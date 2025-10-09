@@ -15,6 +15,34 @@ Instead, we work directly with **raw** serialized messages, bypassing the ROS ty
 
 This means less latency and less CPU used to make unnecessary copies.
 
+### Parameters
+
+- `topic_input` (string): name of the topic to subscribe to.
+- `topic_output` (string): name of the topic to publish into.
+- `compressing`(bool): true if you are subscribing to a regular pointcloud2, and you want to compress it.
+  False if you are subscribing to a compressed topic and you want to decompress it.
+- `resolution` (double): resolution of floating point fields in meters. Default: 0.001
+
+### Example usage
+
+To convert a regular `sensor_msgs/msg/PointCloud2` to a compressed one:
+
+```
+ros2 run cloudini_ros cloudini_topic_converter --ros-args \
+    -p compressing:=true  \
+    -p topic_input:=/points  \
+    -p topic_output:=/points_encoded
+```
+
+To decompress that topic back in to its original form:
+
+```
+ros2 run cloudini_ros cloudini_topic_converter --ros-args \
+    -p compressing:=false  \
+    -p topic_input:=/points_encoded  \
+    -p topic_output:=/points_decoded
+```
+
 ## cloudini_rosbag_converter
 
 A command line tool that, given a rosbag (limited to MCAP format), converts
