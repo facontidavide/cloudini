@@ -2,8 +2,8 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.8.0 (2025-10-09)
+------------------
 * Merge branch 'main' into msadowski/release_foxglove_extension
 * Merge pull request `#33 <https://github.com/facontidavide/cloudini/issues/33>`_ from facontidavide/refactor_ros_interface
   Refactor ros interface
