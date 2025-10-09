@@ -2,6 +2,18 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Merge branch 'main' into msadowski/release_foxglove_extension
+* Merge pull request `#33 <https://github.com/facontidavide/cloudini/issues/33>`_ from facontidavide/refactor_ros_interface
+* updated wasm plugin
+* changes API
+* Remove 'lz4' compression method support (`#32 <https://github.com/facontidavide/cloudini/issues/32>`_)
+* use function argument
+* force vendoring?
+* Preprare ros release (`#28 <https://github.com/facontidavide/cloudini/issues/28>`_)
+* Contributors: Davide Faconti
+
 0.7.0 (2025-09-19)
 ------------------
 * Merge pull request `#27 <https://github.com/facontidavide/cloudini/issues/27>`_ from facontidavide/yaml_encoding
