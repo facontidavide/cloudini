@@ -49,7 +49,7 @@ uint32_t cldn_ComputeCompressedSize(uintptr_t dds_msg_ptr, uint32_t dds_msg_size
 
     auto pc_info = cloudini_ros::parsePointCloud2Message(raw_dds_msg);
 
-    Cloudini::EncodingInfo encoding_info = Cloudini::toEncodingInfo(pc_info);
+    Cloudini::EncodingInfo encoding_info = cloudini_ros::toEncodingInfo(pc_info);
 
     for (auto& field : encoding_info.fields) {
       if (field.type == Cloudini::FieldType::FLOAT32) {
@@ -81,7 +81,7 @@ uint32_t cldn_ComputeCompressedSize(uintptr_t dds_msg_ptr, uint32_t dds_msg_size
 uint32_t cldn_GetDecompressedSize(uintptr_t encoded_dds_ptr, uint32_t encoded_dds_size) {
   const uint8_t* compressed_data = reinterpret_cast<const uint8_t*>(encoded_dds_ptr);
   Cloudini::ConstBufferView raw_dds_msg(compressed_data, encoded_dds_size);
-  auto compressed_cloud = Cloudini::readCompressedPointCloud2Message(raw_dds_msg);
+  auto compressed_cloud = cloudini_ros::parseCompressedPointCloudMessage(raw_dds_msg);
   return compressed_cloud.height * compressed_cloud.width * compressed_cloud.point_step;
 }
 
@@ -89,11 +89,11 @@ uint32_t cldn_DecodeCompressedMessage(uintptr_t encoded_dds_ptr, uint32_t encode
   const uint8_t* dds_data = reinterpret_cast<const uint8_t*>(encoded_dds_ptr);
 
   Cloudini::ConstBufferView dds_data_view(dds_data, encoded_dds_size);
-  auto pcl_msg = Cloudini::readCompressedPointCloud2Message(dds_data_view);
+  auto pcl_msg = cloudini_ros::parseCompressedPointCloudMessage(dds_data_view);
 
   try {
-    uintptr_t compressed_data_ptr = reinterpret_cast<uintptr_t>(pcl_msg.compressed_data.data());
-    uint32_t decoded_size = cldn_DecodeCompressedData(compressed_data_ptr, pcl_msg.compressed_data.size(), output_data);
+    uintptr_t compressed_data_ptr = reinterpret_cast<uintptr_t>(pcl_msg.data.data());
+    uint32_t decoded_size = cldn_DecodeCompressedData(compressed_data_ptr, pcl_msg.data.size(), output_data);
 
     if (decoded_size == 0) {
       EM_ASM({ console.error('Failed to decode raw message.'); });
@@ -140,7 +140,7 @@ uint32_t cldn_EncodePointcloudMessage(
 
     auto pc_info = cloudini_ros::parsePointCloud2Message(raw_dds_msg);
 
-    Cloudini::EncodingInfo encoding_info = Cloudini::toEncodingInfo(pc_info);
+    Cloudini::EncodingInfo encoding_info = cloudini_ros::toEncodingInfo(pc_info);
 
     for (auto& field : encoding_info.fields) {
       if (field.type == Cloudini::FieldType::FLOAT32) {
