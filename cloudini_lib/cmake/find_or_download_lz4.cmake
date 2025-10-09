@@ -17,7 +17,6 @@ function(find_or_download_lz4)
     file(GLOB LZ4_SOURCES ${lz4_SOURCE_DIR}/lib/*.c)
 
     # define a helper to build both static and shared variants
-    set(target lz4_static)
     add_library(lz4_static STATIC ${LZ4_SOURCES})
     set_property(TARGET lz4_static PROPERTY POSITION_INDEPENDENT_CODE ON)
     target_include_directories(lz4_static PUBLIC ${lz4_SOURCE_DIR}/lib)
