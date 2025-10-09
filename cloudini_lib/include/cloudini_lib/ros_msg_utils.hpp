@@ -21,7 +21,15 @@
 
 #include "cloudini_lib/cloudini.hpp"
 #include "cloudini_lib/contrib/nanocdr.hpp"
-namespace Cloudini {
+namespace cloudini_ros {
+
+using BufferView = Cloudini::BufferView;
+using ConstBufferView = Cloudini::ConstBufferView;
+using FieldType = Cloudini::FieldType;
+using PointField = Cloudini::PointField;
+using EncodingOptions = Cloudini::EncodingOptions;
+using CompressionOption = Cloudini::CompressionOption;
+using EncodingInfo = Cloudini::EncodingInfo;
 
 struct RosHeader {
   int32_t stamp_sec = 0;    // seconds
@@ -41,20 +49,15 @@ struct RosPointCloud2 {
   bool is_bigendian = false;       // endianness (not used)
   ConstBufferView data;
   bool is_dense = true;  // whether all points are valid
+
+  virtual size_t requiredSize() const;
 };
 
 // This structure mimics the point_cloud_interfaces/msg/CompressedPointCloud2 message fields
-struct RosCompressedPointCloud2 {
-  nanocdr::CdrHeader cdr_header;
-  RosHeader ros_header;            // ROS header
-  uint32_t height = 1;             // default to unorganized point cloud
-  uint32_t width = 0;              // number of points when height == 1
-  std::vector<PointField> fields;  // point fields
-  uint32_t point_step = 0;         // size of a single point in bytes
-  uint32_t row_step = 0;           // size of a single row in bytes (not used)
-  ConstBufferView compressed_data;
-  bool is_dense = true;  // whether all points are valid
-  std::string format;    // format of the compressed data
+struct RosCompressedPointCloud2 : public RosPointCloud2 {
+  // inherited all the fields from RosPointCloud2
+  std::string format;  // format of the compressed data
+  size_t requiredSize() const override;
 };
 
 // Resolutions to be applied to the fields in RosPointCloud2 or EncodingInfo.
@@ -75,19 +78,22 @@ void applyResolutionProfile(
 
 EncodingInfo toEncodingInfo(const RosPointCloud2& pc_info);
 
-RosPointCloud2 readPointCloud2Message(ConstBufferView raw_dds_msg);
+// Extract information from a raw DDS message (sensor_msgs/msg/PointCloud2) into a RosPointCloud2 structure
+RosPointCloud2 parsePointCloud2Message(ConstBufferView pc2_dds_msg);
 
-RosCompressedPointCloud2 readCompressedPointCloud2Message(ConstBufferView raw_dds_msg);
+// Extract information from a raw DDS message (point_cloud_interfaces/msg/CompressedPointCloud2) into a
+// RosCompressedPointCloud2 structure
+RosCompressedPointCloud2 parseCompressedPointCloudMessage(ConstBufferView compressed_dds_msg);
 
 //------------------------------------------------------------------------
 
-// Add all the information from the RosPointCloud2 to the raw_dds_msg buffer, but skip info.data
-void writePointCloud2Header(nanocdr::Encoder& encoder, const RosPointCloud2& info);
-
-// Store all the information from the RosPointCloud2 to the raw_dds_msg buffer
-void writePointCloud2Message(const RosPointCloud2& pc_info, std::vector<uint8_t>& raw_dds_msg, bool is_compressed_msg);
+// Given as input a raw DDS message, containing a sensor_msgs/msg/PointCloud2,
+// apply compression and write the result into a point_cloud_interfaces/msg/CompressedPointCloud2
+void convertPointCloud2ToCompressedCloud(
+    const RosPointCloud2& pc_info, const Cloudini::EncodingInfo& encoding_info,
+    std::vector<uint8_t>& compressed_dds_msg);
 
 // Assumining that pc_info contains compressed data, decompress it directly into raw_dds_msg
-void decompressAndWritePointCloud2Message(const RosPointCloud2& pc_info, std::vector<uint8_t>& raw_dds_msg);
+void convertCompressedCloudToPointCloud2(const RosCompressedPointCloud2& pc_info, std::vector<uint8_t>& pc2_dds_msg);
 
-}  // namespace Cloudini
+}  // namespace cloudini_ros

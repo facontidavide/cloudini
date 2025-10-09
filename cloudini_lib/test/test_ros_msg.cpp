@@ -126,8 +126,8 @@ TEST(Cloudini, DDS_Roundtrip) {
 
   //-----------------------------------------------------------------------------
   // read the DDS message
-  const auto info_dds_message = readPointCloud2Message(dds_pointcloud_msg);
-  EncodingInfo encoding_info = toEncodingInfo(info_dds_message);
+  const auto info_dds_message = cloudini_ros::parsePointCloud2Message(dds_pointcloud_msg);
+  EncodingInfo encoding_info = cloudini_ros::toEncodingInfo(info_dds_message);
 
   CompareInfos(info_dds_message, expected_infos);
   CompareInfos(encoding_info, expected_infos);

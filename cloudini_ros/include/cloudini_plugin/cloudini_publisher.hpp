@@ -26,6 +26,7 @@
 
 namespace cloudini_point_cloud_transport {
 
+// Plugin that uses Cloudini to compress point clouds
 class CloudiniPublisher
     : public point_cloud_transport::SimplePublisherPlugin<point_cloud_interfaces::msg::CompressedPointCloud2> {
  public:

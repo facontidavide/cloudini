@@ -47,7 +47,7 @@ uint32_t cldn_ComputeCompressedSize(uintptr_t dds_msg_ptr, uint32_t dds_msg_size
     const uint8_t* raw_msg_data = reinterpret_cast<const uint8_t*>(dds_msg_ptr);
     Cloudini::ConstBufferView raw_dds_msg(raw_msg_data, dds_msg_size);
 
-    auto pc_info = Cloudini::readPointCloud2Message(raw_dds_msg);
+    auto pc_info = cloudini_ros::parsePointCloud2Message(raw_dds_msg);
 
     Cloudini::EncodingInfo encoding_info = Cloudini::toEncodingInfo(pc_info);
 
@@ -138,7 +138,7 @@ uint32_t cldn_EncodePointcloudMessage(
     const uint8_t* raw_msg_data = reinterpret_cast<const uint8_t*>(pointcloud_msg_ptr);
     Cloudini::ConstBufferView raw_dds_msg(raw_msg_data, msg_size);
 
-    auto pc_info = Cloudini::readPointCloud2Message(raw_dds_msg);
+    auto pc_info = cloudini_ros::parsePointCloud2Message(raw_dds_msg);
 
     Cloudini::EncodingInfo encoding_info = Cloudini::toEncodingInfo(pc_info);
 
