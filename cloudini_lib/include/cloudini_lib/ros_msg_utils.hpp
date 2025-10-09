@@ -23,14 +23,6 @@
 #include "cloudini_lib/contrib/nanocdr.hpp"
 namespace cloudini_ros {
 
-using BufferView = Cloudini::BufferView;
-using ConstBufferView = Cloudini::ConstBufferView;
-using FieldType = Cloudini::FieldType;
-using PointField = Cloudini::PointField;
-using EncodingOptions = Cloudini::EncodingOptions;
-using CompressionOption = Cloudini::CompressionOption;
-using EncodingInfo = Cloudini::EncodingInfo;
-
 struct RosHeader {
   int32_t stamp_sec = 0;    // seconds
   uint32_t stamp_nsec = 0;  // nanoseconds
@@ -40,14 +32,14 @@ struct RosHeader {
 // This structure mimics the sensor_msgs/msg/PointCloud2 message fields
 struct RosPointCloud2 {
   nanocdr::CdrHeader cdr_header;
-  RosHeader ros_header;            // ROS header
-  uint32_t height = 1;             // default to unorganized point cloud
-  uint32_t width = 0;              // number of points when height == 1
-  std::vector<PointField> fields;  // point fields
-  uint32_t point_step = 0;         // size of a single point in bytes
-  uint32_t row_step = 0;           // size of a single row in bytes (not used)
-  bool is_bigendian = false;       // endianness (not used)
-  ConstBufferView data;
+  RosHeader ros_header;                      // ROS header
+  uint32_t height = 1;                       // default to unorganized point cloud
+  uint32_t width = 0;                        // number of points when height == 1
+  std::vector<Cloudini::PointField> fields;  // point fields
+  uint32_t point_step = 0;                   // size of a single point in bytes
+  uint32_t row_step = 0;                     // size of a single row in bytes (not used)
+  bool is_bigendian = false;                 // endianness (not used)
+  Cloudini::ConstBufferView data;
   bool is_dense = true;  // whether all points are valid
 
   virtual size_t requiredSize() const;
@@ -73,17 +65,17 @@ using ResolutionProfile = std::map<std::string, float>;
  * @param default_resolution Optional default resolution to apply to FLOAT32 fields not in the profile.
  */
 void applyResolutionProfile(
-    const ResolutionProfile& profile, std::vector<PointField>& field,
+    const ResolutionProfile& profile, std::vector<Cloudini::PointField>& field,
     std::optional<float> default_resolution = std::nullopt);
 
-EncodingInfo toEncodingInfo(const RosPointCloud2& pc_info);
+Cloudini::EncodingInfo toEncodingInfo(const RosPointCloud2& pc_info);
 
 // Extract information from a raw DDS message (sensor_msgs/msg/PointCloud2) into a RosPointCloud2 structure
-RosPointCloud2 parsePointCloud2Message(ConstBufferView pc2_dds_msg);
+RosPointCloud2 parsePointCloud2Message(Cloudini::ConstBufferView pc2_dds_msg);
 
 // Extract information from a raw DDS message (point_cloud_interfaces/msg/CompressedPointCloud2) into a
 // RosCompressedPointCloud2 structure
-RosCompressedPointCloud2 parseCompressedPointCloudMessage(ConstBufferView compressed_dds_msg);
+RosCompressedPointCloud2 parseCompressedPointCloudMessage(Cloudini::ConstBufferView compressed_dds_msg);
 
 //------------------------------------------------------------------------
 

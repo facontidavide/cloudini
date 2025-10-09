@@ -81,12 +81,12 @@ void readPointCloud2MessageCommon(nanocdr::Decoder& cdr, CloudType& result) {
   cdr.decode(num_fields);
 
   for (uint32_t i = 0; i < num_fields; ++i) {
-    PointField field;
+    Cloudini::PointField field;
     cdr.decode(field.name);
     cdr.decode(field.offset);
     uint8_t type = 0;
     cdr.decode(type);
-    field.type = static_cast<FieldType>(type);
+    field.type = static_cast<Cloudini::FieldType>(type);
 
     uint32_t count = 0;  // not used
     cdr.decode(count);
@@ -101,7 +101,7 @@ void readPointCloud2MessageCommon(nanocdr::Decoder& cdr, CloudType& result) {
   cdr.decode(result.row_step);
 }
 
-RosPointCloud2 parsePointCloud2Message(ConstBufferView raw_dds_msg) {
+RosPointCloud2 parsePointCloud2Message(Cloudini::ConstBufferView raw_dds_msg) {
   RosPointCloud2 result;
   nanocdr::Decoder cdr(raw_dds_msg);
   result.cdr_header = cdr.header();
@@ -113,7 +113,7 @@ RosPointCloud2 parsePointCloud2Message(ConstBufferView raw_dds_msg) {
   return result;
 }
 
-RosCompressedPointCloud2 parseCompressedPointCloudMessage(ConstBufferView compressed_dds_msg) {
+RosCompressedPointCloud2 parseCompressedPointCloudMessage(Cloudini::ConstBufferView compressed_dds_msg) {
   RosCompressedPointCloud2 result;
   nanocdr::Decoder cdr(compressed_dds_msg);
   result.cdr_header = cdr.header();
@@ -126,7 +126,7 @@ RosCompressedPointCloud2 parseCompressedPointCloudMessage(ConstBufferView compre
   return result;
 }
 
-RosCompressedPointCloud2 parseCompressedPointCloud2Message(ConstBufferView raw_dds_msg) {
+RosCompressedPointCloud2 parseCompressedPointCloud2Message(Cloudini::ConstBufferView raw_dds_msg) {
   RosCompressedPointCloud2 result;
   nanocdr::Decoder cdr(raw_dds_msg);
   readPointCloud2MessageCommon(cdr, result);
@@ -166,13 +166,13 @@ void writePointCloud2Header(nanocdr::Encoder& encoder, const CloudType& pc_info)
   encoder.encode(static_cast<uint32_t>(pc_info.point_step * pc_info.width));
 }
 
-EncodingInfo toEncodingInfo(const RosPointCloud2& pc_info) {
-  EncodingInfo info;
+Cloudini::EncodingInfo toEncodingInfo(const RosPointCloud2& pc_info) {
+  Cloudini::EncodingInfo info;
   info.height = pc_info.height;
   info.width = pc_info.width;
   info.point_step = pc_info.point_step;
-  info.encoding_opt = EncodingOptions::LOSSY;      // default to lossy encoding
-  info.compression_opt = CompressionOption::ZSTD;  // default to ZSTD compression
+  info.encoding_opt = Cloudini::EncodingOptions::LOSSY;      // default to lossy encoding
+  info.compression_opt = Cloudini::CompressionOption::ZSTD;  // default to ZSTD compression
   info.fields = pc_info.fields;
   return info;
 }
@@ -193,7 +193,7 @@ void convertCompressedCloudToPointCloud2(const RosCompressedPointCloud2& pc_info
   const auto prev_size = pc2_dds_msg.size();
   pc2_dds_msg.resize(prev_size + cloud_data_size);
   // this buffer view points to a writable memory area after the PointCloud2Header
-  BufferView decoded_buffer(pc2_dds_msg.data() + prev_size, cloud_data_size);
+  Cloudini::BufferView decoded_buffer(pc2_dds_msg.data() + prev_size, cloud_data_size);
 
   Cloudini::PointcloudDecoder cloud_decoder;
   Cloudini::ConstBufferView compressed_data = pc_info.data;
@@ -221,7 +221,7 @@ void convertPointCloud2ToCompressedCloud(
   // reserve enough memory for the compressed data. we will resize later to the actual size used
   pc2_dds_msg.resize(prev_size + pc_info.data.size());
 
-  BufferView compressed_data_view(pc2_dds_msg.data() + prev_size, pc2_dds_msg.size() - prev_size);
+  Cloudini::BufferView compressed_data_view(pc2_dds_msg.data() + prev_size, pc2_dds_msg.size() - prev_size);
   Cloudini::PointcloudEncoder cloud_encoder(encoding_info);
   const size_t compressed_size = cloud_encoder.encode(pc_info.data, compressed_data_view, true);
 
@@ -239,7 +239,8 @@ void convertPointCloud2ToCompressedCloud(
 //-------------------------------------------------------------------
 
 void applyResolutionProfile(
-    const ResolutionProfile& profile, std::vector<PointField>& fields, std::optional<float> default_resolution) {
+    const ResolutionProfile& profile, std::vector<Cloudini::PointField>& fields,
+    std::optional<float> default_resolution) {
   // erase-remove idiom to remove fields with profile resolution of 0
   fields.erase(
       std::remove_if(
