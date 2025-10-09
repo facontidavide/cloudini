@@ -72,15 +72,18 @@ install(TARGETS cloudini_topic_converter
   RUNTIME DESTINATION lib/cloudini_ros
 )
 
-if(BUILD_TESTING)
+######### rosbag benchmark #########
+add_executable(rosbag_benchmark test/rosbag_benchmark.cpp)
 
-  ######### rosbag benchmark #########
-  add_executable(rosbag_benchmark test/rosbag_benchmark.cpp)
+target_link_libraries(rosbag_benchmark
+  cloudini_ros
+)
 
-  target_link_libraries(rosbag_benchmark
-    cloudini_ros
-  )
-endif()
+install(TARGETS rosbag_benchmark
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/cloudini_ros
+)
 
 ######### plugins #########
 set(PLUGIN_NAME cloudini_point_cloud_transport)
@@ -112,6 +115,7 @@ install(
   DIRECTORY include/cloudini_plugin
   DESTINATION include/${PLUGIN_NAME}
 )
+
 
 pluginlib_export_plugin_description_file(point_cloud_transport cloudini_plugins.xml)
 

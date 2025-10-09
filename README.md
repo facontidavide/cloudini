@@ -29,25 +29,15 @@ they include some "padding" in the message that, in extreme cases, may reach up 
 
 But, in general, you may expect considerably **better compression and faster encoding/decoding**  than ZSTD or LZ4 alone.
 
-These are two random examples using real-world data from LiDARs.
+These are some examples using real-world data from LiDARs.
 
-- **Channels**: XYZ, Intensity, no padding
+Below, you can see the compressio ratio (normalized to original pointcloud size)
 
-```
-  [LZ4 only]      ratio: 0.77 time (usec): 2165
-  [ZSTD only]     ratio: 0.68 time (usec): 2967
-  [Cloudini-LZ4]  ratio: 0.56 time (usec): 1254
-  [Cloudini-ZSTD] ratio: 0.51 time (usec): 1576
-```
+![compression_ratio.png](compression_ratio.png)
 
-- **Channels**: XYZ, intensity, ring (int16), timestamp (double), with padding
+What is more interesting, is that Cloudini has a negative overhead, i.e. Cloudini + ZSTD is faster than ZSTD alone.
 
-```
-  [LZ4 only]      ratio: 0.31 time (usec): 2866
-  [ZSTD only]     ratio: 0.24 time (usec): 3423
-  [Cloudini-LZ4]  ratio: 0.16 time (usec): 2210
-  [Cloudini-ZSTD] ratio: 0.14 time (usec): 2758
-```
+![compression_time.png](compression_time.png)
 
 If you are a ROS user, you can test the compression ratio and speed yourself,
 running the application `rosbag_benchmark` on any rosbag containing a `sensor_msgs::msg::PointCloud2` topic.
