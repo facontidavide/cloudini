@@ -1,6 +1,6 @@
 function(find_or_download_zstd)
 
-  find_package (ZSTD QUIET)
+  # find_package (ZSTD QUIET)
 
   # Check if ZSTD targets already exist (e.g., from Arrow)
   if(NOT TARGET zstd::libzstd_static)
