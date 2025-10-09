@@ -1,6 +1,8 @@
-function(find_or_download_lz4)
+function(find_or_download_lz4 FORCE_VENDORED)
 
-  # find_package(LZ4 QUIET)
+  if(NOT FORCE_VENDORED)
+    find_package(LZ4 QUIET)
+  endif()
 
   # Check if LZ4 targets already exist (e.g., from Arrow)
   if(NOT TARGET LZ4::lz4_static)

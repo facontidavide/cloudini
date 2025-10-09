@@ -10,7 +10,7 @@ endif()
 message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 
 option(CLOUDINI_BUILD_TOOLS "Build Tools" ON)
-option(CLOUDINI_FORCE_VENDORED_DEPS "Force vendored dependencies" OFF)
+option(CLOUDINI_FORCE_VENDORED_DEPS "Force vendored dependencies" ON)
 
 
 # create compile_commands.json
@@ -25,16 +25,17 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 find_package(ament_cmake QUIET)
 if(ament_cmake_FOUND)
   message(STATUS "Found ament_cmake")
+  set(CLOUDINI_FORCE_VENDORED_DEPS ON FORCE)
 endif()
 
 include(FetchContent)
 include(cmake/CPM.cmake)
 
 include(cmake/find_or_download_zstd.cmake)
-find_or_download_zstd()
+find_or_download_zstd(CLOUDINI_FORCE_VENDORED_DEPS)
 
 include(cmake/find_or_download_lz4.cmake)
-find_or_download_lz4()
+find_or_download_lz4(CLOUDINI_FORCE_VENDORED_DEPS)
 
 include(cmake/find_or_download_mcap.cmake)
 find_or_download_mcap()
