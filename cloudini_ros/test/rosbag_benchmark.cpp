@@ -45,7 +45,9 @@ struct Statistics {
 
 void compress(const sensor_msgs::msg::PointCloud2& msg, const Cloudini::EncodingInfo& encoding_info, StatsData& stats) {
   Cloudini::PointcloudEncoder encoder(encoding_info);
-  std::vector<uint8_t> compressed_data;
+  static std::vector<uint8_t> compressed_data;
+  compressed_data.clear();
+  compressed_data.reserve(msg.data.size());
   Cloudini::ConstBufferView input(msg.data.data(), msg.data.size());
 
   auto t1 = std::chrono::high_resolution_clock::now();
