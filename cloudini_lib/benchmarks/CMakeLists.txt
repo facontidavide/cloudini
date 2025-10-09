@@ -1,16 +1,4 @@
-find_package(benchmark QUIET)
-
-if(benchmark_FOUND)
-  message(STATUS "benchmark found, using system include")
-else()
-  message(STATUS "benchmark not found, downloading with CPM")
-  CPMAddPackage(
-    NAME benchmark
-    GITHUB_REPOSITORY google/benchmark
-    VERSION 1.9.3
-    OPTIONS "BENCHMARK_ENABLE_TESTING Off"
-  )
-endif()
+find_package(benchmark REQUIRED)
 
 
 find_package(Draco QUIET)

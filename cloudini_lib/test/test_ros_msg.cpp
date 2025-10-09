@@ -1,3 +1,19 @@
+/*
+ * Copyright 2025 Davide Faconti
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include <gtest/gtest.h>
 
 #include <fstream>
@@ -106,12 +122,12 @@ TEST(Cloudini, DDS_Roundtrip) {
       .point_step = 26,
       .encoding_opt = EncodingOptions::LOSSY,
       .compression_opt = CompressionOption::ZSTD,
-  };
+      .version = kEncodingVersion};
 
   //-----------------------------------------------------------------------------
   // read the DDS message
-  const auto info_dds_message = readPointCloud2Message(dds_pointcloud_msg);
-  EncodingInfo encoding_info = toEncodingInfo(info_dds_message);
+  const auto info_dds_message = cloudini_ros::parsePointCloud2Message(dds_pointcloud_msg);
+  EncodingInfo encoding_info = cloudini_ros::toEncodingInfo(info_dds_message);
 
   CompareInfos(info_dds_message, expected_infos);
   CompareInfos(encoding_info, expected_infos);

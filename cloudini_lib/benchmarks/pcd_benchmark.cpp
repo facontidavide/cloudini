@@ -1,3 +1,15 @@
+// Copyright (c) 2025 Davide Faconti
+//
+// This file is part of Cloudini.
+//
+// Licensed under the FSL-1.1-MIT License.
+// You may obtain a copy of the License at
+// https://fsl.software/
+//
+// Two years from the release date of this software, you may use
+// this file in accordance with the MIT License, as described in
+// the LICENSE file in the root of this repository.
+
 #include <benchmark/benchmark.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_cloud.h>
@@ -50,7 +62,7 @@ static void PCD_Encode_Impl(
     encoder.encode(cloud_data, output);
   }
   const auto percentage = 100 * (static_cast<double>(output.size()) / static_cast<double>(cloud_data.size()));
-  std::cout << "Encoded size: " << output.size() << "  percentage: " << percentage << "%" << std::endl;
+  state.counters["Encoded ratio"] = percentage;
 }
 
 static void PCD_Decode_Impl(
@@ -96,7 +108,7 @@ static void PCD_Decode_Lossy_ZST(benchmark::State& state) {
 static void PCD_Encode_Lossles_ZST(benchmark::State& state) {
   const auto cloud = loadCloud();
   auto info = defaultEncodingInfo(cloud);
-  info.encoding_opt = Cloudini::EncodingOptions::LOSSLES;
+  info.encoding_opt = Cloudini::EncodingOptions::LOSSLESS;
   info.compression_opt = Cloudini::CompressionOption::ZSTD;
   PCD_Encode_Impl(state, cloud, info);
 }
@@ -104,7 +116,7 @@ static void PCD_Encode_Lossles_ZST(benchmark::State& state) {
 static void PCD_Encode_Lossles_LZ4(benchmark::State& state) {
   const auto cloud = loadCloud();
   auto info = defaultEncodingInfo(cloud);
-  info.encoding_opt = Cloudini::EncodingOptions::LOSSLES;
+  info.encoding_opt = Cloudini::EncodingOptions::LOSSLESS;
   info.compression_opt = Cloudini::CompressionOption::LZ4;
   PCD_Encode_Impl(state, cloud, info);
 }
@@ -199,7 +211,7 @@ static void PCD_Encode_Draco(benchmark::State& state) {
   }
   const auto percentage =
       100 * (static_cast<double>(buffer.size()) / static_cast<double>(cloud.size() * sizeof(pcl::PointXYZI)));
-  std::cout << "Encoded size: " << buffer.size() << "  percentage: " << percentage << "%" << std::endl;
+  state.counters["Encoded ratio"] = percentage;
 }
 
 #endif
@@ -207,8 +219,8 @@ static void PCD_Encode_Draco(benchmark::State& state) {
 //------------------------------------------------------------------------------------------
 
 BENCHMARK(PCD_Encode_Lossy_ZST);
-BENCHMARK(PCD_Encode_ZSTD_only);
 BENCHMARK(PCD_Encode_Lossy_LZ4);
+BENCHMARK(PCD_Encode_ZSTD_only);
 BENCHMARK(PCD_Encode_LZ4_only);
 
 #ifdef DRACO_FOUND

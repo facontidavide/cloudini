@@ -1,3 +1,19 @@
+/*
+ * Copyright 2025 Davide Faconti
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include <gtest/gtest.h>
 
 #include "cloudini_lib/cloudini.hpp"
@@ -17,15 +33,12 @@ TEST(Cloudini, Header) {
   header.fields.push_back({"z", 8, FieldType::FLOAT32, 0.01});
   header.fields.push_back({"intensity", 12, FieldType::FLOAT32, 0.01});
 
-  std::vector<uint8_t> buffer(ComputeHeaderSize(header.fields));
-  BufferView output(buffer.data(), buffer.size());
-
-  size_t encoded_size = EncodeHeader(header, output);
-
-  EXPECT_EQ(encoded_size, buffer.size());
+  std::vector<uint8_t> buffer;
+  EncodeHeader(header, buffer);
 
   ConstBufferView input(buffer.data(), buffer.size());
   auto decoded_header = DecodeHeader(input);
+
   ASSERT_EQ(decoded_header.width, header.width);
   ASSERT_EQ(decoded_header.height, header.height);
   ASSERT_EQ(decoded_header.point_step, header.point_step);

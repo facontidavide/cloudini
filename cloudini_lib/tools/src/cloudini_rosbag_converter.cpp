@@ -36,7 +36,8 @@ int main(int argc, char** argv) {
        cxxopts::value<std::string>())                                 //
       ("c,compress", "Convert PointCloud2 to CompressedPointCloud2")  //
       ("d,decode", "Convert CompressedPointCloud2 to PointCloud2")    //
-      ("m,method", "Compression method to use when writing data back to mcap ('lz4' or 'zstd', 'none')",
+      ("s,stats", "Print compression statistics")                     //
+      ("m,method", "Compression method to use when writing data back to mcap ('zstd', 'none')",
        cxxopts::value<std::string>()->default_value("zstd"));
 
   auto parse_result = options.parse(argc, argv);
@@ -115,7 +116,7 @@ int main(int argc, char** argv) {
       return 0;
     }
   }
-  std::cout << "Input file: " << input_file << std::endl;
+  std::cout << "----------------------\nInput file: " << input_file << std::endl;
 
   // Parse the mcap writer compression method
   Cloudini::CompressionOption mcap_writer_compression;
@@ -123,13 +124,13 @@ int main(int argc, char** argv) {
   // clang-format off
   const auto compression_options_map = std::unordered_map<std::string, Cloudini::CompressionOption>{
       {"none", Cloudini::CompressionOption::NONE},
-      {"lz4", Cloudini::CompressionOption::LZ4},
       {"zstd", Cloudini::CompressionOption::ZSTD}};
   // clang-format on
 
   std::string compression_method = parse_result["method"].as<std::string>();
   if (!compression_options_map.contains(compression_method)) {
     std::cerr << "Error: Invalid compression method: " << compression_method << std::endl;
+    std::cerr << "The application only supports 'zstd' and 'none'" << std::endl;
     return 1;
   }
   mcap_writer_compression = compression_options_map.at(compression_method);
@@ -190,6 +191,10 @@ int main(int argc, char** argv) {
       converter.decodePointClouds(output_filename, mcap_writer_compression);
     }
     std::cout << "\nFile saved as: " << output_filename << std::endl;
+    if (parse_result.count("stats")) {
+      std::cout << "\n";
+      converter.printStatistics();
+    }
 
   } catch (const std::exception& e) {
     std::cerr << "Error: " << e.what() << std::endl;

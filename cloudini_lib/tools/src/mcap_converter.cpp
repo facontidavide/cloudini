@@ -23,9 +23,9 @@
 #include "cloudini_lib/ros_msg_utils.hpp"
 
 #define MCAP_IMPLEMENTATION
-#include "mcap/reader.hpp"
-#include "mcap/types.hpp"
-#include "mcap/writer.hpp"
+#include <mcap/reader.hpp>
+#include <mcap/types.hpp>
+#include <mcap/writer.hpp>
 
 McapConverter::TopicsMap McapConverter::open(std::filesystem::path file_in) {
   input_stream_.open(file_in);
@@ -143,6 +143,10 @@ void McapConverter::encodePointClouds(
   if (!reader_) {
     throw std::runtime_error("McapReader is not initialized. Call open() first.");
   }
+  processed_messages_ = 0;
+  total_input_bytes_ = 0;
+  total_output_bytes_ = 0;
+  total_processing_time_ = std::chrono::microseconds(0);
 
   mcap::Status status{};
 
@@ -177,21 +181,23 @@ void McapConverter::encodePointClouds(
       }
       continue;
     }
+    processed_messages_++;
+    const auto t1 = std::chrono::high_resolution_clock::now();
 
     // resize vectors to maximum size
     compressed_cloud.resize(msg.message.dataSize);    // conservative size
     compressed_dds_msg.resize(msg.message.dataSize);  // conservative size
 
     Cloudini::ConstBufferView raw_dds_msg(msg.message.data, msg.message.dataSize);
-    auto pc_info = Cloudini::readPointCloud2Message(raw_dds_msg);
+    auto pc_info = cloudini_ros::parsePointCloud2Message(raw_dds_msg);
 
     // Apply the profile to the encoding info. removing fields if resolution is 0
     // Remove first all fields that have resolution 0.0 in the profile
-    applyResolutionProfile(profile_resolutions_, pc_info.fields, default_resolution);
+    cloudini_ros::applyResolutionProfile(profile_resolutions_, pc_info.fields, default_resolution);
 
     // Remove padding from the fields to avoid empty padding in the message
 
-    auto encoding_info = Cloudini::toEncodingInfo(pc_info);
+    auto encoding_info = cloudini_ros::toEncodingInfo(pc_info);
 
     // no need to do ZSTD compression twice
     if (mcap_writer_compression == Cloudini::CompressionOption::ZSTD) {
@@ -212,11 +218,17 @@ void McapConverter::encodePointClouds(
     pc_info.data = Cloudini::ConstBufferView(compressed_cloud);
 
     // generate the new DDS message
-    Cloudini::writePointCloud2Message(pc_info, compressed_dds_msg, true);
+    cloudini_ros::convertPointCloud2ToCompressedCloud(pc_info, encoding_info, compressed_dds_msg);
 
     // copy pointers to compressed_dds_msg
     new_msg.data = reinterpret_cast<const std::byte*>(compressed_dds_msg.data());
     new_msg.dataSize = compressed_dds_msg.size();
+
+    const auto t2 = std::chrono::high_resolution_clock::now();
+    total_processing_time_ += std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
+    total_input_bytes_ += msg.message.dataSize;
+    total_output_bytes_ += new_msg.dataSize;
+
     auto status = writer.write(new_msg);
 
     if (!status.ok()) {
@@ -227,11 +239,28 @@ void McapConverter::encodePointClouds(
 }
 
 //------------------------------------------------------
+void McapConverter::printStatistics() const {
+  if (processed_messages_ == 0) {
+    return;
+  }
+  std::cout << "Processed " << processed_messages_ << " point cloud messages" << std::endl;
+  double compression_ratio = static_cast<double>(total_output_bytes_) / static_cast<double>(total_input_bytes_);
+  std::cout << "Avg Compression ratio: " << compression_ratio << std::endl;
+  const double count = static_cast<double>(processed_messages_);
+  const double avg_time_per_message = 0.001 * static_cast<double>(total_processing_time_.count()) / count;
+  std::cout << "Average processing time per message: " << avg_time_per_message << " milliseconds" << std::endl;
+}
+
+//------------------------------------------------------
 void McapConverter::decodePointClouds(
     std::filesystem::path file_out, Cloudini::CompressionOption mcap_writer_compression) {
   if (!reader_) {
     throw std::runtime_error("McapReader is not initialized. Call open() first.");
   }
+  processed_messages_ = 0;
+  total_input_bytes_ = 0;
+  total_output_bytes_ = 0;
+  total_processing_time_ = std::chrono::microseconds(0);
 
   mcap::McapWriter writer;
   mcap::McapWriterOptions writer_options(reader_->header()->profile);
@@ -262,14 +291,20 @@ void McapConverter::decodePointClouds(
       }
       continue;
     }
+    processed_messages_++;
+    const auto t1 = std::chrono::high_resolution_clock::now();
 
     Cloudini::ConstBufferView raw_dds_msg(msg.message.data, msg.message.dataSize);
-    const auto pc_info = Cloudini::readPointCloud2Message(raw_dds_msg);
-
-    decompressAndWritePointCloud2Message(pc_info, decoded_dds_msg);
+    const auto pc_info = cloudini_ros::parseCompressedPointCloudMessage(raw_dds_msg);
+    cloudini_ros::convertCompressedCloudToPointCloud2(pc_info, decoded_dds_msg);
 
     new_msg.data = reinterpret_cast<const std::byte*>(decoded_dds_msg.data());
     new_msg.dataSize = decoded_dds_msg.size();
+
+    const auto t2 = std::chrono::high_resolution_clock::now();
+    total_processing_time_ += std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
+    total_input_bytes_ += msg.message.dataSize;
+    total_output_bytes_ += new_msg.dataSize;
 
     auto status = writer.write(new_msg);
     if (!status.ok()) {

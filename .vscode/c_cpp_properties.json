@@ -9,7 +9,8 @@
       "includePath": [
         "/usr/include/c++/**",
         "/usr/include/x86_64-linux-gnu/**",
-        "${workspaceFolder}/**"
+        "${workspaceFolder}/**",
+        "/opt/ros/humble/include/**"
       ],
       "defines": [],
       "compilerPath": "/usr/bin/gcc",
