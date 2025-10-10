@@ -126,20 +126,6 @@ RosCompressedPointCloud2 parseCompressedPointCloudMessage(Cloudini::ConstBufferV
   return result;
 }
 
-RosCompressedPointCloud2 parseCompressedPointCloud2Message(Cloudini::ConstBufferView raw_dds_msg) {
-  RosCompressedPointCloud2 result;
-  nanocdr::Decoder cdr(raw_dds_msg);
-  readPointCloud2MessageCommon(cdr, result);
-
-  // remaining fields
-  cdr.decode(result.data);
-  cdr.decode(result.is_dense);
-  cdr.decode(result.format);
-
-  result.cdr_header = cdr.header();
-  return result;
-}
-
 template <typename CloudType>
 void writePointCloud2Header(nanocdr::Encoder& encoder, const CloudType& pc_info) {
   static_assert(std::is_same_v<CloudType, RosPointCloud2> || std::is_same_v<CloudType, RosCompressedPointCloud2>);
