@@ -68,6 +68,7 @@ template <typename CloudType>
 void readPointCloud2MessageCommon(nanocdr::Decoder& cdr, CloudType& result) {
   static_assert(std::is_same_v<CloudType, RosPointCloud2> || std::is_same_v<CloudType, RosCompressedPointCloud2>);
   //----- read the header -----
+  result.cdr_header = cdr.header();
   cdr.decode(result.ros_header.stamp_sec);
   cdr.decode(result.ros_header.stamp_nsec);
   cdr.decode(result.ros_header.frame_id);
@@ -99,44 +100,22 @@ void readPointCloud2MessageCommon(nanocdr::Decoder& cdr, CloudType& result) {
 
   cdr.decode(result.point_step);
   cdr.decode(result.row_step);
+  cdr.decode(result.data);
+  cdr.decode(result.is_dense);
 }
 
 RosPointCloud2 parsePointCloud2Message(Cloudini::ConstBufferView raw_dds_msg) {
   RosPointCloud2 result;
   nanocdr::Decoder cdr(raw_dds_msg);
-  result.cdr_header = cdr.header();
   readPointCloud2MessageCommon(cdr, result);
-
-  // remaining fields
-  cdr.decode(result.data);
-  cdr.decode(result.is_dense);
   return result;
 }
 
 RosCompressedPointCloud2 parseCompressedPointCloudMessage(Cloudini::ConstBufferView compressed_dds_msg) {
   RosCompressedPointCloud2 result;
   nanocdr::Decoder cdr(compressed_dds_msg);
-  result.cdr_header = cdr.header();
   readPointCloud2MessageCommon(cdr, result);
-
-  // remaining fields
-  cdr.decode(result.data);
-  cdr.decode(result.is_dense);
-  cdr.decode(result.format);
-  return result;
-}
-
-RosCompressedPointCloud2 parseCompressedPointCloud2Message(Cloudini::ConstBufferView raw_dds_msg) {
-  RosCompressedPointCloud2 result;
-  nanocdr::Decoder cdr(raw_dds_msg);
-  readPointCloud2MessageCommon(cdr, result);
-
-  // remaining fields
-  cdr.decode(result.data);
-  cdr.decode(result.is_dense);
-  cdr.decode(result.format);
-
-  result.cdr_header = cdr.header();
+  cdr.decode(result.format); // remaining fields
   return result;
 }
 
