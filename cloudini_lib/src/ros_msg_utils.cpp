@@ -99,6 +99,8 @@ void readPointCloud2MessageCommon(nanocdr::Decoder& cdr, CloudType& result) {
 
   cdr.decode(result.point_step);
   cdr.decode(result.row_step);
+  cdr.decode(result.data);
+  cdr.decode(result.is_dense);
 }
 
 RosPointCloud2 parsePointCloud2Message(Cloudini::ConstBufferView raw_dds_msg) {
@@ -107,9 +109,6 @@ RosPointCloud2 parsePointCloud2Message(Cloudini::ConstBufferView raw_dds_msg) {
   result.cdr_header = cdr.header();
   readPointCloud2MessageCommon(cdr, result);
 
-  // remaining fields
-  cdr.decode(result.data);
-  cdr.decode(result.is_dense);
   return result;
 }
 
@@ -120,9 +119,8 @@ RosCompressedPointCloud2 parseCompressedPointCloudMessage(Cloudini::ConstBufferV
   readPointCloud2MessageCommon(cdr, result);
 
   // remaining fields
-  cdr.decode(result.data);
-  cdr.decode(result.is_dense);
   cdr.decode(result.format);
+
   return result;
 }
 
