@@ -2,8 +2,8 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.9.0 (2025-10-11)
+------------------
 * fix compilation
 * fix mcap_converter
 * Contributors: Davide Faconti

@@ -2,8 +2,8 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.9.0 (2025-10-11)
+------------------
 * fix error in wasm module
 * fix mcap_converter
 * remove redundancy
