@@ -116,12 +116,12 @@ Cloudini::EncodingInfo toEncodingInfo(const RosPointCloud2& pc_info) {
 //-------------------------------------------------------------------
 
 void convertCompressedCloudToPointCloud2(const RosPointCloud2& pc_info, std::vector<uint8_t>& pc2_dds_msg) {
-  // We need to reserve enough space in the output buffer
-  const size_t cloud_data_size = pc_info.width * pc_info.height * pc_info.point_step;
-
   pc2_dds_msg.clear();
   nanocdr::Encoder cdr_encoder(pc_info.cdr_header, pc2_dds_msg);
   writePointCloudHeader(cdr_encoder, pc_info);
+
+  // We need to reserve enough space in the output buffer
+  const size_t cloud_data_size = pc_info.width * pc_info.height * pc_info.point_step;
 
   // Start writing the field PointCloud2::data
   cdr_encoder.encode(static_cast<uint32_t>(cloud_data_size));
@@ -142,23 +142,23 @@ void convertCompressedCloudToPointCloud2(const RosPointCloud2& pc_info, std::vec
 }
 
 void convertPointCloud2ToCompressedCloud(
-    const RosPointCloud2& pc_info, const Cloudini::EncodingInfo& encoding_info, std::vector<uint8_t>& pc2_dds_msg) {
-  pc2_dds_msg.clear();
-  nanocdr::Encoder cdr_encoder(pc_info.cdr_header, pc2_dds_msg);
+    const RosPointCloud2& pc_info, const Cloudini::EncodingInfo& encoding_info, std::vector<uint8_t>& compressed_dds_msg) {
+  compressed_dds_msg.clear();
+  nanocdr::Encoder cdr_encoder(pc_info.cdr_header, compressed_dds_msg);
   writePointCloudHeader(cdr_encoder, pc_info);
 
-  size_t prev_size = pc2_dds_msg.size();
+  size_t prev_size = compressed_dds_msg.size();
   // we will write into this area later
-  uint8_t* cloud_size_ptr = pc2_dds_msg.data() + prev_size;
+  uint8_t* cloud_size_ptr = compressed_dds_msg.data() + prev_size;
 
   // writing size 0 as a placeholder for now
   cdr_encoder.encode(static_cast<uint32_t>(0));
   prev_size += 4;
 
   // reserve enough memory for the compressed data. we will resize later to the actual size used
-  pc2_dds_msg.resize(prev_size + pc_info.data.size());
+  compressed_dds_msg.resize(prev_size + pc_info.data.size());
 
-  Cloudini::BufferView compressed_data_view(pc2_dds_msg.data() + prev_size, pc2_dds_msg.size() - prev_size);
+  Cloudini::BufferView compressed_data_view(compressed_dds_msg.data() + prev_size, compressed_dds_msg.size() - prev_size);
   Cloudini::PointcloudEncoder cloud_encoder(encoding_info);
   const size_t compressed_size = cloud_encoder.encode(pc_info.data, compressed_data_view, true);
 
@@ -166,7 +166,7 @@ void convertPointCloud2ToCompressedCloud(
   memcpy(cloud_size_ptr, &compressed_size, sizeof(uint32_t));
 
   // Resize the output buffer to the actual size used
-  pc2_dds_msg.resize(prev_size + compressed_size);
+  compressed_dds_msg.resize(prev_size + compressed_size);
 
   // Add the remaining fields
   cdr_encoder.encode(pc_info.is_dense);
