@@ -13,3 +13,5 @@
 /build*
 /cloudini_web/node_modules
 /cloudini_foxglove/src/cloudini_wasm.js
+/cloudini_foxglove/release/cloudini.foxglove-cloudini-converter-0.1.0.foxe
+/.vscode/launch.json
