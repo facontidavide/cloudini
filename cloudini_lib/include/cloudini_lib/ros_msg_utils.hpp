@@ -41,15 +41,6 @@ struct RosPointCloud2 {
   bool is_bigendian = false;                 // endianness (not used)
   Cloudini::ConstBufferView data;
   bool is_dense = true;  // whether all points are valid
-
-  virtual size_t requiredSize() const;
-};
-
-// This structure mimics the point_cloud_interfaces/msg/CompressedPointCloud2 message fields
-struct RosCompressedPointCloud2 : public RosPointCloud2 {
-  // inherited all the fields from RosPointCloud2
-  std::string format;  // format of the compressed data
-  size_t requiredSize() const override;
 };
 
 // Resolutions to be applied to the fields in RosPointCloud2 or EncodingInfo.
@@ -75,7 +66,7 @@ RosPointCloud2 parsePointCloud2Message(Cloudini::ConstBufferView pc2_dds_msg);
 
 // Extract information from a raw DDS message (point_cloud_interfaces/msg/CompressedPointCloud2) into a
 // RosCompressedPointCloud2 structure
-RosCompressedPointCloud2 parseCompressedPointCloudMessage(Cloudini::ConstBufferView compressed_dds_msg);
+RosPointCloud2 parseCompressedPointCloudMessage(Cloudini::ConstBufferView compressed_dds_msg);
 
 //------------------------------------------------------------------------
 
@@ -86,6 +77,6 @@ void convertPointCloud2ToCompressedCloud(
     std::vector<uint8_t>& compressed_dds_msg);
 
 // Assumining that pc_info contains compressed data, decompress it directly into raw_dds_msg
-void convertCompressedCloudToPointCloud2(const RosCompressedPointCloud2& pc_info, std::vector<uint8_t>& pc2_dds_msg);
+void convertCompressedCloudToPointCloud2(const RosPointCloud2& pc_info, std::vector<uint8_t>& pc2_dds_msg);
 
 }  // namespace cloudini_ros

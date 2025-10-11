@@ -38,35 +38,7 @@ namespace cloudini_ros {
 //     uint8  datatype
 //     uint32 count
 
-size_t RosPointCloud2::requiredSize() const {
-  size_t total_size = 4;  // CDR header size
-  total_size += sizeof(RosHeader::stamp_sec) + sizeof(RosHeader::stamp_nsec);
-  total_size += sizeof(uint32_t) + ros_header.frame_id.size();  // string length
-  total_size += sizeof(height) + sizeof(width);
-
-  total_size += sizeof(uint32_t);  // number of fields
-  for (const auto& field : fields) {
-    total_size += sizeof(uint32_t) + field.name.size();  // string length + data
-    total_size += sizeof(field.offset);                  // offset
-    total_size += sizeof(field.type);                    // type
-    total_size += sizeof(uint32_t);                      // count
-  }
-  total_size += sizeof(bool);        // is_bigendian
-  total_size += sizeof(point_step);  // point_step
-  total_size += sizeof(row_step);    // row_step
-  total_size += sizeof(uint32_t);    // data length
-  total_size += data.size();         // data
-  total_size += sizeof(is_dense);    // is_dense
-  return total_size;
-}
-
-size_t RosCompressedPointCloud2::requiredSize() const {
-  return RosPointCloud2::requiredSize() + sizeof(uint32_t) + format.size();
-}
-
-template <typename CloudType>
-void readPointCloud2MessageCommon(nanocdr::Decoder& cdr, CloudType& result) {
-  static_assert(std::is_same_v<CloudType, RosPointCloud2> || std::is_same_v<CloudType, RosCompressedPointCloud2>);
+void readPointCloud2MessageCommon(nanocdr::Decoder& cdr, RosPointCloud2& result) {
   //----- read the header -----
   result.cdr_header = cdr.header();
   cdr.decode(result.ros_header.stamp_sec);
@@ -104,24 +76,14 @@ void readPointCloud2MessageCommon(nanocdr::Decoder& cdr, CloudType& result) {
   cdr.decode(result.is_dense);
 }
 
-RosPointCloud2 parsePointCloud2Message(Cloudini::ConstBufferView raw_dds_msg) {
+RosPointCloud2 parsePointCloudMessage(Cloudini::ConstBufferView raw_dds_msg) {
   RosPointCloud2 result;
   nanocdr::Decoder cdr(raw_dds_msg);
   readPointCloud2MessageCommon(cdr, result);
   return result;
 }
 
-RosCompressedPointCloud2 parseCompressedPointCloudMessage(Cloudini::ConstBufferView compressed_dds_msg) {
-  RosCompressedPointCloud2 result;
-  nanocdr::Decoder cdr(compressed_dds_msg);
-  readPointCloud2MessageCommon(cdr, result);
-  cdr.decode(result.format); // remaining fields
-  return result;
-}
-
-template <typename CloudType>
-void writePointCloud2Header(nanocdr::Encoder& encoder, const CloudType& pc_info) {
-  static_assert(std::is_same_v<CloudType, RosPointCloud2> || std::is_same_v<CloudType, RosCompressedPointCloud2>);
+void writePointCloudHeader(nanocdr::Encoder& encoder, const RosPointCloud2& pc_info) {
   //----- write the header -----
   encoder.encode(pc_info.ros_header.stamp_sec);   // header_stamp_sec
   encoder.encode(pc_info.ros_header.stamp_nsec);  // header_stamp_nsec
@@ -157,13 +119,13 @@ Cloudini::EncodingInfo toEncodingInfo(const RosPointCloud2& pc_info) {
 }
 //-------------------------------------------------------------------
 
-void convertCompressedCloudToPointCloud2(const RosCompressedPointCloud2& pc_info, std::vector<uint8_t>& pc2_dds_msg) {
+void convertCompressedCloudToPointCloud2(const RosPointCloud2& pc_info, std::vector<uint8_t>& pc2_dds_msg) {
   // We need to reserve enough space in the output buffer
   const size_t cloud_data_size = pc_info.width * pc_info.height * pc_info.point_step;
 
   pc2_dds_msg.clear();
   nanocdr::Encoder cdr_encoder(pc_info.cdr_header, pc2_dds_msg);
-  writePointCloud2Header(cdr_encoder, pc_info);
+  writePointCloudHeader(cdr_encoder, pc_info);
 
   // Start writing the field PointCloud2::data
   cdr_encoder.encode(static_cast<uint32_t>(cloud_data_size));
@@ -183,11 +145,22 @@ void convertCompressedCloudToPointCloud2(const RosCompressedPointCloud2& pc_info
   cdr_encoder.encode(pc_info.is_dense);
 }
 
+void writeCompressedCloudMessage(const RosPointCloud2& pc_info, std::vector<uint8_t>& pc2_dds_msg) {
+  pc2_dds_msg.clear();
+  nanocdr::Encoder cdr_encoder(pc_info.cdr_header, pc2_dds_msg);
+  // Write the common header
+  writePointCloudHeader(cdr_encoder, pc_info);
+  // Write the compressed data
+  cdr_encoder.encode(pc_info.data);
+  cdr_encoder.encode(pc_info.is_dense);
+  cdr_encoder.encode(std::string("cloudini"));  // format
+}
+
 void convertPointCloud2ToCompressedCloud(
     const RosPointCloud2& pc_info, const Cloudini::EncodingInfo& encoding_info, std::vector<uint8_t>& pc2_dds_msg) {
   pc2_dds_msg.clear();
   nanocdr::Encoder cdr_encoder(pc_info.cdr_header, pc2_dds_msg);
-  writePointCloud2Header(cdr_encoder, pc_info);
+  writePointCloudHeader(cdr_encoder, pc_info);
 
   size_t prev_size = pc2_dds_msg.size();
   // we will write into this area later
