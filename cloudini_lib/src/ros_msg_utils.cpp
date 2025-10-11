@@ -38,7 +38,7 @@ namespace cloudini_ros {
 //     uint8  datatype
 //     uint32 count
 
-RosPointCloud2 parsePointCloudMessage(Cloudini::ConstBufferView raw_dds_msg) {
+RosPointCloud2 getDeserializedPointCloudMessage(Cloudini::ConstBufferView raw_dds_msg) {
   RosPointCloud2 result;
   nanocdr::Decoder cdr(raw_dds_msg);
   //----- read the header -----
