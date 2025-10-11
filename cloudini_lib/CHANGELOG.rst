@@ -2,6 +2,17 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* fix error in wasm module
+* fix mcap_converter
+* remove redundancy
+* Fix redundancy in ros msg utils (`#37 <https://github.com/facontidavide/cloudini/issues/37>`_)
+  * remove redundant function
+  * remove code redundancy
+  * move header decoding to common
+* Contributors: Davide Faconti, Tanishq Chaudhary
+
 0.8.0 (2025-10-09)
 ------------------
 * Merge branch 'main' into msadowski/release_foxglove_extension

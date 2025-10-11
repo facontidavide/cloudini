@@ -2,6 +2,12 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* fix compilation
+* fix mcap_converter
+* Contributors: Davide Faconti
+
 0.8.0 (2025-10-09)
 ------------------
 * Merge branch 'main' into msadowski/release_foxglove_extension
