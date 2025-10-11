@@ -42,16 +42,15 @@ WASM_EXPORT uint32_t cldn_GetDecompressedSize(uintptr_t encoded_msg_ptr, uint32_
 
 /**
  * @brief Given the a serialized DDS message containing "point_cloud_interfaces/CompressedPointCloud2",
- * perform decoding.
- * The `output_data` is usually the "data" field of "sensor_msgs::PointCloud2" or "pcl::PCLPointCloud2".
+ * perform decoding and write the result into a "sensor_msgs/PointCloud2" serialized message.
  *
  * @param encoded_dds_ptr pointer to the serialized DDS message.
  * @param encoded_dds_size size of the serialized DDS message.
- * @param output_data pointer for the output buffer where decompressed data will be written.
+ * @param output_data pointer for the output buffer where DDS message will be written.
  * @return The size of the decompressed point cloud data, or 0 on failure.
  */
-WASM_EXPORT uint32_t
-cldn_DecodeCompressedMessage(uintptr_t compressed_msg_ptr, uint32_t msg_size, uintptr_t output_data_ptr);
+WASM_EXPORT uint32_t cldn_ConvertCompressedMsgToPointCloud2Msg(
+    uintptr_t compressed_msg_ptr, uint32_t encoded_data_size, uintptr_t output_msg_ptr);
 
 /**
  * @brief Given compressed cloudini buffer, perform decoding.
@@ -65,6 +64,11 @@ cldn_DecodeCompressedMessage(uintptr_t compressed_msg_ptr, uint32_t msg_size, ui
  */
 WASM_EXPORT uint32_t
 cldn_DecodeCompressedData(uintptr_t encoded_data_ptr, uint32_t encoded_data_size, uintptr_t output_data);
+
+// Same as cldn_DecodeCompressedData, but the input is a DDS message containing
+// "point_cloud_interfaces/CompressedPointCloud2"
+WASM_EXPORT uint32_t
+cldn_DecodeCompressedMessage(uintptr_t compressed_msg_ptr, uint32_t msg_size, uintptr_t output_data_ptr);
 
 /**
  * @brief Give a ROS2 DDS message containing "sensor_msgs/PointCloud2", perform compression

@@ -165,32 +165,21 @@ else()
       "_cldn_GetDecompressedSize"
       "_cldn_DecodeCompressedMessage"
       "_cldn_DecodeCompressedData"
+      "_cldn_ConvertCompressedMsgToPointCloud2Msg"
       "_cldn_EncodePointcloudData"
-      "_cldn_GetLastErrorMessage"
     )
   set(QUOTED_FUNCTIONS "")
   FOREACH(Item IN LISTS CLD_EXPORTED_FUNCTIONS)
     LIST(APPEND QUOTED_FUNCTIONS "'${Item}'")
   ENDFOREACH()
 
-  STRING(JOIN ", " CLD_EXPORTED_FUNCTIONS_STR ${QUOTED_FUNCTIONS})
+  STRING(JOIN "," CLD_EXPORTED_FUNCTIONS_STR ${QUOTED_FUNCTIONS})
 
   # joint these in a single string, adding commas between elements
   message(STATUS "Exporting the following WASM functions: [${CLD_EXPORTED_FUNCTIONS_STR}]")
 
   set_target_properties(cloudini_wasm PROPERTIES
-      LINK_FLAGS
-        " -s SINGLE_FILE=1"
-        " -s NO_DISABLE_EXCEPTION_CATCHING"
-        " -s ASSERTIONS"
-        " -s EXPORTED_FUNCTIONS=[${CLD_EXPORTED_FUNCTIONS_STR}]"
-        " -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8','HEAP8','UTF8ToString']"
-        " -s MODULARIZE=1"
-        " -s EXPORT_NAME='CloudiniModule'"
-        " -s INITIAL_MEMORY=67108864"
-        " -s MAXIMUM_MEMORY=134217728"
-        " -s ALLOW_MEMORY_GROWTH=1"
-        " -s TOTAL_STACK=1048576"
+    LINK_FLAGS "-s SINGLE_FILE=1 -s NO_DISABLE_EXCEPTION_CATCHING -s ASSERTIONS -s EXPORTED_FUNCTIONS=[${CLD_EXPORTED_FUNCTIONS_STR}] -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8','HEAP8','UTF8ToString'] -s MODULARIZE=1 -s EXPORT_NAME='CloudiniModule' -s INITIAL_MEMORY=67108864 -s MAXIMUM_MEMORY=134217728 -s ALLOW_MEMORY_GROWTH=1 -s TOTAL_STACK=1048576"
   )
 endif(NOT EMSCRIPTEN)
 

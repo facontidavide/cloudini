@@ -47,7 +47,7 @@ uint32_t cldn_ComputeCompressedSize(uintptr_t dds_msg_ptr, uint32_t dds_msg_size
     const uint8_t* raw_msg_data = reinterpret_cast<const uint8_t*>(dds_msg_ptr);
     Cloudini::ConstBufferView raw_dds_msg(raw_msg_data, dds_msg_size);
 
-    auto pc_info = cloudini_ros::parsePointCloud2Message(raw_dds_msg);
+    auto pc_info = cloudini_ros::parsePointCloudMessage(raw_dds_msg);
 
     Cloudini::EncodingInfo encoding_info = cloudini_ros::toEncodingInfo(pc_info);
 
@@ -81,15 +81,33 @@ uint32_t cldn_ComputeCompressedSize(uintptr_t dds_msg_ptr, uint32_t dds_msg_size
 uint32_t cldn_GetDecompressedSize(uintptr_t encoded_dds_ptr, uint32_t encoded_dds_size) {
   const uint8_t* compressed_data = reinterpret_cast<const uint8_t*>(encoded_dds_ptr);
   Cloudini::ConstBufferView raw_dds_msg(compressed_data, encoded_dds_size);
-  auto compressed_cloud = cloudini_ros::parseCompressedPointCloudMessage(raw_dds_msg);
+  auto compressed_cloud = cloudini_ros::parsePointCloudMessage(raw_dds_msg);
   return compressed_cloud.height * compressed_cloud.width * compressed_cloud.point_step;
+}
+
+uint32_t cldn_ConvertCompressedMsgToPointCloud2Msg(
+    uintptr_t compressed_msg_ptr, uint32_t encoded_data_size, uintptr_t output_msg_ptr) {
+  const uint8_t* compressed_data = reinterpret_cast<const uint8_t*>(compressed_msg_ptr);
+  static std::vector<uint8_t> output_msg_buffer;
+
+  try {
+    const auto pc_info = cloudini_ros::parsePointCloudMessage({compressed_data, encoded_data_size});
+    cloudini_ros::convertCompressedCloudToPointCloud2(pc_info, output_msg_buffer);
+
+    // Copy the output message to the output buffer
+    std::memcpy(reinterpret_cast<void*>(output_msg_ptr), output_msg_buffer.data(), output_msg_buffer.size());
+    return output_msg_buffer.size();
+  } catch (const std::exception& e) {
+    EM_ASM({ console.error('Exception in cldn_ConvertCompressedMsgToPointCloud2Msg:', UTF8ToString($0)); }, e.what());
+    return 0;
+  }
 }
 
 uint32_t cldn_DecodeCompressedMessage(uintptr_t encoded_dds_ptr, uint32_t encoded_dds_size, uintptr_t output_data) {
   const uint8_t* dds_data = reinterpret_cast<const uint8_t*>(encoded_dds_ptr);
 
   Cloudini::ConstBufferView dds_data_view(dds_data, encoded_dds_size);
-  auto pcl_msg = cloudini_ros::parseCompressedPointCloudMessage(dds_data_view);
+  const auto pcl_msg = cloudini_ros::parsePointCloudMessage(dds_data_view);
 
   try {
     uintptr_t compressed_data_ptr = reinterpret_cast<uintptr_t>(pcl_msg.data.data());
@@ -138,7 +156,7 @@ uint32_t cldn_EncodePointcloudMessage(
     const uint8_t* raw_msg_data = reinterpret_cast<const uint8_t*>(pointcloud_msg_ptr);
     Cloudini::ConstBufferView raw_dds_msg(raw_msg_data, msg_size);
 
-    auto pc_info = cloudini_ros::parsePointCloud2Message(raw_dds_msg);
+    auto pc_info = cloudini_ros::parsePointCloudMessage(raw_dds_msg);
 
     Cloudini::EncodingInfo encoding_info = cloudini_ros::toEncodingInfo(pc_info);
 

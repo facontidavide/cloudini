@@ -1,6 +1,6 @@
 type Header = {
-  frame_id: string;
   stamp: { sec: number; nsec: number };
+  frame_id: string;
 };
 
 export enum PointFieldDatatype {
@@ -31,6 +31,7 @@ export type CompressedPointCloud = {
   row_step: number;
   is_dense: boolean;
   compressed_data: Uint8Array;
+  format: string;
 };
 
 export type PointCloud = {
