@@ -165,10 +165,7 @@ void McapConverter::encodePointClouds(
   mcap::ReadMessageOptions reader_options;
   mcap::ProblemCallback problem = [](const mcap::Status&) {};
 
-  std::vector<uint8_t> compressed_cloud;
   std::vector<uint8_t> compressed_dds_msg;
-
-  std::unordered_map<mcap::ChannelId, std::unique_ptr<Cloudini::PointcloudEncoder>> pc_encoders;
 
   for (const auto& msg : reader_->readMessages(problem, reader_options)) {
     mcap::Message new_msg = msg.message;
@@ -184,40 +181,19 @@ void McapConverter::encodePointClouds(
     processed_messages_++;
     const auto t1 = std::chrono::high_resolution_clock::now();
 
-    // resize vectors to maximum size
-    compressed_cloud.resize(msg.message.dataSize);    // conservative size
-    compressed_dds_msg.resize(msg.message.dataSize);  // conservative size
-
     Cloudini::ConstBufferView raw_dds_msg(msg.message.data, msg.message.dataSize);
-    auto pc_info = cloudini_ros::parsePointCloud2Message(raw_dds_msg);
+    auto pc_info = cloudini_ros::parsePointCloudMessage(raw_dds_msg);
 
     // Apply the profile to the encoding info. removing fields if resolution is 0
     // Remove first all fields that have resolution 0.0 in the profile
     cloudini_ros::applyResolutionProfile(profile_resolutions_, pc_info.fields, default_resolution);
 
-    // Remove padding from the fields to avoid empty padding in the message
-
     auto encoding_info = cloudini_ros::toEncodingInfo(pc_info);
-
     // no need to do ZSTD compression twice
     if (mcap_writer_compression == Cloudini::CompressionOption::ZSTD) {
       encoding_info.compression_opt = Cloudini::CompressionOption::NONE;
     }
 
-    auto& pc_encoder = pc_encoders[new_msg.channelId];
-    if (!pc_encoder || pc_encoder->getEncodingInfo() != encoding_info) {
-      // create a new encoder with the new encoding info
-      pc_encoder = std::make_unique<Cloudini::PointcloudEncoder>(encoding_info);
-    }
-
-    // Start encoding the pointcloud data[]
-    auto new_size = pc_encoder->encode(pc_info.data, compressed_cloud);
-    compressed_cloud.resize(new_size);
-
-    // substitute the data view
-    pc_info.data = Cloudini::ConstBufferView(compressed_cloud);
-
-    // generate the new DDS message
     cloudini_ros::convertPointCloud2ToCompressedCloud(pc_info, encoding_info, compressed_dds_msg);
 
     // copy pointers to compressed_dds_msg
@@ -295,7 +271,7 @@ void McapConverter::decodePointClouds(
     const auto t1 = std::chrono::high_resolution_clock::now();
 
     Cloudini::ConstBufferView raw_dds_msg(msg.message.data, msg.message.dataSize);
-    const auto pc_info = cloudini_ros::parseCompressedPointCloudMessage(raw_dds_msg);
+    const auto pc_info = cloudini_ros::parsePointCloudMessage(raw_dds_msg);
     cloudini_ros::convertCompressedCloudToPointCloud2(pc_info, decoded_dds_msg);
 
     new_msg.data = reinterpret_cast<const std::byte*>(decoded_dds_msg.data());

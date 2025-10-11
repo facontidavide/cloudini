@@ -155,7 +155,7 @@ void CloudiniPointcloudConverter::callback(std::shared_ptr<rclcpp::SerializedMes
 
   // STEP 2: extract information from the raw DDS message
   if (compressing_) {
-    auto pc_info = cloudini_ros::parsePointCloud2Message(raw_dds_msg);
+    auto pc_info = cloudini_ros::parsePointCloudMessage(raw_dds_msg);
     const auto encoding_info = cloudini_ros::toEncodingInfo(pc_info);
     cloudini_ros::applyResolutionProfile(cloudini_ros::ResolutionProfile{}, pc_info.fields, resolution_);
     cloudini_ros::convertPointCloud2ToCompressedCloud(pc_info, encoding_info, output_raw_message_);

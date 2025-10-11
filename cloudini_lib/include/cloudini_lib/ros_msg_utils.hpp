@@ -61,14 +61,11 @@ void applyResolutionProfile(
 
 Cloudini::EncodingInfo toEncodingInfo(const RosPointCloud2& pc_info);
 
-// Extract information from a raw DDS message (sensor_msgs/msg/PointCloud2) into a RosPointCloud2 structure
-RosPointCloud2 parsePointCloud2Message(Cloudini::ConstBufferView pc2_dds_msg);
-
-// Extract information from a raw DDS message (point_cloud_interfaces/msg/CompressedPointCloud2) into a
-// RosCompressedPointCloud2 structure
-RosPointCloud2 parseCompressedPointCloudMessage(Cloudini::ConstBufferView compressed_dds_msg);
-
 //------------------------------------------------------------------------
+
+// Extract information from a raw DDS message (sensor_msgs/msg/PointCloud2) or
+// (point_cloud_interfaces/msg/CompressedPointCloud2) into a RosPointCloud2 structure
+RosPointCloud2 parsePointCloudMessage(Cloudini::ConstBufferView pc2_dds_msg);
 
 // Given as input a raw DDS message, containing a sensor_msgs/msg/PointCloud2,
 // apply compression and write the result into a point_cloud_interfaces/msg/CompressedPointCloud2
