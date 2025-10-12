@@ -38,8 +38,8 @@ namespace cloudini_ros {
 //     uint8  datatype
 //     uint32 count
 
-RosPointCloud2 getDeserializedPointCloudMessage(Cloudini::ConstBufferView raw_dds_msg) {
-  RosPointCloud2 result;
+CloudiniPointCloud getDeserializedPointCloudMessage(Cloudini::ConstBufferView raw_dds_msg) {
+  CloudiniPointCloud result;
   nanocdr::Decoder cdr(raw_dds_msg);
   //----- read the header -----
   result.cdr_header = cdr.header();
@@ -79,7 +79,7 @@ RosPointCloud2 getDeserializedPointCloudMessage(Cloudini::ConstBufferView raw_dd
   return result;
 }
 
-void writePointCloudHeader(nanocdr::Encoder& encoder, const RosPointCloud2& pc_info) {
+void writePointCloudHeader(nanocdr::Encoder& encoder, const CloudiniPointCloud& pc_info) {
   //----- write the header -----
   encoder.encode(pc_info.ros_header.stamp_sec);   // header_stamp_sec
   encoder.encode(pc_info.ros_header.stamp_nsec);  // header_stamp_nsec
@@ -103,7 +103,7 @@ void writePointCloudHeader(nanocdr::Encoder& encoder, const RosPointCloud2& pc_i
   encoder.encode(static_cast<uint32_t>(pc_info.point_step * pc_info.width));
 }
 
-Cloudini::EncodingInfo toEncodingInfo(const RosPointCloud2& pc_info) {
+Cloudini::EncodingInfo toEncodingInfo(const CloudiniPointCloud& pc_info) {
   Cloudini::EncodingInfo info;
   info.height = pc_info.height;
   info.width = pc_info.width;
@@ -115,7 +115,7 @@ Cloudini::EncodingInfo toEncodingInfo(const RosPointCloud2& pc_info) {
 }
 //-------------------------------------------------------------------
 
-void convertCompressedCloudToPointCloud2(const RosPointCloud2& pc_info, std::vector<uint8_t>& pc2_dds_msg) {
+void convertCompressedCloudToPointCloud2(const CloudiniPointCloud& pc_info, std::vector<uint8_t>& pc2_dds_msg) {
   pc2_dds_msg.clear();
   nanocdr::Encoder cdr_encoder(pc_info.cdr_header, pc2_dds_msg);
   writePointCloudHeader(cdr_encoder, pc_info);
@@ -142,7 +142,7 @@ void convertCompressedCloudToPointCloud2(const RosPointCloud2& pc_info, std::vec
 }
 
 void convertPointCloud2ToCompressedCloud(
-    const RosPointCloud2& pc_info, const Cloudini::EncodingInfo& encoding_info, std::vector<uint8_t>& compressed_dds_msg) {
+    const CloudiniPointCloud& pc_info, const Cloudini::EncodingInfo& encoding_info, std::vector<uint8_t>& compressed_dds_msg) {
   compressed_dds_msg.clear();
   nanocdr::Encoder cdr_encoder(pc_info.cdr_header, compressed_dds_msg);
   writePointCloudHeader(cdr_encoder, pc_info);
