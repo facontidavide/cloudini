@@ -11,6 +11,8 @@ find_package(cloudini_lib REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(point_cloud_interfaces REQUIRED)
 find_package(point_cloud_transport REQUIRED)
+find_package(PCL REQUIRED COMPONENTS common)
+find_package(pcl_conversions REQUIRED)
 
 set(PLUGIN_DEPS
   pluginlib::pluginlib
@@ -26,17 +28,20 @@ set(PLUGIN_DEPS
 
 add_library(cloudini_ros SHARED
   src/conversion_utils.cpp
+  src/cloudini_subscriber_pcl.cpp
 )
 
 target_include_directories(cloudini_ros
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
+    ${PCL_INCLUDE_DIRS}
 )
 
 target_link_libraries(cloudini_ros
   PUBLIC
     ${PLUGIN_DEPS}
+    ${PCL_LIBRARIES}
 )
 
 install(TARGETS cloudini_ros
@@ -80,6 +85,64 @@ target_link_libraries(rosbag_benchmark
 )
 
 install(TARGETS rosbag_benchmark
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/cloudini_ros
+)
+
+######### test cloudini subscriber #########
+add_executable(test_cloudini_subscriber test/test_cloudini_subscriber.cpp)
+
+target_link_libraries(test_cloudini_subscriber
+  cloudini_ros
+  ${PCL_LIBRARIES}
+)
+
+target_include_directories(test_cloudini_subscriber
+  PRIVATE
+    ${PCL_INCLUDE_DIRS}
+)
+
+install(TARGETS test_cloudini_subscriber
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/cloudini_ros
+)
+
+######### test cloudini plugin #########
+add_executable(test_plugin_subscriber test/test_plugin_subscriber.cpp)
+
+target_link_libraries(test_plugin_subscriber
+  cloudini_ros
+  ${PCL_LIBRARIES}
+  ${point_cloud_interfaces_TARGETS}
+  ${pcl_conversions_TARGETS}
+  point_cloud_transport::point_cloud_transport
+)
+
+target_include_directories(test_plugin_subscriber
+  PRIVATE
+    ${PCL_INCLUDE_DIRS}
+    ${pcl_conversions_INCLUDE_DIRS}
+)
+
+install(TARGETS test_plugin_subscriber
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/cloudini_ros
+)
+
+######### test plugin publisher #########
+add_executable(test_plugin_publisher test/test_plugin_publisher.cpp)
+
+target_link_libraries(test_plugin_publisher
+  cloudini_ros
+  ${sensor_msgs_TARGETS}
+  point_cloud_transport::point_cloud_transport
+  rclcpp::rclcpp
+)
+
+install(TARGETS test_plugin_publisher
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/cloudini_ros

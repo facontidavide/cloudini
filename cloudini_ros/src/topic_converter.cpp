@@ -58,6 +58,9 @@ class CloudiniPointcloudConverter : public rclcpp::Node {
   rclcpp::SerializedMessage output_message_;
   bool compressing_ = true;
   double resolution_ = 0.001;  // 1mm
+
+  uint64_t tot_original_size = 0;
+  uint64_t tot_compressed_size = 0;
 };
 //-----------------------------------------------------
 
@@ -115,7 +118,7 @@ CloudiniPointcloudConverter::CloudiniPointcloudConverter(const rclcpp::NodeOptio
   }
   std::string output_topic = this->get_parameter("topic_output").as_string();
   if (output_topic.empty()) {
-    output_topic = input_topic + (compressing_ ? "_compressed" : "_decompressed");
+    output_topic = input_topic + (compressing_ ? "/compressed" : "/decompressed");
     RCLCPP_WARN(this->get_logger(), "Output topic is not set, using default: %s", output_topic.c_str());
   }
 
@@ -149,6 +152,11 @@ CloudiniPointcloudConverter::CloudiniPointcloudConverter(const rclcpp::NodeOptio
 }
 
 void CloudiniPointcloudConverter::callback(std::shared_ptr<rclcpp::SerializedMessage> msg) {
+  // Skip processing if there are no subscribers
+  if (point_cloud_publisher_->get_subscription_count() == 0) {
+    return;
+  }
+
   // STEP 1: convert the buffer to a ConstBufferView (this is not a copy)
   const auto& input_msg = msg->get_rcl_serialized_message();
   const Cloudini::ConstBufferView raw_dds_msg(input_msg.buffer, input_msg.buffer_length);
@@ -169,12 +177,17 @@ void CloudiniPointcloudConverter::callback(std::shared_ptr<rclcpp::SerializedMes
   output_message_.get_rcl_serialized_message().buffer = output_raw_message_.data();
   point_cloud_publisher_->publish(output_message_);
 
-  RCLCPP_INFO(this->get_logger(), "size %ld bytes to -> %ld", input_msg.buffer_length, output_raw_message_.size());
+  tot_original_size += input_msg.buffer_length;
+  tot_compressed_size += output_raw_message_.size();
 
   static int count = 0;
-  if (count++ % 100 == 0) {
-    RCLCPP_INFO(this->get_logger(), "Received and converted point cloud message: %d", count);
+  if (count % 20 == 0) {
+    double average_ratio = static_cast<double>(tot_compressed_size) / tot_original_size;
+    tot_compressed_size = 0;
+    tot_original_size = 0;
+    RCLCPP_INFO(this->get_logger(), "Converted %d messages, average compression ratio: %.2f", count, average_ratio);
   }
+  count++;
 }
 
 int main(int argc, char** argv) {
