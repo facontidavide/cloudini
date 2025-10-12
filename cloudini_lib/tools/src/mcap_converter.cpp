@@ -189,7 +189,9 @@ void McapConverter::encodePointClouds(
     // Remove first all fields that have resolution 0.0 in the profile
     cloudini_ros::applyResolutionProfile(profile_resolutions_, pc_info.fields, default_resolution);
 
-    auto encoding_info = cloudini_ros::toEncodingInfo(pc_info);
+    Cloudini::EncodingInfo encoding_info;
+    cloudini_ros::toEncodingInfo(pc_info, encoding_info);
+
     // no need to do ZSTD compression twice
     if (mcap_writer_compression == Cloudini::CompressionOption::ZSTD) {
       encoding_info.compression_opt = Cloudini::CompressionOption::NONE;

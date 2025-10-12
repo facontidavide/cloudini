@@ -157,7 +157,8 @@ void CloudiniPointcloudConverter::callback(std::shared_ptr<rclcpp::SerializedMes
   cloudini_ros::CloudiniPointCloud pc_info;
   cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg, pc_info);
   if (compressing_) {
-    const auto encoding_info = cloudini_ros::toEncodingInfo(pc_info);
+    Cloudini::EncodingInfo encoding_info;
+    cloudini_ros::toEncodingInfo(pc_info, encoding_info);
     cloudini_ros::applyResolutionProfile(cloudini_ros::ResolutionProfile{}, pc_info.fields, resolution_);
     cloudini_ros::convertPointCloud2ToCompressedCloud(pc_info, encoding_info, output_raw_message_);
   } else {

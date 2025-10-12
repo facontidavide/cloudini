@@ -84,15 +84,14 @@ void writePointCloudHeader(nanocdr::Encoder& encoder, const CloudiniPointCloud& 
   encoder.encode(static_cast<uint32_t>(pc_info.point_step * pc_info.width));
 }
 
-Cloudini::EncodingInfo toEncodingInfo(const CloudiniPointCloud& pc_info) {
-  Cloudini::EncodingInfo info;
-  info.height = pc_info.height;
-  info.width = pc_info.width;
-  info.point_step = pc_info.point_step;
-  info.encoding_opt = Cloudini::EncodingOptions::LOSSY;      // default to lossy encoding
-  info.compression_opt = Cloudini::CompressionOption::ZSTD;  // default to ZSTD compression
-  info.fields = pc_info.fields;
-  return info;
+void toEncodingInfo(
+    const CloudiniPointCloud& cloudini_point_cloud, Cloudini::EncodingInfo& encoding_info) {
+  encoding_info.height = cloudini_point_cloud.height;
+  encoding_info.width = cloudini_point_cloud.width;
+  encoding_info.point_step = cloudini_point_cloud.point_step;
+  encoding_info.encoding_opt = Cloudini::EncodingOptions::LOSSY;      // default to lossy encoding
+  encoding_info.compression_opt = Cloudini::CompressionOption::ZSTD;  // default to ZSTD compression
+  encoding_info.fields = cloudini_point_cloud.fields;
 }
 //-------------------------------------------------------------------
 

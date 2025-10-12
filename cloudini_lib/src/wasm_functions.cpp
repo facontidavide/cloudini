@@ -50,7 +50,8 @@ uint32_t cldn_ComputeCompressedSize(uintptr_t dds_msg_ptr, uint32_t dds_msg_size
     cloudini_ros::CloudiniPointCloud pc_info;
     cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg, pc_info);
 
-    Cloudini::EncodingInfo encoding_info = cloudini_ros::toEncodingInfo(pc_info);
+    Cloudini::EncodingInfo encoding_info;
+    cloudini_ros::toEncodingInfo(pc_info, encoding_info);
 
     for (auto& field : encoding_info.fields) {
       if (field.type == Cloudini::FieldType::FLOAT32) {
@@ -162,7 +163,8 @@ uint32_t cldn_EncodePointcloudMessage(
 
     cloudini_ros::CloudiniPointCloud pc_info = cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg);
 
-    Cloudini::EncodingInfo encoding_info = cloudini_ros::toEncodingInfo(pc_info);
+    Cloudini::EncodingInfo encoding_info;
+    cloudini_ros::toEncodingInfo(pc_info, encoding_info);
 
     for (auto& field : encoding_info.fields) {
       if (field.type == Cloudini::FieldType::FLOAT32) {

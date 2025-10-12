@@ -78,7 +78,13 @@ void applyResolutionProfile(
     const ResolutionProfile& profile, std::vector<Cloudini::PointField>& field,
     std::optional<float> default_resolution = std::nullopt);
 
-Cloudini::EncodingInfo toEncodingInfo(const CloudiniPointCloud& pc_info);
+/**
+ * @brief
+ *
+ * @param cloudini_point_cloud [in] 
+ * @param encoding_info [out]
+ */
+void toEncodingInfo(const CloudiniPointCloud& cloudini_point_cloud, Cloudini::EncodingInfo& encoding_info);
 
 //------------------------------------------------------------------------
 
