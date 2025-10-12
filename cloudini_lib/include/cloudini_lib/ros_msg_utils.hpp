@@ -86,6 +86,8 @@ Cloudini::EncodingInfo toEncodingInfo(const RosPointCloud2& pc_info);
 
 //------------------------------------------------------------------------
 
+void writePointCloudHeader(nanocdr::Encoder& encoder, const RosPointCloud2& pc_info);
+
 // Extract information from a raw DDS message (sensor_msgs/msg/PointCloud2) or
 // (point_cloud_interfaces/msg/CompressedPointCloud2) into a RosPointCloud2 structure
 RosPointCloud2 getDeserializedPointCloudMessage(Cloudini::ConstBufferView pc2_dds_msg);
