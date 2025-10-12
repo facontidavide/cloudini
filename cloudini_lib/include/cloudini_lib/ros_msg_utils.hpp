@@ -79,9 +79,9 @@ void applyResolutionProfile(
     std::optional<float> default_resolution = std::nullopt);
 
 /**
- * @brief
+ * @brief convert cloudini_point_cloud into encoding_info
  *
- * @param cloudini_point_cloud [in] 
+ * @param cloudini_point_cloud [in]
  * @param encoding_info [out]
  */
 void toEncodingInfo(const CloudiniPointCloud& cloudini_point_cloud, Cloudini::EncodingInfo& encoding_info);
