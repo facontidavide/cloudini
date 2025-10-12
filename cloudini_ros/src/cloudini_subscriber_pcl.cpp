@@ -101,7 +101,7 @@ void CloudiniSubscriberPCL::messageCallback(std::shared_ptr<rclcpp::SerializedMe
 
     // STEP 2: Parse the raw DDS message to extract compressed data
     // This efficiently parses the CompressedPointCloud2 message without full deserialization
-    const auto pc_info = cloudini_ros::parsePointCloudMessage(raw_dds_msg);
+    const auto pc_info = cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg);
 
     // STEP 3: Acquire a PCL cloud from the object pool (avoids allocation)
     auto pcl_cloud = acquireCloudFromPool();

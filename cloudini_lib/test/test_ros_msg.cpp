@@ -126,10 +126,10 @@ TEST(Cloudini, DDS_Roundtrip) {
 
   //-----------------------------------------------------------------------------
   // read the DDS message
-  const auto info_dds_message = cloudini_ros::parsePointCloudMessage(dds_pointcloud_msg);
-  EncodingInfo encoding_info = cloudini_ros::toEncodingInfo(info_dds_message);
+  const auto pc_info = cloudini_ros::getDeserializedPointCloudMessage(dds_pointcloud_msg);
+  EncodingInfo encoding_info = cloudini_ros::toEncodingInfo(pc_info);
 
-  CompareInfos(info_dds_message, expected_infos);
+  CompareInfos(pc_info, expected_infos);
   CompareInfos(encoding_info, expected_infos);
 
   encoding_info.fields[0].resolution = resolution;  // Set resolution for x
@@ -138,8 +138,7 @@ TEST(Cloudini, DDS_Roundtrip) {
   encoding_info.fields[3].resolution = resolution;  // Set resolution for intensity
 
   //-----------------------------------------------------------------------------
-  const std::vector<uint8_t> original_data(
-      info_dds_message.data.data(), info_dds_message.data.data() + info_dds_message.data.size());
+  const std::vector<uint8_t> original_data(pc_info.data.data(), pc_info.data.data() + pc_info.data.size());
 
   VerifyRoundTrip(encoding_info, original_data, resolution);
 }

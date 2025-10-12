@@ -23,6 +23,29 @@
 #include "cloudini_lib/contrib/nanocdr.hpp"
 namespace cloudini_ros {
 
+/**
+ * @brief This structure mimics the sensor_msgs/msg/PointCloud2 message fields
+ *
+ * @details:
+ * ---
+ * sensor_msgs/msg/PointCloud2
+ *     std_msgs/msg/Header header
+ *     uint32 height
+ *     uint32 width
+ *     PointField[] fields
+ *     bool    is_bigendian
+ *     uint32  point_step
+ *     uint32  row_step
+ *     uint8[] data
+ *     bool is_dense
+ * ---
+ * sensor_msgs/msg/PointField:
+ *     string name
+ *     uint32 offset
+ *     uint8  datatype
+ *     uint32 count
+ *
+ */
 struct RosHeader {
   int32_t stamp_sec = 0;    // seconds
   uint32_t stamp_nsec = 0;  // nanoseconds
@@ -65,7 +88,7 @@ Cloudini::EncodingInfo toEncodingInfo(const RosPointCloud2& pc_info);
 
 // Extract information from a raw DDS message (sensor_msgs/msg/PointCloud2) or
 // (point_cloud_interfaces/msg/CompressedPointCloud2) into a RosPointCloud2 structure
-RosPointCloud2 parsePointCloudMessage(Cloudini::ConstBufferView pc2_dds_msg);
+RosPointCloud2 getDeserializedPointCloudMessage(Cloudini::ConstBufferView pc2_dds_msg);
 
 // Given as input a raw DDS message, containing a sensor_msgs/msg/PointCloud2,
 // apply compression and write the result into a point_cloud_interfaces/msg/CompressedPointCloud2
