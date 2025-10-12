@@ -474,9 +474,12 @@ void PointcloudEncoder::compressionWorker() {
   while (true) {
     {
       std::unique_lock<std::mutex> lock(mutex_);
-      cv_ready_to_compress_.wait(lock, [this] {  //
-        return has_data_to_compress_ || should_exit_;
-      });
+      auto ret = cv_ready_to_compress_.wait_for(
+          lock, std::chrono::seconds(1), [this] { return has_data_to_compress_ || should_exit_; });
+
+      if (!ret) {
+        throw std::runtime_error("Timeout waiting for data to compress. Report this issue");
+      }
 
       if (should_exit_) {
         break;
@@ -522,8 +525,12 @@ void PointcloudEncoder::compressionWorker() {
 
     // write the size of the chunk
     memcpy(compressed_chunk_size_ptr, &chunk_size, sizeof(uint32_t));
-    compressed_size_ += chunk_size + sizeof(uint32_t);
-    compression_done_ = true;
+
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      compressed_size_ += chunk_size + sizeof(uint32_t);
+      compression_done_ = true;
+    }
 
     cv_done_compressing_.notify_one();
   }
@@ -531,7 +538,10 @@ void PointcloudEncoder::compressionWorker() {
 
 void PointcloudEncoder::waitForCompressionComplete() {
   std::unique_lock<std::mutex> lock(mutex_);
-  cv_done_compressing_.wait(lock, [this] { return compression_done_; });
+  auto ret = cv_done_compressing_.wait_for(lock, std::chrono::seconds(1), [this] { return compression_done_; });
+  if (!ret) {
+    throw std::runtime_error("Timeout waiting for compression to complete. Report this issue");
+  }
 }
 
 size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t>& output) {
