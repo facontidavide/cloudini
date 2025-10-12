@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "cloudini_plugin/cloudini_subscriber.hpp"
+#include "cloudini_plugin/cloudini_subscriber_plugin.hpp"
 
 #include <exception>
 

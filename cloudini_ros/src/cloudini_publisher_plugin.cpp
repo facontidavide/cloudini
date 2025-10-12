@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "cloudini_plugin/cloudini_publisher.hpp"
+#include "cloudini_plugin/cloudini_publisher_plugin.hpp"
 
 #include <string>
 

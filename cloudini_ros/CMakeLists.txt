@@ -91,8 +91,8 @@ set(PLUGIN_NAME cloudini_point_cloud_transport)
 add_library(${PLUGIN_NAME}
   SHARED
   src/conversion_utils.cpp
-  src/cloudini_publisher.cpp
-  src/cloudini_subscriber.cpp
+  src/cloudini_publisher_plugin.cpp
+  src/cloudini_subscriber_plugin.cpp
   src/plugin_manifest.cpp
 )
 
