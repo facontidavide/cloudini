@@ -20,36 +20,18 @@
 
 namespace cloudini_ros {
 
-// sensor_msgs/msg/PointCloud2
-//
-//     uint32 height
-//     uint32 width
-//     PointField[] fields
-//     bool    is_bigendian
-//     uint32  point_step
-//     uint32  row_step
-//     uint8[] data
-//     bool is_dense
-//
-// sensor_msgs/msg/PointField:
-//
-//     string name
-//     uint32 offset
-//     uint8  datatype
-//     uint32 count
-
-CloudiniPointCloud getDeserializedPointCloudMessage(Cloudini::ConstBufferView raw_dds_msg) {
-  CloudiniPointCloud result;
+void getDeserializedPointCloudMessage(
+    const Cloudini::ConstBufferView raw_dds_msg, CloudiniPointCloud& cloudini_point_cloud) {
   nanocdr::Decoder cdr(raw_dds_msg);
   //----- read the header -----
-  result.cdr_header = cdr.header();
-  cdr.decode(result.ros_header.stamp_sec);
-  cdr.decode(result.ros_header.stamp_nsec);
-  cdr.decode(result.ros_header.frame_id);
+  cloudini_point_cloud.cdr_header = cdr.header();
+  cdr.decode(cloudini_point_cloud.ros_header.stamp_sec);
+  cdr.decode(cloudini_point_cloud.ros_header.stamp_nsec);
+  cdr.decode(cloudini_point_cloud.ros_header.frame_id);
 
   //----- pointcloud info -----
-  cdr.decode(result.height);
-  cdr.decode(result.width);
+  cdr.decode(cloudini_point_cloud.height);
+  cdr.decode(cloudini_point_cloud.width);
 
   //----- fields -----
   uint32_t num_fields = 0;
@@ -66,17 +48,16 @@ CloudiniPointCloud getDeserializedPointCloudMessage(Cloudini::ConstBufferView ra
     uint32_t count = 0;  // not used
     cdr.decode(count);
 
-    result.fields.push_back(std::move(field));
+    cloudini_point_cloud.fields.push_back(std::move(field));
   }
 
   bool is_bigendian = false;  // not used
   cdr.decode(is_bigendian);
 
-  cdr.decode(result.point_step);
-  cdr.decode(result.row_step);
-  cdr.decode(result.data);
-  cdr.decode(result.is_dense);
-  return result;
+  cdr.decode(cloudini_point_cloud.point_step);
+  cdr.decode(cloudini_point_cloud.row_step);
+  cdr.decode(cloudini_point_cloud.data);
+  cdr.decode(cloudini_point_cloud.is_dense);
 }
 
 void writePointCloudHeader(nanocdr::Encoder& encoder, const CloudiniPointCloud& pc_info) {
@@ -142,7 +123,8 @@ void convertCompressedCloudToPointCloud2(const CloudiniPointCloud& pc_info, std:
 }
 
 void convertPointCloud2ToCompressedCloud(
-    const CloudiniPointCloud& pc_info, const Cloudini::EncodingInfo& encoding_info, std::vector<uint8_t>& compressed_dds_msg) {
+    const CloudiniPointCloud& pc_info, const Cloudini::EncodingInfo& encoding_info,
+    std::vector<uint8_t>& compressed_dds_msg) {
   compressed_dds_msg.clear();
   nanocdr::Encoder cdr_encoder(pc_info.cdr_header, compressed_dds_msg);
   writePointCloudHeader(cdr_encoder, pc_info);
@@ -158,7 +140,8 @@ void convertPointCloud2ToCompressedCloud(
   // reserve enough memory for the compressed data. we will resize later to the actual size used
   compressed_dds_msg.resize(prev_size + pc_info.data.size());
 
-  Cloudini::BufferView compressed_data_view(compressed_dds_msg.data() + prev_size, compressed_dds_msg.size() - prev_size);
+  Cloudini::BufferView compressed_data_view(
+      compressed_dds_msg.data() + prev_size, compressed_dds_msg.size() - prev_size);
   Cloudini::PointcloudEncoder cloud_encoder(encoding_info);
   const size_t compressed_size = cloud_encoder.encode(pc_info.data, compressed_data_view, true);
 

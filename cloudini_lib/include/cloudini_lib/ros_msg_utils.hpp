@@ -29,7 +29,26 @@ struct RosHeader {
   std::string frame_id;     // frame ID
 };
 
-// This structure mimics the sensor_msgs/msg/PointCloud2 message fields
+/**
+ * @brief This structure mimics the sensor_msgs/msg/PointCloud2 message fields
+ *
+ * @details:
+ * sensor_msgs/msg/PointCloud2
+ *     uint32 height
+ *     uint32 width
+ *     PointField[] fields
+ *     bool    is_bigendian
+ *     uint32  point_step
+ *     uint32  row_step
+ *     uint8[] data
+ *     bool is_dense
+ *     sensor_msgs/msg/PointField:
+ *         string name
+ *         uint32 offset
+ *         uint8  datatype
+ *         uint32 count
+ *
+ */
 struct CloudiniPointCloud {
   nanocdr::CdrHeader cdr_header;
   RosHeader ros_header;                      // ROS header
@@ -63,17 +82,37 @@ Cloudini::EncodingInfo toEncodingInfo(const CloudiniPointCloud& pc_info);
 
 //------------------------------------------------------------------------
 
-// Extract information from a raw DDS message (sensor_msgs/msg/PointCloud2) or
-// (point_cloud_interfaces/msg/CompressedPointCloud2) into a CloudiniPointCloud structure
-CloudiniPointCloud getDeserializedPointCloudMessage(Cloudini::ConstBufferView raw_dds_msg);
+/**
+ * @brief Get the Deserialized Point Cloud Message object, Extract information from a raw DDS message
+ * (sensor_msgs/msg/PointCloud2) or (point_cloud_interfaces/msg/CompressedPointCloud2) into a CloudiniPointCloud
+ * structure
+ *
+ * @param raw_dds_msg [in] serialized msg
+ * @param cloudini_point_cloud [out] deserialized cloudini point cloud msg object.
+ */
+void getDeserializedPointCloudMessage(
+    const Cloudini::ConstBufferView raw_dds_msg, CloudiniPointCloud& cloudini_point_cloud);
 
-// Given as input a raw DDS message, containing a sensor_msgs/msg/PointCloud2,
-// apply compression and write the result into a point_cloud_interfaces/msg/CompressedPointCloud2
+/**
+ * @brief Given as input a raw DDS message, containing a sensor_msgs/msg/PointCloud2, apply compression and write the
+ * result into a serialized point_cloud_interfaces/msg/CompressedPointCloud2
+ *
+ * @param cloudini_point_cloud [in] Point Cloud 2
+ * @param encoding_info [in]
+ * @param compressed_dds_msg [out] Serialized Compressed Point Cloud
+ */
 void convertPointCloud2ToCompressedCloud(
-    const CloudiniPointCloud& pc_info, const Cloudini::EncodingInfo& encoding_info,
+    const CloudiniPointCloud& cloudini_point_cloud, const Cloudini::EncodingInfo& encoding_info,
     std::vector<uint8_t>& compressed_dds_msg);
 
-// Assumining that pc_info contains compressed data, decompress it directly into pc2_dds_msg
-void convertCompressedCloudToPointCloud2(const CloudiniPointCloud& pc_info, std::vector<uint8_t>& pc2_dds_msg);
+//
+/**
+ * @brief Assumining that cloudini_point_cloud contains compressed data, decompress it directly into pc2_dds_msg
+ *
+ * @param cloudini_point_cloud [in] Compressed Point Cloud
+ * @param pc2_dds_msg [out] Serialized Point Cloud 2
+ */
+void convertCompressedCloudToPointCloud2(
+    const CloudiniPointCloud& cloudini_point_cloud, std::vector<uint8_t>& pc2_dds_msg);
 
 }  // namespace cloudini_ros

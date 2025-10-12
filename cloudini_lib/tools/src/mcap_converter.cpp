@@ -182,7 +182,8 @@ void McapConverter::encodePointClouds(
     const auto t1 = std::chrono::high_resolution_clock::now();
 
     Cloudini::ConstBufferView raw_dds_msg(msg.message.data, msg.message.dataSize);
-    cloudini_ros::CloudiniPointCloud pc_info = cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg);
+    cloudini_ros::CloudiniPointCloud pc_info;
+    cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg, pc_info);
 
     // Apply the profile to the encoding info. removing fields if resolution is 0
     // Remove first all fields that have resolution 0.0 in the profile
@@ -271,7 +272,8 @@ void McapConverter::decodePointClouds(
     const auto t1 = std::chrono::high_resolution_clock::now();
 
     Cloudini::ConstBufferView raw_dds_msg(msg.message.data, msg.message.dataSize);
-    const cloudini_ros::CloudiniPointCloud pc_info = cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg);
+    cloudini_ros::CloudiniPointCloud pc_info;
+    cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg, pc_info);
     cloudini_ros::convertCompressedCloudToPointCloud2(pc_info, decoded_dds_msg);
 
     new_msg.data = reinterpret_cast<const std::byte*>(decoded_dds_msg.data());

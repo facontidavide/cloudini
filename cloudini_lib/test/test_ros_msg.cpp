@@ -126,7 +126,8 @@ TEST(Cloudini, DDS_Roundtrip) {
 
   //-----------------------------------------------------------------------------
   // read the DDS message
-  const cloudini_ros::CloudiniPointCloud pc_info = cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg);
+  cloudini_ros::CloudiniPointCloud pc_info;
+  cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg, pc_info);
   EncodingInfo encoding_info = cloudini_ros::toEncodingInfo(pc_info);
 
   CompareInfos(pc_info, expected_infos);

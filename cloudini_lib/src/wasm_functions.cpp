@@ -47,7 +47,8 @@ uint32_t cldn_ComputeCompressedSize(uintptr_t dds_msg_ptr, uint32_t dds_msg_size
     const uint8_t* raw_msg_data = reinterpret_cast<const uint8_t*>(dds_msg_ptr);
     Cloudini::ConstBufferView raw_dds_msg(raw_msg_data, dds_msg_size);
 
-    cloudini_ros::CloudiniPointCloud pc_info = cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg);
+    cloudini_ros::CloudiniPointCloud pc_info;
+    cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg, pc_info);
 
     Cloudini::EncodingInfo encoding_info = cloudini_ros::toEncodingInfo(pc_info);
 
@@ -81,7 +82,8 @@ uint32_t cldn_ComputeCompressedSize(uintptr_t dds_msg_ptr, uint32_t dds_msg_size
 uint32_t cldn_GetDecompressedSize(uintptr_t encoded_dds_ptr, uint32_t encoded_dds_size) {
   const uint8_t* compressed_data = reinterpret_cast<const uint8_t*>(encoded_dds_ptr);
   Cloudini::ConstBufferView raw_dds_msg(compressed_data, encoded_dds_size);
-  cloudini_ros::CloudiniPointCloud compressed_cloud = cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg);
+  cloudini_ros::CloudiniPointCloud compressed_cloud;
+  cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg, compressed_cloud);
   return compressed_cloud.height * compressed_cloud.width * compressed_cloud.point_step;
 }
 
@@ -91,7 +93,8 @@ uint32_t cldn_ConvertCompressedMsgToPointCloud2Msg(
   static std::vector<uint8_t> output_msg_buffer;
 
   try {
-    const cloudini_ros::CloudiniPointCloud pc_info = cloudini_ros::getDeserializedPointCloudMessage({compressed_data, encoded_data_size});
+    cloudini_ros::CloudiniPointCloud pc_info;
+    cloudini_ros::getDeserializedPointCloudMessage({compressed_data, encoded_data_size}, pc_info);
     cloudini_ros::convertCompressedCloudToPointCloud2(pc_info, output_msg_buffer);
 
     // Copy the output message to the output buffer
@@ -107,7 +110,8 @@ uint32_t cldn_DecodeCompressedMessage(uintptr_t encoded_dds_ptr, uint32_t encode
   const uint8_t* dds_data = reinterpret_cast<const uint8_t*>(encoded_dds_ptr);
 
   Cloudini::ConstBufferView dds_data_view(dds_data, encoded_dds_size);
-  const cloudini_ros::CloudiniPointCloud pcl_msg = cloudini_ros::getDeserializedPointCloudMessage(dds_data_view);
+  cloudini_ros::CloudiniPointCloud pcl_msg;
+  cloudini_ros::getDeserializedPointCloudMessage(dds_data_view, pcl_msg);
 
   try {
     uintptr_t compressed_data_ptr = reinterpret_cast<uintptr_t>(pcl_msg.data.data());

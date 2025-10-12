@@ -154,7 +154,8 @@ void CloudiniPointcloudConverter::callback(std::shared_ptr<rclcpp::SerializedMes
   const Cloudini::ConstBufferView raw_dds_msg(input_msg.buffer, input_msg.buffer_length);
 
   // STEP 2: extract information from the raw DDS message
-  cloudini_ros::CloudiniPointCloud pc_info = cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg);
+  cloudini_ros::CloudiniPointCloud pc_info;
+  cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg, pc_info);
   if (compressing_) {
     const auto encoding_info = cloudini_ros::toEncodingInfo(pc_info);
     cloudini_ros::applyResolutionProfile(cloudini_ros::ResolutionProfile{}, pc_info.fields, resolution_);
