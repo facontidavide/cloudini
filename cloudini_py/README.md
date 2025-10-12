@@ -1,8 +1,16 @@
 # Cloudini Python Decoder
 
-This example demonstrates how to decode Cloudini-compressed point clouds from MCAP files using WebAssembly (via wasmtime) and convert them to NumPy arrays.
+This package demonstrates how to decode Cloudini-compressed point clouds using WebAssembly (via wasmtime) and convert them to NumPy arrays.
 
 **Status**: ✅ Working! Successfully decodes compressed point clouds at ~5.9x compression ratio.
+
+## File Structure
+
+- **`cloudini_decoder.py`**: Reusable `CloudiniDecoder` class that decodes CompressedPointCloud2 DDS messages to numpy arrays
+- **`decode_mcap.py`**: Command-line tool for decoding compressed point clouds from MCAP files
+- **`example_direct_usage.py`**: Example showing how to use `CloudiniDecoder` directly in your code
+- **`requirements.txt`**: Python dependencies
+- **`rebuild_wasm_no_exceptions.sh`**: Script to rebuild WASM module with correct flags
 
 ## Requirements
 
@@ -43,8 +51,12 @@ This example demonstrates how to decode Cloudini-compressed point clouds from MC
 
 ## Usage
 
-### Basic usage (decodes first 3 messages by default)
+### As a Command-Line Tool
+
+Decode compressed point clouds from MCAP files:
+
 ```bash
+# Basic usage (decodes first 3 messages by default)
 python decode_mcap.py ../DATA/dexory_encoded.mcap
 ```
 
@@ -63,6 +75,33 @@ python decode_mcap.py ../DATA/dexory_encoded.mcap --max-messages -1
 python decode_mcap.py ../DATA/dexory_encoded.mcap --wasm /path/to/cloudini_wasm.wasm
 ```
 
+### As a Python Library
+
+Use the `CloudiniDecoder` class directly in your Python code:
+
+```python
+from cloudini_decoder import CloudiniDecoder
+
+# Initialize the decoder
+decoder = CloudiniDecoder("path/to/cloudini_wasm.wasm")
+
+# Decode a raw DDS message (bytes)
+# This could come from MCAP, ROS2, network, file, etc.
+point_cloud, header = decoder.decode_message(compressed_msg_bytes)
+
+# point_cloud is a numpy array of shape (num_points, point_step)
+print(f"Shape: {point_cloud.shape}")
+print(f"Data type: {point_cloud.dtype}")
+print(f"Header: {header}")
+
+# Reuse the decoder for multiple messages
+for msg in message_stream:
+    point_cloud, header = decoder.decode_message(msg)
+    # Process point_cloud...
+```
+
+See `example_direct_usage.py` for more details.
+
 ## How It Works
 
 1. **WASM Module Loading**: Uses wasmtime to load the Cloudini WASM module
@@ -75,29 +114,64 @@ python decode_mcap.py ../DATA/dexory_encoded.mcap --wasm /path/to/cloudini_wasm.
 
 ## API Reference
 
-### CloudiniDecoder
+### CloudiniDecoder Class
 
-Main class for decoding compressed point clouds.
+Main class for decoding compressed point clouds from DDS messages.
 
+**Constructor:**
 ```python
-decoder = CloudiniDecoder(wasm_path="/path/to/cloudini.wasm")
+CloudiniDecoder(wasm_path: str)
+```
+- `wasm_path`: Path to the cloudini WASM module (e.g., `"build_wasm/cloudini_wasm.wasm"`)
 
-# Decode a compressed message (raw DDS bytes)
+**Methods:**
+
+#### `decode_message(compressed_msg: bytes, verbose: bool = True) -> tuple[np.ndarray, dict]`
+Decodes a CompressedPointCloud2 DDS message to a numpy array.
+
+**Parameters:**
+- `compressed_msg`: Raw DDS message bytes containing CompressedPointCloud2
+- `verbose`: Whether to print progress messages (default: True)
+
+**Returns:**
+- `point_cloud`: Numpy array of shape `(num_points, point_step)` with dtype `uint8`
+- `header`: Dictionary with keys `'width'`, `'height'`, `'point_step'`
+
+**Example:**
+```python
+decoder = CloudiniDecoder("path/to/cloudini_wasm.wasm")
 point_cloud, header = decoder.decode_message(compressed_msg_bytes)
 
-# point_cloud: numpy array of shape (num_points, point_step)
-# header: dict with keys like 'width', 'height', 'point_step', 'encoding_opt', etc.
+print(f"Decoded {header['width']} x {header['height']} point cloud")
+print(f"Shape: {point_cloud.shape}")  # e.g., (262144, 16)
 ```
 
-### decode_mcap_file
+### decode_mcap_file Function
 
-Convenience function to decode all messages from an MCAP file.
+Convenience function to decode all compressed point clouds from an MCAP file.
 
+**Signature:**
 ```python
 decode_mcap_file(
-    mcap_path="/path/to/file.mcap",
-    wasm_path="/path/to/cloudini.wasm",
-    max_messages=3  # None = decode all
+    mcap_path: str,
+    wasm_path: str,
+    max_messages: int = None
+)
+```
+
+**Parameters:**
+- `mcap_path`: Path to the MCAP file
+- `wasm_path`: Path to the cloudini WASM module
+- `max_messages`: Maximum number of messages to decode (None = decode all)
+
+**Example:**
+```python
+from decode_mcap import decode_mcap_file
+
+decode_mcap_file(
+    mcap_path="data/recording.mcap",
+    wasm_path="build_wasm/cloudini_wasm.wasm",
+    max_messages=10
 )
 ```
 
