@@ -152,7 +152,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: cloudini_foxglove
-        run: npm install
+        run: npm ci
 
       - name: Build Foxglove extension
         working-directory: cloudini_foxglove

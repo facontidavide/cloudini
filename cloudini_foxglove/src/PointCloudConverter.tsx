@@ -7,7 +7,7 @@ let wasmLoadingPromise: Promise<void> | null = null;
 
 export const loadCloudiniWasm = async () => {
   if (!wasmLoadingPromise) {
-    wasmLoadingPromise = CloudiniModule().then((module) => {
+    wasmLoadingPromise = CloudiniModule().then((module: CloudiniWasmModule) => {
       wasmModule = module;
     });
   }
