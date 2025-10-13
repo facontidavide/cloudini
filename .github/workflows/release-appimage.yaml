@@ -48,19 +48,152 @@ jobs:
         run: |
           ./linuxdeploy-x86_64.AppImage --appdir AppDir --executable AppDir/usr/bin/cloudini_rosbag_converter -d cloudini_lib/tools/cloudini_converter.desktop -i cloudini.png --output appimage
 
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage-artifact
+          path: cloudini_rosbag_converter-*.AppImage
+
+  build-wasm:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Emscripten cache
+        id: cache-emsdk
+        uses: actions/cache@v4
+        with:
+          path: emsdk
+          key: emsdk-3.1.51-${{ runner.os }}
+
+      - name: Setup Emscripten
+        if: steps.cache-emsdk.outputs.cache-hit != 'true'
+        run: |
+          git clone https://github.com/emscripten-core/emsdk.git
+          cd emsdk
+          ./emsdk install 3.1.51
+          ./emsdk activate 3.1.51
+
+      - name: Get version
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Configure WASM build
+        run: |
+          source emsdk/emsdk_env.sh
+          cmake -B build_wasm -S cloudini_lib \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$EMSDK/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake \
+            -DBUILD_TESTING=OFF \
+            -DCLOUDINI_BUILD_BENCHMARKS=OFF
+
+      - name: Build WASM modules
+        run: |
+          source emsdk/emsdk_env.sh
+          cmake --build build_wasm --target cloudini_wasm --parallel
+          cmake --build build_wasm --target cloudini_wasm_single --parallel
+
+      - name: Package WASM artifacts
+        run: |
+          mkdir -p wasm-release
+          cp build_wasm/cloudini_wasm.wasm wasm-release/
+          cp build_wasm/cloudini_wasm.js wasm-release/
+          cp build_wasm/cloudini_wasm_single.js wasm-release/
+          cd wasm-release
+          zip -r ../cloudini-wasm-${{ steps.get_version.outputs.VERSION }}.zip .
+
+      - name: Upload WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-artifact
+          path: cloudini-wasm-*.zip
+
+  build-foxglove:
+    needs: build-wasm  # Must wait for WASM to be built first
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Get version
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download WASM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-artifact
+
+      - name: Extract and copy WASM file to Foxglove src
+        run: |
+          unzip cloudini-wasm-${{ steps.get_version.outputs.VERSION }}.zip -d wasm-files
+          cp wasm-files/cloudini_wasm_single.js cloudini_foxglove/src/
+          ls -la cloudini_foxglove/src/
+
+      - name: Install dependencies
+        working-directory: cloudini_foxglove
+        run: npm ci
+
+      - name: Build Foxglove extension
+        working-directory: cloudini_foxglove
+        run: npm run build
+
+      - name: Package Foxglove extension
+        run: |
+          cd cloudini_foxglove/dist
+          zip -r ../../cloudini-foxglove-${{ steps.get_version.outputs.VERSION }}.zip .
+
+      - name: Upload Foxglove artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: foxglove-artifact
+          path: cloudini-foxglove-*.zip
+
+  create-release:
+    needs: [build-appimage, build-wasm, build-foxglove]
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'push'  # Only create release for tag pushes
+    permissions:
+      contents: write
+
+    steps:
+      - name: Get version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Display artifact structure
+        run: ls -R
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
-        if: github.event_name == 'push'  # Only create release for tag pushes
         with:
           name: Release ${{ steps.get_version.outputs.VERSION }}
           files: |
-            cloudini_rosbag_converter-*.AppImage
+            appimage-artifact/cloudini_rosbag_converter-*.AppImage
+            wasm-artifact/cloudini-wasm-*.zip
+            foxglove-artifact/cloudini-foxglove-*.zip
           draft: false
           prerelease: false
-
-      - name: Upload Artifacts
-        if: github.event_name == 'workflow_dispatch'  # Only upload artifacts for manual runs
-        uses: actions/upload-artifact@v4
-        with:
-          name: AppImage-manual-build
-          path: cloudini_rosbag_converter-*.AppImage
