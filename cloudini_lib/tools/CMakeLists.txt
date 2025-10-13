@@ -40,6 +40,18 @@ target_link_libraries(mcap_cutter
     cxxopts
 )
 
+add_executable(mcap_header_inspector
+ src/mcap_header_inspector.cpp)
+
+target_link_libraries(mcap_header_inspector
+  PRIVATE
+    cloudini_lib
+    LZ4::lz4_static
+    zstd::libzstd_static
+    mcap::mcap
+    cxxopts
+)
+
 install(TARGETS cloudini_rosbag_converter
         RUNTIME DESTINATION bin)
 

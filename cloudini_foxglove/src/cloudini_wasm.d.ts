@@ -26,7 +26,7 @@ export interface CloudiniWasmModule extends EmscriptenModule {
   _cldn_GetDecompressedSize(inputPtr: number, inputSize: number): number;
 }
 
-declare module "./cloudini_wasm.js" {
+declare module "./cloudini_wasm_single.js" {
   function CloudiniModule(): Promise<CloudiniWasmModule>;
   export default CloudiniModule;
 }

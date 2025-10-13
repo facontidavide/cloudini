@@ -39,18 +39,17 @@ def decode_mcap_file(mcap_path: str, wasm_path: str, max_messages: int = None):
             print(f"    Channel {channel_id}: {channel.topic} ({channel.message_encoding})")
 
         # Process messages
-        message_count = 0
-        decoded_count = 0
+        msg_count = 0
 
         for schema, channel, message in reader.iter_messages():
-            message_count += 1
-
             # Look for CompressedPointCloud2 messages
             # Check if this is a compressed point cloud message by schema name
             is_compressed = (schema and 'CompressedPointCloud2' in schema.name)
 
             if is_compressed:
-                print(f"\n--- Message {message_count} ---")
+                msg_count += 1
+
+                print(f"\n--- Message {msg_count} ---")
                 print(f"Topic: {channel.topic}")
                 print(f"Timestamp: {message.log_time / 1e9:.3f}s")
 
@@ -66,20 +65,17 @@ def decode_mcap_file(mcap_path: str, wasm_path: str, max_messages: int = None):
                     compression_ratio = len(point_cloud.tobytes()) / len(message.data)
                     print(f"  Compression ratio: {compression_ratio:.2f}x")
 
-                    decoded_count += 1
-
-                    if max_messages and decoded_count >= max_messages:
-                        print(f"\nReached max messages limit ({max_messages})")
-                        break
-
                 except Exception as e:
                     print(f"Failed to decode: {e}")
                     import traceback
                     traceback.print_exc()
 
+                if max_messages and msg_count >= max_messages:
+                    print(f"\nReached max messages limit ({max_messages})")
+                    break
+
         print(f"\n=== Summary ===")
-        print(f"Total messages: {message_count}")
-        print(f"Successfully decoded: {decoded_count}")
+        print(f"Messages parsed: {msg_count}")
 
 
 def main():
@@ -101,8 +97,8 @@ def main():
     parser.add_argument(
         '--max-messages',
         type=int,
-        default=3,
-        help='Maximum number of messages to decode (default: 3, use -1 for all)'
+        default=-1,
+        help='Maximum number of messages to decode (default: -1 = all messages)'
     )
 
     args = parser.parse_args()

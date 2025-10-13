@@ -85,7 +85,7 @@ class CloudiniDecoder:
         export_info = {}
         for name, obj in exports.items():
             export_info[name] = type(obj).__name__
-        print(f"Available exports with types: {export_info}")
+        # print(f"Available exports with types: {export_info}")
 
         # Get memory export - try by name first, then by type
         self.memory = exports.get("memory")
@@ -108,10 +108,9 @@ class CloudiniDecoder:
         # Get the cloudini functions
         self.get_decompressed_size = exports.get('cldn_GetDecompressedSize')
         self.decode_compressed_msg = exports.get('cldn_DecodeCompressedMessage')
-        self.convert_to_pc2 = exports.get('cldn_ConvertCompressedMsgToPointCloud2Msg')
-        self.get_header_as_yaml = exports.get('cldn_GetHeaderAsYAML')
+        self.get_header_as_yaml = exports.get('cldn_GetHeaderAsYAMLFromDDS')
 
-        if not all([self.get_decompressed_size, self.decode_compressed_msg, self.get_header_as_yaml, self.convert_to_pc2]):
+        if not all([self.get_decompressed_size, self.decode_compressed_msg, self.get_header_as_yaml]):
             raise RuntimeError("Could not find required Cloudini functions in WASM module")
 
         # Initialize WASM module (call constructors)
@@ -183,26 +182,29 @@ class CloudiniDecoder:
 
             try:
                 # Convert compressed message to PointCloud2 message
-                actual_size = self.convert_to_pc2(self.store, input_ptr, len(compressed_msg), output_ptr)
+                actual_size = self.decode_compressed_msg(self.store, input_ptr, len(compressed_msg), output_ptr)
 
                 if actual_size == 0:
                     raise RuntimeError("Failed to convert compressed message to PointCloud2")
 
                 # Read the decoded PointCloud2 DDS message
-                pc2_msg_data = self.read_bytes(output_ptr, actual_size)
+                points_msg_data = self.read_bytes(output_ptr, actual_size)
 
-                # For now, skip get_header_info and use info from GetDecompressedSize
-                # Get header info would require calling another WASM function that's also hitting issues
-                # Create a minimal header_info dict
-                header_info = {
-                    'width': 262144,  # 4MB / 16 bytes per point
-                    'height': 1,
-                    'point_step': 16
-                }
+                # Get actual header info from the compressed message
+                # This is mandatory - we need correct dimensions to decode properly
+                try:
+                    header_info = self.get_header_info(compressed_msg)
+                except Exception as e:
+                    raise RuntimeError(f"Failed to extract header info from compressed message: {e}")
+
+                if not header_info or 'width' not in header_info:
+                    raise RuntimeError("Header info extraction returned incomplete data (missing 'width')")
+
+                print(f"Extracted header info: {header_info}")
 
                 # Parse the PointCloud2 message to extract the point cloud data
                 # The PointCloud2 message contains the data field with raw point cloud bytes
-                point_cloud = self.extract_data_from_pc2_msg(pc2_msg_data, header_info)
+                point_cloud = self.extract_data_from_pc2_msg(points_msg_data, header_info)
 
                 return point_cloud, header_info
 
@@ -235,6 +237,8 @@ class CloudiniDecoder:
                 return {}
 
             yaml_str = self.read_bytes(yaml_ptr, yaml_size).decode('utf-8')
+
+            print(f"Extracted YAML header:\n{yaml_str}")
 
             # Parse YAML (simple key-value parsing)
             header = {}

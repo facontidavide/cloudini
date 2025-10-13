@@ -42,6 +42,12 @@ uint32_t cldn_GetHeaderAsYAML(uintptr_t encoded_data_ptr, uint32_t encoded_data_
   }
 }
 
+uint32_t cldn_GetHeaderAsYAMLFromDDS(uintptr_t raw_dds_msg, uint32_t dds_msg_size, uintptr_t output_yaml_ptr) {
+  cloudini_ros::RosPointCloud2 pc_info = cloudini_ros::getDeserializedPointCloudMessage(
+      Cloudini::ConstBufferView(reinterpret_cast<const uint8_t*>(raw_dds_msg), dds_msg_size));
+  return cldn_GetHeaderAsYAML(reinterpret_cast<uintptr_t>(pc_info.data.data()), pc_info.data.size(), output_yaml_ptr);
+}
+
 uint32_t cldn_ComputeCompressedSize(uintptr_t dds_msg_ptr, uint32_t dds_msg_size, float resolution) {
   try {
     const uint8_t* raw_msg_data = reinterpret_cast<const uint8_t*>(dds_msg_ptr);

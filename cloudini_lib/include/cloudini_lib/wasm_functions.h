@@ -32,6 +32,9 @@ extern "C" {
 // retrieves a YAML representation of Cloudini::EncodingInfo
 uint32_t cldn_GetHeaderAsYAML(uintptr_t encoded_data_ptr, uint32_t encoded_data_size, uintptr_t output_yaml_ptr);
 
+// function to use when the input is a raw DDS message containing "point_cloud_interfaces/CompressedPointCloud2"
+uint32_t cldn_GetHeaderAsYAMLFromDDS(uintptr_t raw_dds_msg, uint32_t dds_msg_size, uintptr_t output_yaml_ptr);
+
 // Performs a full compression of the point cloud data, but return only the size of the
 // compressed data, not the data itself. Used mainly for testing purposes.
 WASM_EXPORT uint32_t cldn_ComputeCompressedSize(uintptr_t dds_msg_ptr, uint32_t dds_msg_size, float resolution);

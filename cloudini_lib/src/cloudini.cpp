@@ -60,7 +60,7 @@ const char* ToString(const FieldType& type) {
   }
 }
 
-inline const char* ToString(const EncodingOptions& opt) {
+const char* ToString(const EncodingOptions& opt) {
   switch (opt) {
     case EncodingOptions::NONE:
       return "NONE";
@@ -73,7 +73,7 @@ inline const char* ToString(const EncodingOptions& opt) {
   }
 }
 
-inline const char* ToString(const CompressionOption& opt) {
+const char* ToString(const CompressionOption& opt) {
   switch (opt) {
     case CompressionOption::NONE:
       return "NONE";

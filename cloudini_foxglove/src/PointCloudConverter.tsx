@@ -1,5 +1,5 @@
 import { CompressedPointCloud, PointCloud } from "./Schemas";
-import CloudiniModule from "./cloudini_wasm.js";
+import CloudiniModule from "./cloudini_wasm_single.js";
 import type { CloudiniWasmModule } from "./cloudini_wasm";
 
 let wasmModule: CloudiniWasmModule | null = null;
@@ -88,7 +88,7 @@ export const convertPointCloudWasm = (cloud: CompressedPointCloud): PointCloud =
     const decodedData = new Uint8Array(wasmModule.HEAPU8.buffer, outputDataPtr, actualSize);
     // Create a copy to ensure data persists after memory is freed
     decodedMsg.data = new Uint8Array(decodedData);
-  } catch(error) {
+  } catch (error) {
     console.error('Cloudini decompression failed:', error);
     // Preserve original frame_id and add error as a comment
     const errorMessage = error instanceof Error ? error.message : String(error);
