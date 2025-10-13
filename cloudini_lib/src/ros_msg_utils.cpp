@@ -134,13 +134,12 @@ void convertPointCloud2ToCompressedCloud(
   nanocdr::Encoder cdr_encoder(pc_info.cdr_header, compressed_dds_msg);
   writePointCloudHeader(cdr_encoder, pc_info);
 
-  size_t prev_size = compressed_dds_msg.size();
   // we will write into this area later
-  uint8_t* cloud_size_ptr = compressed_dds_msg.data() + prev_size;
+  uint64_t cloud_size_memory_offset = compressed_dds_msg.size();
 
   // writing size 0 as a placeholder for now
   cdr_encoder.encode(static_cast<uint32_t>(0));
-  prev_size += 4;
+  const size_t prev_size = compressed_dds_msg.size();
 
   // reserve enough memory for the compressed data. we will resize later to the actual size used
   compressed_dds_msg.resize(prev_size + pc_info.data.size());
@@ -151,7 +150,7 @@ void convertPointCloud2ToCompressedCloud(
   const size_t compressed_size = cloud_encoder.encode(pc_info.data, compressed_data_view, true);
 
   // we can finally write the actual size of the compressed data
-  memcpy(cloud_size_ptr, &compressed_size, sizeof(uint32_t));
+  memcpy(compressed_dds_msg.data() + cloud_size_memory_offset, &compressed_size, sizeof(uint32_t));
 
   // Resize the output buffer to the actual size used
   compressed_dds_msg.resize(prev_size + compressed_size);
