@@ -2,6 +2,17 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* working on the python code
+* critical bug fix
+* update
+* try fixing multi-threading code
+* cherry picking change from `#38 <https://github.com/facontidavide/cloudini/issues/38>`_ . Better function name
+  Thanks @Tanishq30052002 for the suggestions
+* tons of ROS examples and utilities
+* Contributors: Davide Faconti
+
 0.9.0 (2025-10-11)
 ------------------
 * fix error in wasm module

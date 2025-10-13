@@ -2,6 +2,14 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* cherry picking change from `#38 <https://github.com/facontidavide/cloudini/issues/38>`_ . Better function name
+  Thanks @Tanishq30052002 for the suggestions
+* tons of ROS examples and utilities
+* files renamed
+* Contributors: Davide Faconti
+
 0.9.0 (2025-10-11)
 ------------------
 * fix compilation
