@@ -17,3 +17,5 @@
 /.vscode/launch.json
 /cloudini_py/venv/*
 /cloudini_py/__pycache__/*
+/cloudini_foxglove/src/cloudini_wasm_single.js
+/cloudini_foxglove/release/cloudini.foxglove-cloudini-converter-*.foxe

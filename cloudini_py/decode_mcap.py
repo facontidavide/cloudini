@@ -58,8 +58,14 @@ def decode_mcap_file(mcap_path: str, wasm_path: str, max_messages: int = None):
                     point_cloud, header = decoder.decode_message(message.data)
 
                     print(f"✓ Decoded successfully!")
-                    print(f"  Point cloud shape: {point_cloud.shape}")
                     print(f"  Data type: {point_cloud.dtype}")
+
+                    # If structured array, show field names
+                    if point_cloud.dtype.names:
+                        print(f"  Fields: {', '.join(point_cloud.dtype.names)}")
+                        # Show first point as example
+                        if len(point_cloud) > 0:
+                            print(f"  First point: {point_cloud[0]}")
 
                     # Calculate compression ratio (uncompressed / compressed)
                     compression_ratio = len(point_cloud.tobytes()) / len(message.data)
@@ -91,8 +97,8 @@ def main():
     )
     parser.add_argument(
         '--wasm',
-        default='../build_wasm/cloudini_wasm.wasm',
-        help='Path to the cloudini WASM module (default: ../build_wasm/cloudini_wasm.wasm)'
+        default='./cloudini_wasm.wasm',
+        help='Path to the cloudini WASM module (default: ./cloudini_wasm.wasm)'
     )
     parser.add_argument(
         '--max-messages',
