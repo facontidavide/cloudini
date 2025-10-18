@@ -112,7 +112,13 @@ void convertCompressedCloudToPointCloud2(const RosPointCloud2& pc_info, std::vec
   // Start writing the field PointCloud2::data
   cdr_encoder.encode(static_cast<uint32_t>(cloud_data_size));
 
-  // Reserve enough memory for the decode cloud and take a buffer view to that memory
+  // special case: empty cloud
+  if (cloud_data_size == 0) {
+    cdr_encoder.encode(pc_info.is_dense);
+    return;
+  }
+
+  // Reserve enough memory for the decoded cloud and take a buffer view to that memory
   const auto prev_size = pc2_dds_msg.size();
   pc2_dds_msg.resize(prev_size + cloud_data_size);
   // this buffer view points to a writable memory area after the PointCloud2Header
@@ -141,8 +147,16 @@ void convertPointCloud2ToCompressedCloud(
   cdr_encoder.encode(static_cast<uint32_t>(0));
   const size_t prev_size = compressed_dds_msg.size();
 
+  // special case that can happen: empty point cloud
+  if (pc_info.data.size() == 0) {
+    // nothing to compress
+    cdr_encoder.encode(pc_info.is_dense);
+    cdr_encoder.encode(std::string("cloudini"));  // format
+    return;
+  }
+
   // reserve enough memory for the compressed data. we will resize later to the actual size used
-  compressed_dds_msg.resize(prev_size + pc_info.data.size());
+  compressed_dds_msg.resize(prev_size + pc_info.data.size() + 16 * 1024);  // extra 16KB for compression overhead
 
   Cloudini::BufferView compressed_data_view(
       compressed_dds_msg.data() + prev_size, compressed_dds_msg.size() - prev_size);
