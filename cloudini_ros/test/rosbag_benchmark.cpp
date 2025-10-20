@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "rosbag_benchmark.hpp"
+
 #include <stdio.h>
 
 #include <chrono>
@@ -29,18 +31,17 @@
 
 #include "cloudini_lib/cloudini.hpp"
 #include "cloudini_ros/conversion_utils.hpp"
-
-struct StatsData {
-  long total_time_usec = 0;
-  double total_ratio = 0;
-};
-
+#include "draco_helper.hpp"
 struct Statistics {
   int count = 0;
   StatsData lz4_only;
   StatsData zstd_only;
+  StatsData lossy;
   StatsData lossy_lz4;
   StatsData lossy_zstd;
+#ifdef DRACO_FOUND
+  StatsData draco;
+#endif
 };
 
 void compress(const sensor_msgs::msg::PointCloud2& msg, const Cloudini::EncodingInfo& encoding_info, StatsData& stats) {
@@ -119,6 +120,13 @@ int main(int argc, char** argv) {
     encoding_info.compression_opt = Cloudini::CompressionOption::ZSTD;
     compress(*ros_msg, encoding_info, statistics.lossy_zstd);
 
+    encoding_info.compression_opt = Cloudini::CompressionOption::NONE;
+    compress(*ros_msg, encoding_info, statistics.lossy);
+
+#ifdef DRACO_FOUND
+    compressDraco(*ros_msg, encoding_info, statistics.draco);
+#endif
+
     statistics.count++;
   }
 
@@ -135,11 +143,19 @@ int main(int argc, char** argv) {
         stat.zstd_only.total_time_usec / stat.count);
 
     printf(
-        "  [Cloudini-LZ4]  ratio: %.2f time (usec): %ld\n", stat.lossy_lz4.total_ratio / dcount,
+        "  [Cloudini only]  ratio: %.2f time (usec): %ld\n", stat.lossy.total_ratio / dcount,
+        stat.lossy.total_time_usec / stat.count);
+    printf(
+        "  [Cloudini-LZ4]   ratio: %.2f time (usec): %ld\n", stat.lossy_lz4.total_ratio / dcount,
         stat.lossy_lz4.total_time_usec / stat.count);
     printf(
-        "  [Cloudini-ZSTD] ratio: %.2f time (usec): %ld\n", stat.lossy_zstd.total_ratio / dcount,
+        "  [Cloudini-ZSTD]  ratio: %.2f time (usec): %ld\n", stat.lossy_zstd.total_ratio / dcount,
         stat.lossy_zstd.total_time_usec / stat.count);
+#ifdef DRACO_FOUND
+    printf(
+        "  [Draco only]     ratio: %.2f time (usec): %ld\n", stat.draco.total_ratio / dcount,
+        stat.draco.total_time_usec / stat.count);
+#endif
     std::cout << std::endl;
   }
   return 0;

@@ -173,11 +173,11 @@ static void PCD_Decode_LZ4_only(benchmark::State& state) {
 }
 
 //------------------------------------------------------------------------------------------
-
 #ifdef DRACO_FOUND
 
 static void PCD_Encode_Draco(benchmark::State& state) {
   const auto cloud = loadCloud();
+  auto encoding_info = defaultEncodingInfo(cloud);
   // Create Draco point cloud
   draco::PointCloudBuilder builder;
   builder.Start(cloud.size());
@@ -185,12 +185,11 @@ static void PCD_Encode_Draco(benchmark::State& state) {
   const int pos_att_id = builder.AddAttribute(draco::GeometryAttribute::POSITION, 3, draco::DT_FLOAT32);
   const int intensity_att_id = builder.AddAttribute(draco::GeometryAttribute::GENERIC, 1, draco::DT_FLOAT32);
 
-  // Add points to the point cloud
-  for (draco::PointIndex i(0); i < cloud.size(); ++i) {
-    const auto& point = cloud.points[i.value()];
-    builder.SetAttributeValueForPoint(pos_att_id, i, &point.x);
-    builder.SetAttributeValueForPoint(intensity_att_id, i, &point.intensity);
-  }
+  const auto stride = encoding_info.point_step;
+  const auto* points_data = cloud.points.data();
+
+  builder.SetAttributeValuesForAllPoints(pos_att_id, points_data, stride);
+  builder.SetAttributeValuesForAllPoints(intensity_att_id, points_data + encoding_info.fields.at(4).offset, stride);
 
   std::unique_ptr<draco::PointCloud> draco_pc = builder.Finalize(false);
   if (!draco_pc) {
