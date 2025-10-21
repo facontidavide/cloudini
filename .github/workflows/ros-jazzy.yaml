@@ -9,12 +9,12 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       # Step 1: Set up ROS
       - uses: ros-tooling/setup-ros@v0.7
         with:
-          required-ros-distributions: humble
+          required-ros-distributions: jazzy
 
       # SteCache ROS dependencies
       - name: Cache ROS dependencies
@@ -23,13 +23,13 @@ jobs:
           path: |
             ~/.ros
             /tmp/rosdep
-            /opt/ros/humble
-          key: ${{ runner.os }}-ros2-humble-${{ hashFiles('**/package.xml') }}-rosdep
+            /opt/ros/jazzy
+          key: ${{ runner.os }}-ros2-jazzy-${{ hashFiles('**/package.xml') }}-rosdep
           restore-keys: |
-            ${{ runner.os }}-ros2-humble-${{ hashFiles('**/package.xml') }}-
-            ${{ runner.os }}-ros2-humble-
+            ${{ runner.os }}-ros2-jazzy-${{ hashFiles('**/package.xml') }}-
+            ${{ runner.os }}-ros2-jazzy-
       # Step 3: Run ROS CI
       - uses: ros-tooling/action-ros-ci@v0.4
         with:
           package-name: cloudini_ros
-          target-ros2-distro: humble
+          target-ros2-distro: jazzy
