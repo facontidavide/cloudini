@@ -31,11 +31,11 @@ But, in general, you may expect considerably **better compression and faster enc
 
 These are some examples using real-world data from LiDARs.
 
-Below, you can see the compressio ratio (normalized to original pointcloud size)
+Below, you can see the compression ratio (normalized to original pointcloud size)
 
 ![compression_ratio.png](compression_ratio.png)
 
-What is more interesting, is that Cloudini has a negative overhead, i.e. Cloudini + ZSTD is faster than ZSTD alone.
+Interestingly, Cloudini has a negative overhead, i.e. Cloudini + ZSTD is **faster** than ZSTD alone.
 
 ![compression_time.png](compression_time.png)
 
@@ -70,14 +70,10 @@ The encoder applies a quantization using a resolution provided by the user.
 Typical LiDARs have an accuracy/noise in the order of +/- 1 cm.
 Therefore, using a resolution of **1 mm** (+/- 0.5 mm max quantization error) is usually a very conservative option.
 
-It should also be noted that this two-step compression strategy has a
-negative overhead, i.e. it is actually **faster** than using LZ4 or ZSTD alone.
-
-
 # Compile instructions
 
 Some dependencies are downloaded automatically using [CPM](https://github.com/cpm-cmake/CPM.cmake).
-To avoid downloading them again when your rebuild your project, I suggest setting **CPM_SOURCE_CACHE** as described [here](https://github.com/cpm-cmake/CPM.cmake).
+To avoid downloading them again when you rebuild your project, I suggest setting **CPM_SOURCE_CACHE** as described [here](https://github.com/cpm-cmake/CPM.cmake).
 
 To build the main library (`cloudini_lib`)
 
@@ -150,8 +146,8 @@ Considering that LiDARs accuracy is usually in the order of **+/- 1 cm** and tha
 The latter could achieve excellent compression ratios, but it is very sloooow and it doesn't preserve the original order
 of the points in the point cloud.
 
-Compared with the Draco sequential mode, Cloudini achieves approximately the same compression, but is considerably faster in
-my (currently limited) benchmark.
+Compared with the Draco sequential mode, Cloudini achieves approximately the same compression, but is considerably faster 
+(about 3-4 times faster encoding).
 
 ### Does the decoder need to know the parameters used while encoding?
 
