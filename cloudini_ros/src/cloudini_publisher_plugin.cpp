@@ -26,7 +26,7 @@ CloudiniPublisher::CloudiniPublisher() {}
 
 void CloudiniPublisher::declareParameters(const std::string& base_topic) {
   rcl_interfaces::msg::ParameterDescriptor encode_resolution_descriptor;
-  encode_resolution_descriptor.name = "clodini_resolution";
+  encode_resolution_descriptor.name = "cloudini_resolution";
   encode_resolution_descriptor.type = rcl_interfaces::msg::ParameterType::PARAMETER_DOUBLE;
   encode_resolution_descriptor.description = "resolution of floating points fields (XYZ) in meters";
 
