@@ -26,6 +26,7 @@
 #include "cloudini_lib/encoding_utils.hpp"
 #include "cloudini_lib/field_decoder.hpp"
 #include "cloudini_lib/field_encoder.hpp"
+#include "cloudini_lib/yaml_parser.hpp"
 #include "lz4.h"
 #include "zstd.h"
 
@@ -156,6 +157,8 @@ std::string EncodingInfoToYAML(const EncodingInfo& info) {
   yaml << "point_step: " << info.point_step << "\n";
   yaml << "encoding_opt: " << ToString(info.encoding_opt) << "\n";
   yaml << "compression_opt: " << ToString(info.compression_opt) << "\n";
+  yaml << "encoding_config: " << info.encoding_config << "\n";
+
   yaml << "fields:\n";
 
   for (const auto& field : info.fields) {
@@ -174,60 +177,40 @@ std::string EncodingInfoToYAML(const EncodingInfo& info) {
 EncodingInfo EncodingInfoFromYAML(std::string_view yaml) {
   EncodingInfo info;
 
-  auto read_value_from_line = [&yaml](size_t& pos, const char* key) -> std::string {
-    const size_t new_line_pos = yaml.find('\n', pos);
-    std::string_view line = yaml.substr(pos, new_line_pos - pos);
-    // remove comments in this line
-    size_t comment_pos = line.find('#');
-    if (comment_pos != std::string::npos) {
-      line = line.substr(0, comment_pos);
-    }
-    size_t colon_pos = line.find(':');
-    std::string_view key_view = line.substr(0, colon_pos);
-    key_view = key_view.substr(
-        key_view.find_first_not_of(" \t"),  //
-        key_view.find_last_not_of(" \t") + 1);
+  // Parse YAML using the new parser
+  auto root = YAML::parse(yaml);
 
-    if (key_view != key) {
-      throw std::runtime_error("Expected key: [" + std::string(key) + "], got: [" + std::string(key_view) + "]");
-    }
-    pos = new_line_pos;
-    if (new_line_pos != std::string::npos) {
-      pos++;
-    }
-    if (line.size() <= colon_pos + 1) {
-      return "";
-    }
-    std::string_view value_view = line.substr(colon_pos + 1);
-    value_view = value_view.substr(
-        value_view.find_first_not_of(" \t"),  //
-        value_view.find_last_not_of(" \t") + 1);
-    return std::string(value_view);
-  };
+  // Read top-level fields
+  info.version = root["version"].as<uint8_t>();
+  info.width = root["width"].as<uint32_t>();
+  info.height = root["height"].as<uint32_t>();
+  info.point_step = root["point_step"].as<uint32_t>();
+  info.encoding_opt = EncodingOptionsFromString(root["encoding_opt"].as<std::string_view>());
+  info.compression_opt = CompressionOptionFromString(root["compression_opt"].as<std::string_view>());
 
-  // read line by line
-  size_t pos = 0;
-
-  info.version = static_cast<uint8_t>(std::stoi(read_value_from_line(pos, "version")));
-  info.width = static_cast<uint32_t>(std::stoi(read_value_from_line(pos, "width")));
-  info.height = static_cast<uint32_t>(std::stoi(read_value_from_line(pos, "height")));
-  info.point_step = static_cast<uint32_t>(std::stoi(read_value_from_line(pos, "point_step")));
-  info.encoding_opt = EncodingOptionsFromString(read_value_from_line(pos, "encoding_opt"));
-  info.compression_opt = CompressionOptionFromString(read_value_from_line(pos, "compression_opt"));
-
-  read_value_from_line(pos, "fields");  // just to move pos forward
-
-  while (pos != std::string::npos && pos < yaml.size()) {
-    PointField field;
-    field.name = read_value_from_line(pos, "- name");
-    field.offset = static_cast<uint32_t>(std::stoi(read_value_from_line(pos, "offset")));
-    field.type = FieldTypeFromString(read_value_from_line(pos, "type"));
-    std::string res_str = read_value_from_line(pos, "resolution");
-    if (res_str != "null") {
-      field.resolution = std::stof(res_str);
-    }
-    info.fields.push_back(field);
+  // encoding_config might be empty in older versions
+  if (!root["encoding_config"].isNull() && root["encoding_config"].isString()) {
+    info.encoding_config = root["encoding_config"].as<std::string>();
   }
+
+  // Parse fields array
+  const auto& fields_node = root["fields"];
+  if (fields_node.isSequence()) {
+    for (size_t i = 0; i < fields_node.size(); ++i) {
+      const auto& field_node = fields_node[i];
+      PointField field;
+      field.name = field_node["name"].as<std::string>();
+      field.offset = field_node["offset"].as<uint32_t>();
+      field.type = FieldTypeFromString(field_node["type"].as<std::string_view>());
+
+      std::string res_str = field_node["resolution"].as<std::string>();
+      if (res_str != "null") {
+        field.resolution = std::stof(res_str);
+      }
+      info.fields.push_back(field);
+    }
+  }
+
   return info;
 }
 

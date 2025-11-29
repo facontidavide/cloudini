@@ -77,6 +77,9 @@ struct EncodingInfo {
   // the fist step of the encoding
   EncodingOptions encoding_opt = EncodingOptions::LOSSY;
 
+  // future proof generic configuration string for the encoding stage
+  std::string encoding_config;
+
   // the second step is a general purpose compression
   CompressionOption compression_opt = CompressionOption::ZSTD;
 
