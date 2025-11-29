@@ -189,7 +189,7 @@ static void PCD_Encode_Draco(benchmark::State& state) {
   const auto* points_data = cloud.points.data();
 
   builder.SetAttributeValuesForAllPoints(pos_att_id, points_data, stride);
-  builder.SetAttributeValuesForAllPoints(intensity_att_id, points_data + encoding_info.fields.at(4).offset, stride);
+  builder.SetAttributeValuesForAllPoints(intensity_att_id, points_data + encoding_info.fields.at(3).offset, stride);
 
   std::unique_ptr<draco::PointCloud> draco_pc = builder.Finalize(false);
   if (!draco_pc) {

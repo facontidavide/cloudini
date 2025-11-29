@@ -128,8 +128,8 @@ if(NOT EMSCRIPTEN)
     endif()
   endif()
 
-  find_package(benchmarks QUIET)
-  if(CLOUDINI_BUILD_BENCHMARKS AND benchmarks_FOUND AND PCL_FOUND)
+  find_package(benchmark QUIET)
+  if(CLOUDINI_BUILD_BENCHMARKS AND benchmark_FOUND AND PCL_FOUND)
     add_subdirectory(benchmarks)
   endif()
 
