@@ -2,6 +2,14 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* optimize yaml parser
+* yaml parser
+* fix benchmark
+* add better Draco benchmarking
+* Contributors: Davide Faconti
+
 0.10.0 (2025-10-13)
 -------------------
 * working on the python code
