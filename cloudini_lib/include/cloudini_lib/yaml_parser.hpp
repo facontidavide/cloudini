@@ -2,6 +2,7 @@
 
 #include <cctype>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -15,7 +16,7 @@ namespace YAML {
 class Node;
 
 using Sequence = std::vector<Node>;
-using Mapping = std::map<std::string, Node, std::less<>>;  // std::less<> for heterogeneous lookup
+using Mapping = std::vector<std::pair<std::string_view, Node>>;  // Zero-copy keys via string_view
 using NodeValue = std::variant<std::monostate, std::string, Sequence, Mapping>;
 
 /**
@@ -30,6 +31,10 @@ class Node {
   Node(std::string_view value) : value_(std::string(value)) {}
   Node(Sequence seq) : value_(std::move(seq)) {}
   Node(Mapping map) : value_(std::move(map)) {}
+
+  // Internal constructor for keeping content alive (used by Parser)
+  Node(NodeValue value, std::shared_ptr<const std::string> content_owner)
+      : value_(std::move(value)), content_owner_(content_owner) {}
 
   // Type checking
   bool isNull() const {
@@ -52,18 +57,19 @@ class Node {
     return parseScalar<T>(str);
   }
 
-  // Map access (supports std::string_view via heterogeneous lookup)
+  // Map access (linear search for small maps - faster due to cache locality)
   const Node& operator[](std::string_view key) const {
     if (!std::holds_alternative<Mapping>(value_)) {
       throw std::runtime_error("Node is not a mapping");
     }
     const auto& map = std::get<Mapping>(value_);
-    auto it = map.find(key);
-    if (it == map.end()) {
-      static Node null_node;
-      return null_node;
+    for (const auto& [k, v] : map) {
+      if (k == key) {
+        return v;
+      }
     }
-    return it->second;
+    static Node null_node;
+    return null_node;
   }
 
   // Sequence access
@@ -87,7 +93,9 @@ class Node {
   }
 
  private:
+  friend class Parser;  // Allow Parser to access value_ for move construction
   NodeValue value_;
+  std::shared_ptr<const std::string> content_owner_;  // Keeps source content alive for string_view keys
 
   template <typename T>
   static T parseScalar(const std::string& str) {
@@ -159,16 +167,16 @@ class Parser {
   }
 
  private:
-  std::string content_;  // Keep original content alive for string_view references
+  std::shared_ptr<std::string> content_;  // Shared ownership of content for string_view keys
   std::vector<std::string_view> lines_;
   size_t current_line_ = 0;
 
-  Parser(std::string_view content) : content_(content) {
+  Parser(std::string_view content) : content_(std::make_shared<std::string>(content)) {
     splitLines();
   }
 
   void splitLines() {
-    std::string_view remaining = content_;
+    std::string_view remaining = *content_;  // Dereference shared_ptr to get string_view
     while (!remaining.empty()) {
       size_t pos = remaining.find('\n');
       if (pos == std::string_view::npos) {
@@ -184,7 +192,9 @@ class Parser {
     if (lines_.empty()) {
       return Node();
     }
-    return parseNode(0);
+    Node root = parseNode(0);
+    // Attach content ownership to root node
+    return Node(std::move(root.value_), content_);
   }
 
   Node parseNode(int base_indent) {
@@ -219,6 +229,7 @@ class Parser {
 
   Sequence parseSequence(int base_indent) {
     Sequence seq;
+    seq.reserve(8);  // Reserve capacity for typical field count (avoids reallocations)
 
     while (current_line_ < lines_.size()) {
       skipEmptyLines();
@@ -253,12 +264,13 @@ class Parser {
           // This is actually a mapping like "- name: value"
           // We need to parse this and any following indented lines as a mapping
           Mapping item_map;
+          item_map.reserve(4);  // Reserve capacity for typical field item (4 keys)
 
           // Parse the first key-value pair
           std::string_view key = trim(item_value.substr(0, colon_pos));
           std::string_view value_str = trim(item_value.substr(colon_pos + 1));
           if (!value_str.empty()) {
-            item_map[std::string(key)] = Node(value_str);
+            item_map.emplace_back(key, Node(value_str));  // Zero-copy key
           }
 
           current_line_++;
@@ -284,11 +296,11 @@ class Parser {
               std::string_view next_key = trim(next_trimmed.substr(0, next_colon));
               std::string_view next_value = trim(next_trimmed.substr(next_colon + 1));
               if (!next_value.empty()) {
-                item_map[std::string(next_key)] = Node(next_value);
+                item_map.emplace_back(next_key, Node(next_value));  // Zero-copy key
               } else {
                 // Value on next line
                 current_line_++;
-                item_map[std::string(next_key)] = parseNode(next_indent + 2);
+                item_map.emplace_back(next_key, parseNode(next_indent + 2));  // Zero-copy key
                 continue;
               }
             } else {
@@ -312,6 +324,7 @@ class Parser {
 
   Mapping parseMapping(int base_indent) {
     Mapping map;
+    map.reserve(8);  // Reserve capacity for typical header size (avoids reallocations)
 
     while (current_line_ < lines_.size()) {
       skipEmptyLines();
@@ -345,10 +358,10 @@ class Parser {
 
       if (value_str.empty()) {
         // Value is on next line(s)
-        map[std::string(key)] = parseNode(indent + 2);
+        map.emplace_back(key, parseNode(indent + 2));  // Zero-copy key
       } else {
         // Inline value
-        map[std::string(key)] = Node(value_str);
+        map.emplace_back(key, Node(value_str));  // Zero-copy key
       }
     }
 

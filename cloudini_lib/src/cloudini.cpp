@@ -157,7 +157,9 @@ std::string EncodingInfoToYAML(const EncodingInfo& info) {
   yaml << "point_step: " << info.point_step << "\n";
   yaml << "encoding_opt: " << ToString(info.encoding_opt) << "\n";
   yaml << "compression_opt: " << ToString(info.compression_opt) << "\n";
-  yaml << "encoding_config: " << info.encoding_config << "\n";
+  if (!info.encoding_config.empty()) {
+    yaml << "encoding_config: " << info.encoding_config << "\n";
+  }
 
   yaml << "fields:\n";
 
