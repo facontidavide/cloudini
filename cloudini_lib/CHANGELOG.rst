@@ -2,8 +2,8 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.11.0 (2025-11-29)
+-------------------
 * optimize yaml parser
 * yaml parser
 * fix benchmark

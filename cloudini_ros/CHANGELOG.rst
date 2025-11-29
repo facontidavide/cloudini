@@ -2,8 +2,8 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.11.0 (2025-11-29)
+-------------------
 * fix typo (`#42 <https://github.com/facontidavide/cloudini/issues/42>`_)
 * add better Draco benchmarking
 * Contributors: Bastian Lampe, Davide Faconti
