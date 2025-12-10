@@ -11,9 +11,9 @@ find_package(cloudini_lib REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(point_cloud_interfaces REQUIRED)
 find_package(point_cloud_transport REQUIRED)
-find_package(PCL REQUIRED COMPONENTS common)
-find_package(pcl_conversions REQUIRED)
 find_package(Draco QUIET)
+find_package(pcl_conversions REQUIRED)
+find_package(pcl_ros REQUIRED)
 
 set(PLUGIN_DEPS
   pluginlib::pluginlib
