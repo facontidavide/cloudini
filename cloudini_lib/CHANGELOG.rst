@@ -2,6 +2,11 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* fix ROS compilation
+* Contributors: Davide Faconti
+
 0.11.0 (2025-11-29)
 -------------------
 * optimize yaml parser

@@ -2,6 +2,11 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* try fixing build in ROS
+* Contributors: Davide Faconti
+
 0.11.0 (2025-11-29)
 -------------------
 * fix typo (`#42 <https://github.com/facontidavide/cloudini/issues/42>`_)
