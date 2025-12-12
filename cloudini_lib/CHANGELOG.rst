@@ -2,8 +2,8 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.11.1 (2025-12-12)
+-------------------
 * fix ROS compilation
 * Contributors: Davide Faconti
 

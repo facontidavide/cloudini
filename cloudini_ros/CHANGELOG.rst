@@ -2,8 +2,8 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.11.1 (2025-12-12)
+-------------------
 * try fixing build in ROS
 * Contributors: Davide Faconti
 
