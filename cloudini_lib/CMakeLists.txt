@@ -109,9 +109,18 @@ endif()
 target_include_directories(cloudini_lib
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<BUILD_INTERFACE:${PCL_INCLUDE_DIRS}>
     $<INSTALL_INTERFACE:include>
 )
+
+if(ament_cmake_FOUND)
+  find_package(pcl_ros REQUIRED)
+  target_link_libraries(cloudini_lib PUBLIC ${pcl_ros_TARGETS})
+else()
+  if(PCL_FOUND)
+    target_include_directories(cloudini_lib PUBLIC ${PCL_INCLUDE_DIRS})
+    target_link_libraries(cloudini_lib PUBLIC ${PCL_LIBRARIES})
+  endif()
+endif()
 
 target_link_libraries(cloudini_lib
   PRIVATE
@@ -201,9 +210,9 @@ INSTALL( DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
     FILES_MATCHING PATTERN "*.h*")
 
 if(ament_cmake_FOUND)
-  ament_export_include_directories(include)
-  ament_export_dependencies(pcl_ros)
+  ament_export_targets(cloudini_libTargets HAS_LIBRARY_TARGET)
   ament_export_libraries(cloudini_lib)
-  ament_export_targets(cloudini_libTargets)
+  ament_export_dependencies(pcl_ros)
+  ament_export_include_directories(include)
   ament_package()
 endif()
