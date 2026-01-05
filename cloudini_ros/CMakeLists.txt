@@ -94,12 +94,6 @@ install(
   RUNTIME DESTINATION lib/cloudini_ros
 )
 
-install(
-  DIRECTORY
-    launch
-  DESTINATION share/cloudini_ros
-)
-
 ######### rosbag benchmark #########
 add_executable(rosbag_benchmark
   test/rosbag_benchmark.cpp
