@@ -25,6 +25,7 @@
   <depend>mcap_vendor</depend>
   <depend>sensor_msgs</depend>
   <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
   <depend>rosbag2_cpp</depend>
   <depend>pcl_conversions</depend>
   <depend>pcl_ros</depend>

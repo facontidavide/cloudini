@@ -14,6 +14,7 @@ find_package(point_cloud_transport REQUIRED)
 find_package(Draco QUIET)
 find_package(pcl_conversions REQUIRED)
 find_package(pcl_ros REQUIRED)
+find_package(rclcpp_components REQUIRED)
 
 set(PLUGIN_DEPS
   pluginlib::pluginlib
@@ -58,8 +59,19 @@ install(
 
 ######### topic converter #########
 
-add_executable(cloudini_topic_converter
+add_library(cloudini_topic_converter_component SHARED
   src/topic_converter.cpp
+)
+ament_target_dependencies(cloudini_topic_converter_component
+  SYSTEM
+    cloudini_lib
+    rclcpp_components
+)
+
+rclcpp_components_register_node(
+    cloudini_topic_converter_component
+    PLUGIN "CloudiniPointcloudConverter"
+    EXECUTABLE cloudini_topic_converter
 )
 
 target_include_directories(cloudini_topic_converter
@@ -67,15 +79,25 @@ target_include_directories(cloudini_topic_converter
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 )
 
-target_link_libraries(cloudini_topic_converter
-  cloudini_ros
-  cloudini_lib::cloudini_lib
-)
-
-install(TARGETS cloudini_topic_converter
+install(
+  TARGETS
+    cloudini_topic_converter_component
+  EXPORT export_cloudini_ros
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+install(
+  TARGETS
+    cloudini_topic_converter
   RUNTIME DESTINATION lib/cloudini_ros
+)
+
+install(
+  DIRECTORY
+    launch
+  DESTINATION share/cloudini_ros
 )
 
 ######### rosbag benchmark #########

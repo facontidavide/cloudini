@@ -19,6 +19,7 @@
 #include <rclcpp/generic_publisher.hpp>
 #include <rclcpp/generic_subscription.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_components/register_node_macro.hpp>
 #include <rosidl_typesupport_cpp/message_type_support.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
@@ -189,6 +190,8 @@ void CloudiniPointcloudConverter::callback(std::shared_ptr<rclcpp::SerializedMes
   }
   count++;
 }
+
+RCLCPP_COMPONENTS_REGISTER_NODE(CloudiniPointcloudConverter)
 
 int main(int argc, char** argv) {
   // Initialize ROS2 node
