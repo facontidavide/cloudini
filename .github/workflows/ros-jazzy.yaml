@@ -16,6 +16,12 @@ jobs:
         with:
           required-ros-distributions: jazzy
 
+      # Install missing Python packages
+      - name: Install ament Python packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-ament-package python3-colcon-common-extensions
+
       # Run ROS CI
       - uses: ros-tooling/action-ros-ci@v0.4
         with:
