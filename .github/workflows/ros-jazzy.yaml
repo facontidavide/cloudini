@@ -36,3 +36,9 @@ jobs:
             cloudini_ros
           target-ros2-distro: jazzy
           skip-tests: true
+          colcon-defaults: |
+            {
+              "build": {
+                "executor": "sequential"
+              }
+            }
