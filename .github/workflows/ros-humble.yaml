@@ -19,5 +19,7 @@ jobs:
       # Run ROS CI
       - uses: ros-tooling/action-ros-ci@v0.4
         with:
-          package-name: cloudini_ros
+          package-name: |
+            cloudini_lib
+            cloudini_ros
           target-ros2-distro: humble
