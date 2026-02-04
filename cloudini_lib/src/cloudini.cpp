@@ -463,7 +463,7 @@ void PointcloudEncoder::compressionWorker() {
           lock, std::chrono::seconds(1), [this] { return has_data_to_compress_ || should_exit_; });
 
       if (!ret) {
-        throw std::runtime_error("Timeout waiting for data to compress. Report this issue");
+        std::cerr << "Timeout waiting for data to compress. Report this issue" << std::endl;
       }
 
       if (should_exit_) {
@@ -525,7 +525,7 @@ void PointcloudEncoder::waitForCompressionComplete() {
   std::unique_lock<std::mutex> lock(mutex_);
   auto ret = cv_done_compressing_.wait_for(lock, std::chrono::seconds(1), [this] { return compression_done_; });
   if (!ret) {
-    throw std::runtime_error("Timeout waiting for compression to complete. Report this issue");
+    std::cerr << "Timeout waiting for compression to complete. Report this issue" << std::endl;
   }
 }
 
