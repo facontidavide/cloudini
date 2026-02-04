@@ -35,3 +35,9 @@ jobs:
             cloudini_lib
             cloudini_ros
           target-ros2-distro: jazzy
+          colcon-defaults: |
+            {
+              "build": {
+                "parallel-workers": 1
+              }
+            }
