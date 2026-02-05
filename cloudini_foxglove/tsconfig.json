@@ -1,7 +1,7 @@
 {
   "extends": "create-foxglove-extension/tsconfig/tsconfig.json",
 
-  "include": ["./src/**/*", "src/cloudini_wasm.d.ts"],
+  "include": ["./src/**/*", "src/cloudini_wasm_single.d.ts"],
   "compilerOptions": {
     "rootDir": "./src",
     "outDir": "./dist",
