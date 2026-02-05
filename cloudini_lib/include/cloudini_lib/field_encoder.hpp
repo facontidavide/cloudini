@@ -143,8 +143,9 @@ class FieldEncoderFloat_XOR : public FieldEncoder {
 class FieldEncoderFloatN_Lossy : public FieldEncoder {
  public:
   struct FieldData {
-    size_t offset;
-    float resolution;
+    size_t offset = 0;
+    float resolution = 0.001f;
+    FieldData() = default;
     FieldData(size_t o, float r) : offset(o), resolution(r) {}
   };
 
