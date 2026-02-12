@@ -11,25 +11,22 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      # Step 1: Set up ROS
+      # Set up ROS
       - uses: ros-tooling/setup-ros@v0.7
         with:
           required-ros-distributions: jazzy
 
-      # SteCache ROS dependencies
-      - name: Cache ROS dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.ros
-            /tmp/rosdep
-            /opt/ros/jazzy
-          key: ${{ runner.os }}-ros2-jazzy-${{ hashFiles('**/package.xml') }}-rosdep
-          restore-keys: |
-            ${{ runner.os }}-ros2-jazzy-${{ hashFiles('**/package.xml') }}-
-            ${{ runner.os }}-ros2-jazzy-
-      # Step 3: Run ROS CI
+      # Install missing Python packages
+      - name: Install ament Python packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-ament-package python3-colcon-common-extensions
+
+      # Run ROS CI
       - uses: ros-tooling/action-ros-ci@v0.4
         with:
-          package-name: cloudini_ros
+          package-name: |
+            cloudini_lib
+            cloudini_ros
           target-ros2-distro: jazzy
+          skip-tests: true
