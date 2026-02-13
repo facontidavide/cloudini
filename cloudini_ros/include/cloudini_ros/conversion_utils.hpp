@@ -17,14 +17,17 @@
 #ifndef CLOUDINI_ROS__CONVERSION_UTILS_HPP_
 #define CLOUDINI_ROS__CONVERSION_UTILS_HPP_
 
-#include <cloudini_lib/cloudini.hpp>
+#include "cloudini_lib/cloudini.hpp"
+#include "cloudini_lib/ros_msg_utils.hpp"
+
 #include <point_cloud_interfaces/msg/compressed_point_cloud2.hpp>
+#include <rclcpp/serialized_message.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 namespace Cloudini {
 
 /**
- * @bried Convert a PointCloud2 message to EncodingInfo
+ * @brief Convert a PointCloud2 message to EncodingInfo
  * Default options (that can be overwitten later) are:
  * - encoding_opt = LOSSY
  * - compression_opt = ZSTD
@@ -36,6 +39,23 @@ namespace Cloudini {
 EncodingInfo ConvertToEncodingInfo(const sensor_msgs::msg::PointCloud2& msg, float resolution);
 
 EncodingInfo ReadEncodingInfo(const point_cloud_interfaces::msg::CompressedPointCloud2& msg);
+
+/**
+ * @brief Convert a sensor_msgs::msg::PointCloud2 message to cloudini_ros::RosPointCloud2 structure
+ *
+ * @param msg The sensor_msgs::msg::PointCloud2 message to convert
+ * @return The RosPointCloud2 structure
+ */
+cloudini_ros::RosPointCloud2 ConvertToRosPointCloud2(const sensor_msgs::msg::PointCloud2& msg);
+
+/**
+ * @brief Compress and convert a sensor_msgs::msg::PointCloud2 message to a serialized message
+ *
+ * @param msg The input sensor_msgs::msg::PointCloud2 message to compress and convert
+ * @param resolution The resolution to use
+ * @return The compressed pointcloud as a serialized message
+ */
+rclcpp::SerializedMessage ConvertToCompressedCloud(const sensor_msgs::msg::PointCloud2& msg, float resolution);
 
 }  // namespace Cloudini
 #endif  // CLOUDINI_ROS__CONVERSION_UTILS_HPP_
