@@ -14,10 +14,11 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <depend>lz4</depend>
+  <depend>libpcl-common</depend>
+  <depend>libpcl-io</depend>
   <depend>libzstd-dev</depend>
+  <depend>lz4</depend>
   <depend>mcap_vendor</depend>
-  <depend>pcl_ros</depend>
 
   <test_depend>ament_cmake_gtest</test_depend>
 
