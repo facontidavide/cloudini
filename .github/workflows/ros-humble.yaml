@@ -23,4 +23,3 @@ jobs:
             cloudini_lib
             cloudini_ros
           target-ros2-distro: humble
-          skip-tests: true

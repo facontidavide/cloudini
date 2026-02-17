@@ -55,7 +55,8 @@ void FieldDecoderFloatN_Lossy::decode(ConstBufferView& input, BufferView dest_po
     } else {
       // Normal case: decode varint delta
       int64_t diff = 0;
-      const auto count = decodeVarint(ptr_in, diff);
+      const auto remaining = static_cast<size_t>((input.data() + input.size()) - ptr_in);
+      const auto count = decodeVarint(ptr_in, remaining, diff);
       new_vect[i] = static_cast<int32_t>(diff) + prev_vect_[i];
       float_vect[i] = static_cast<float>(new_vect[i]) * multiplier_[i];
       ptr_in += count;

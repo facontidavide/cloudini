@@ -178,11 +178,26 @@ uint32_t cldn_EncodePointcloudMessage(
     if (pc_info.data.size() != expected_size) {
       return 0;
     }
-    // Assume output buffer is large enough
-    Cloudini::BufferView output_view(reinterpret_cast<uint8_t*>(output_data_ptr), msg_size);
     Cloudini::PointcloudEncoder pc_encoder(encoding_info);
-    const auto compressed_size = pc_encoder.encode(pc_info.data, output_view, true);
-    return compressed_size;
+    const size_t points_count = pc_info.data.size() / encoding_info.point_step;
+    const size_t max_size = Cloudini::MaxCompressedSize(encoding_info, points_count, true);
+
+    // Encode directly into caller's buffer when it fits, avoiding extra allocation + memcpy
+    if (max_size <= msg_size) {
+      uint8_t* output_ptr = reinterpret_cast<uint8_t*>(output_data_ptr);
+      Cloudini::BufferView output_view(output_ptr, msg_size);
+      const auto compressed_size = pc_encoder.encode(pc_info.data, output_view, true);
+      return static_cast<uint32_t>(compressed_size);
+    }
+    // Fallback: allocate temporary buffer when max compressed size exceeds caller's buffer
+    std::vector<uint8_t> output_buffer;
+    const auto compressed_size = pc_encoder.encode(pc_info.data, output_buffer);
+    if (compressed_size > msg_size) {
+      EM_ASM({ console.error('Output buffer too small for encoded message'); });
+      return 0;
+    }
+    std::memcpy(reinterpret_cast<void*>(output_data_ptr), output_buffer.data(), compressed_size);
+    return static_cast<uint32_t>(compressed_size);
   } catch (const std::exception& e) {
     EM_ASM({ console.error('Exception in cldn_EncodePointcloudMessage:', UTF8ToString($0)); }, e.what());
     return 0;
@@ -203,11 +218,19 @@ uint32_t cldn_EncodePointcloudData(
     }
 
     Cloudini::ConstBufferView pc_data_view(reinterpret_cast<const uint8_t*>(pc_data_ptr), pc_data_size);
-    Cloudini::BufferView output_buffer(reinterpret_cast<uint8_t*>(output_data_ptr), pc_data_size);
-
     Cloudini::PointcloudEncoder pc_encoder(encoding_info);
-    const auto compressed_size = pc_encoder.encode(pc_data_view, output_buffer, true);
-    return compressed_size;
+    std::vector<uint8_t> compressed_output;
+    const auto compressed_size = pc_encoder.encode(pc_data_view, compressed_output);
+
+    // Compatibility behavior: caller traditionally allocates pc_data_size bytes for output.
+    if (compressed_size > pc_data_size) {
+      EM_ASM(
+          { console.error('Output buffer too small for encoded data. Need', $0, 'bytes, got', $1); }, compressed_size,
+          pc_data_size);
+      return 0;
+    }
+    std::memcpy(reinterpret_cast<void*>(output_data_ptr), compressed_output.data(), compressed_size);
+    return static_cast<uint32_t>(compressed_size);
   } catch (const std::exception& e) {
     EM_ASM({ console.error('Exception in cldn_EncodePointcloudData:', UTF8ToString($0)); }, e.what());
     return 0;

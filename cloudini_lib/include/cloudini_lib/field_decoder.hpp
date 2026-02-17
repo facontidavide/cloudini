@@ -74,7 +74,7 @@ class FieldDecoderInt : public FieldDecoder {
 
   void decode(ConstBufferView& input, BufferView dest_point_view) override {
     int64_t diff = 0;
-    auto count = decodeVarint(input.data(), diff);
+    auto count = decodeVarint(input.data(), input.size(), diff);
 
     int64_t value = prev_value_ + diff;
     prev_value_ = value;
@@ -178,7 +178,7 @@ inline void FieldDecoderFloat_Lossy<FloatType>::decode(ConstBufferView& input, B
   }
 
   int64_t diff = 0;
-  const auto count = decodeVarint(input.data(), diff);
+  const auto count = decodeVarint(input.data(), input.size(), diff);
   const int64_t value = prev_value_ + diff;
   const FloatType value_real = static_cast<FloatType>(value) * multiplier_;
   prev_value_ = value;

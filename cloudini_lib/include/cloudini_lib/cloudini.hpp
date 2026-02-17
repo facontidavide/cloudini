@@ -17,6 +17,7 @@
 #pragma once
 
 #include <condition_variable>
+#include <exception>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -136,6 +137,9 @@ std::string EncodingInfoToYAML(const EncodingInfo& info);
 /// Manually edited YAML strings may not work
 EncodingInfo EncodingInfoFromYAML(std::string_view yaml);
 
+/// Upper bound for compressed payload size (header + chunk metadata + worst-case codec/compressor expansion).
+size_t MaxCompressedSize(const EncodingInfo& info, size_t points_count, bool include_header = true);
+
 /**
  * @brief PointcloudEncoder is used to encode a point cloud into a compressed format.
  *
@@ -194,7 +198,9 @@ class PointcloudEncoder {
   bool has_data_to_compress_ = false;
   bool compression_done_ = false;
   bool should_exit_ = false;
+  bool worker_failed_ = false;
   size_t compressed_size_ = 0;
+  std::exception_ptr worker_exception_;
 
   BufferView output_view_;
 };

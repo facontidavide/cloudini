@@ -52,3 +52,32 @@ TEST(Cloudini, Header) {
     ASSERT_EQ(decoded_header.fields[i].resolution, header.fields[i].resolution);
   }
 }
+
+TEST(Cloudini, HeaderTruncatedInput) {
+  using namespace Cloudini;
+
+  std::vector<uint8_t> buffer = {'C', 'L', 'O', 'U'};
+  ConstBufferView input(buffer.data(), buffer.size());
+  EXPECT_THROW(DecodeHeader(input), std::runtime_error);
+}
+
+TEST(Cloudini, HeaderMissingYamlTerminator) {
+  using namespace Cloudini;
+
+  EncodingInfo header;
+  header.width = 1;
+  header.height = 1;
+  header.point_step = sizeof(float) * 3;
+  header.encoding_opt = EncodingOptions::LOSSY;
+  header.compression_opt = CompressionOption::ZSTD;
+  header.fields.push_back({"x", 0, FieldType::FLOAT32, 0.01F});
+  header.fields.push_back({"y", 4, FieldType::FLOAT32, 0.01F});
+  header.fields.push_back({"z", 8, FieldType::FLOAT32, 0.01F});
+
+  std::vector<uint8_t> buffer;
+  EncodeHeader(header, buffer);
+  buffer.pop_back();  // remove YAML null terminator
+
+  ConstBufferView input(buffer.data(), buffer.size());
+  EXPECT_THROW(DecodeHeader(input), std::runtime_error);
+}

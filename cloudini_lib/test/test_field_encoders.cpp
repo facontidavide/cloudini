@@ -72,7 +72,7 @@ TEST(FieldEncoders, IntField) {
 
 TEST(FieldEncoders, FloatLossy) {
   const size_t kNumpoints = 1000000;
-  const double kResolution = 0.01F;
+  const float kResolution = 0.01F;
 
   std::vector<float> input_data(kNumpoints);
   std::vector<float> output_data(kNumpoints, 0.0F);
