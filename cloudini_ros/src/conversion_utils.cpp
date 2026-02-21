@@ -14,9 +14,12 @@
  * limitations under the License.
  */
 
-#include <cloudini_ros/conversion_utils.hpp>
+#include "cloudini_ros/conversion_utils.hpp"
+
 #include <exception>
 #include <optional>
+
+#include "cloudini_lib/ros_msg_utils.hpp"
 
 namespace Cloudini {
 
@@ -46,6 +49,37 @@ EncodingInfo ReadEncodingInfo(const point_cloud_interfaces::msg::CompressedPoint
   }
   ConstBufferView data(msg.compressed_data.data(), msg.compressed_data.size());
   return DecodeHeader(data);
+}
+
+cloudini_ros::RosPointCloud2 ConvertToRosPointCloud2(const sensor_msgs::msg::PointCloud2& msg) {
+  cloudini_ros::RosPointCloud2 pc_info;
+  pc_info.ros_header.stamp_sec = msg.header.stamp.sec;
+  pc_info.ros_header.stamp_nsec = msg.header.stamp.nanosec;
+  pc_info.ros_header.frame_id = msg.header.frame_id;
+  pc_info.height = msg.height;
+  pc_info.width = msg.width;
+  pc_info.point_step = msg.point_step;
+  pc_info.row_step = msg.row_step;
+  pc_info.is_bigendian = msg.is_bigendian;
+  pc_info.is_dense = msg.is_dense;
+  pc_info.data = ConstBufferView(msg.data.data(), msg.data.size());
+
+  for (const auto& msg_field : msg.fields) {
+    PointField field;
+    field.name = msg_field.name;
+    field.offset = msg_field.offset;
+    field.type = static_cast<FieldType>(msg_field.datatype);
+    pc_info.fields.push_back(field);
+  }
+  return pc_info;
+}
+
+void SerializeCompressedPointCloud2(
+    const sensor_msgs::msg::PointCloud2& msg, float resolution, std::vector<uint8_t>& serialized_dds_msg) {
+  auto pc_info = ConvertToRosPointCloud2(msg);
+  cloudini_ros::applyResolutionProfile(cloudini_ros::ResolutionProfile{}, pc_info.fields, resolution);
+  const auto encoding_info = cloudini_ros::toEncodingInfo(pc_info);
+  cloudini_ros::convertPointCloud2ToCompressedCloud(pc_info, encoding_info, serialized_dds_msg);
 }
 
 }  // namespace Cloudini
