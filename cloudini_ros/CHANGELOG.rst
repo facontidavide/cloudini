@@ -2,6 +2,22 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.0.0 (2026-02-21)
+-------------------
+* feat: make topic_converter composable for component container usage
+  Build topic_converter as a shared component library with
+  rclcpp_components, while keeping the standalone executable via
+  EXECUTABLE directive. Intra-process comms moved into constructor
+  so it works in both standalone and component container modes.
+* feat: add convenience API for compressing PointCloud2 directly (`#58 <https://github.com/facontidavide/cloudini/issues/58>`_)
+  Add SerializeCompressedPointCloud2() and ConvertToRosPointCloud2() to allow
+  users to compress sensor_msgs::msg::PointCloud2 without the topic_converter
+  node. Includes test_direct_publisher example node and CLAUDE.md documentation.
+  Also removes redundant PCL_INCLUDE_DIRS from test_cloudini_subscriber target.
+* Fixed cmake issues and added some improvements (`#55 <https://github.com/facontidavide/cloudini/issues/55>`_)
+* fix resolution profile not applied in ros_topic_converter (`#49 <https://github.com/facontidavide/cloudini/issues/49>`_)
+* Contributors: Alireza Moayyedi, Davide Faconti, ペンギンの何か
+
 0.11.1 (2025-12-12)
 -------------------
 * try fixing build in ROS
