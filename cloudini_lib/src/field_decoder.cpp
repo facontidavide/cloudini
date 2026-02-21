@@ -37,16 +37,24 @@ FieldDecoderFloatN_Lossy::FieldDecoderFloatN_Lossy(const std::vector<FieldData>&
     }
     offset_[i] = field_data[i].offset;
   }
+  min_input_bytes_ = fields_count_;  // 1 byte per field minimum (NaN marker or smallest varint)
 }
 
 void FieldDecoderFloatN_Lossy::decode(ConstBufferView& input, BufferView dest_point_view) {
+  if (input.empty()) {
+    throw std::runtime_error("FieldDecoderFloatN_Lossy::decode: empty input buffer");
+  }
   const uint8_t* ptr_in = input.data();
+  const uint8_t* const ptr_end = input.data() + input.size();
 
   Vector4i new_vect{};
   Vector4f float_vect;
 
   // Decode deltas for each field
   for (size_t i = 0; i < fields_count_; ++i) {
+    if (ptr_in >= ptr_end) {
+      throw std::runtime_error("FieldDecoderFloatN_Lossy::decode: truncated input");
+    }
     if (ptr_in[0] == 0) {
       // NaN case
       new_vect[i] = 0;

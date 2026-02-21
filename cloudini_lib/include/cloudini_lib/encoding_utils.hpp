@@ -110,8 +110,9 @@ inline size_t decodeVarint(const uint8_t* buf, size_t max_size, int64_t& val) {
     uint8_t byte = *ptr;
     ptr++;
     consumed++;
-    // Check for shift overflow before the shift operation to avoid UB
-    if (shift >= 64 && (byte & 0x7f) != 0) {
+    // Check for shift overflow before the shift operation to avoid UB.
+    // At shift==63, only bit 0 of the payload is valid (bit 63 of the uint64_t).
+    if (shift >= 63 && (byte & 0x7f) > 1) {
       throw std::runtime_error("decodeVarint: value overflow");
     }
     uval |= (static_cast<uint64_t>(byte & 0x7f) << shift);

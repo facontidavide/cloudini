@@ -639,10 +639,6 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
   if (cloud_data.size() % info_.point_step != 0) {
     throw std::runtime_error("Input cloud_data size is not a multiple of point_step");
   }
-  // Detect if worker thread died from a previous failure
-  if (info_.compression_opt != CompressionOption::NONE && !compressing_thread_.joinable()) {
-    throw std::runtime_error("Compression worker thread is no longer running");
-  }
   const size_t points_count = cloud_data.size() / info_.point_step;
   // Use header_.size() directly to avoid redundant YAML serialization inside MaxCompressedSize
   const size_t required_capacity = MaxCompressedSize(info_, points_count, false) + (write_header ? header_.size() : 0);
@@ -650,17 +646,39 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
     throw std::runtime_error("Output buffer too small for worst-case compressed size");
   }
 
+  // If the worker thread died from a previous failure, join it and re-spawn
+  if (info_.compression_opt != CompressionOption::NONE) {
+    bool need_respawn = false;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      need_respawn = worker_failed_;
+    }
+    if (need_respawn) {
+      if (compressing_thread_.joinable()) {
+        compressing_thread_.join();
+      }
+      // Reset failure state and re-spawn
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        worker_failed_ = false;
+        worker_exception_ = nullptr;
+      }
+      compressing_thread_ = std::thread(&PointcloudEncoder::compressionWorker, this);
+    }
+  }
+
   // Reset the state of the encoders and the class attributes
   for (auto& encoder : encoders_) {
     encoder->reset();
   }
-  compressed_size_ = 0;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    compressed_size_ = 0;
+    should_exit_ = false;
+    has_data_to_compress_ = false;
+    compression_done_ = true;
+  }
   output_view_ = output;
-  should_exit_ = false;
-  has_data_to_compress_ = false;
-  compression_done_ = true;
-  worker_failed_ = false;
-  worker_exception_ = nullptr;
 
   // Copy the header at the beginning of the output
   if (write_header) {
@@ -763,8 +781,10 @@ void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
   decoders_.clear();
 
   if (info.encoding_opt == EncodingOptions::NONE) {
+    min_encoded_point_bytes_ = 0;
     for (const auto& field : info.fields) {
       decoders_.push_back(std::make_unique<FieldDecoderCopy>(field.offset, field.type));
+      min_encoded_point_bytes_ += SizeOf(field.type);
     }
     return;
   }
@@ -794,6 +814,12 @@ void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
   // do remaining fields
   for (size_t index = start_index; index < info.fields.size(); ++index) {
     decoders_.push_back(create_decoder(info.fields[index]));
+  }
+
+  // Compute once: minimum encoded bytes per point (sum of each decoder's minimum)
+  min_encoded_point_bytes_ = 0;
+  for (const auto& decoder : decoders_) {
+    min_encoded_point_bytes_ += decoder->minInputBytes();
   }
 }
 
@@ -864,6 +890,9 @@ void PointcloudDecoder::decodeChunk(const EncodingInfo& info, ConstBufferView ch
   }
 
   while (encoded_view.size() > 0) {
+    if (encoded_view.size() < min_encoded_point_bytes_) {
+      throw std::runtime_error("Truncated encoded data: not enough bytes for a complete point");
+    }
     if (output_buffer.size() < info.point_step) {
       throw std::runtime_error("Output buffer is too small to hold the decoded data");
     }

@@ -40,16 +40,27 @@ class FieldDecoder {
   virtual void decode(ConstBufferView& input, BufferView dest_point_view) = 0;
 
   virtual void reset() = 0;
+
+  /// Minimum number of input bytes this decoder needs per call.
+  /// Used by PointcloudDecoder for a single per-point bounds check.
+  size_t minInputBytes() const {
+    return min_input_bytes_;
+  }
+
+ protected:
+  size_t min_input_bytes_ = 0;
 };
 
 //------------------------------------------------------------------------------------------
 // Specialization for copying the field data
 class FieldDecoderCopy : public FieldDecoder {
  public:
-  FieldDecoderCopy(size_t field_offset, FieldType field_type)
-      : offset_(field_offset), field_size_(SizeOf(field_type)) {}
+  FieldDecoderCopy(size_t field_offset, FieldType field_type) : offset_(field_offset), field_size_(SizeOf(field_type)) {
+    min_input_bytes_ = field_size_;
+  }
 
   void decode(ConstBufferView& input, BufferView dest_point_view) override {
+    // Bounds validated by PointcloudDecoder's per-point check + trim_front's own check
     if (offset_ != kDecodeButSkipStore) {
       memcpy(dest_point_view.data() + offset_, input.data(), field_size_);
     }
@@ -70,6 +81,7 @@ class FieldDecoderInt : public FieldDecoder {
  public:
   FieldDecoderInt(size_t field_offset) : offset_(field_offset) {
     static_assert(std::is_integral<IntType>::value, "FieldDecoderInt requires an integral type");
+    min_input_bytes_ = 1;  // smallest varint is 1 byte
   }
 
   void decode(ConstBufferView& input, BufferView dest_point_view) override {
@@ -102,6 +114,7 @@ class FieldDecoderFloat_Lossy : public FieldDecoder {
     if (resolution <= 0.0) {
       throw std::runtime_error("FieldDecoder(Float/Lossy) requires a resolution with value > 0.0");
     }
+    min_input_bytes_ = 1;  // NaN marker or smallest varint
   }
 
   void decode(ConstBufferView& input, BufferView dest_point_view) override;
@@ -123,6 +136,7 @@ class FieldDecoderFloat_XOR : public FieldDecoder {
  public:
   FieldDecoderFloat_XOR(size_t field_offset) : offset_(field_offset) {
     static_assert(std::is_floating_point<FloatType>::value, "FieldDecoderFloat_XOR requires a floating point type");
+    min_input_bytes_ = sizeof(IntType);
   }
 
   void decode(ConstBufferView& input, BufferView dest_point_view) override;
@@ -167,6 +181,9 @@ class FieldDecoderFloatN_Lossy : public FieldDecoder {
 //------------------------------------------------------------------------------------------
 template <typename FloatType>
 inline void FieldDecoderFloat_Lossy<FloatType>::decode(ConstBufferView& input, BufferView dest_point_view) {
+  if (input.empty()) {
+    throw std::runtime_error("FieldDecoderFloat_Lossy::decode: empty input buffer");
+  }
   if (input.data()[0] == 0) {
     constexpr auto nan_value = std::numeric_limits<FloatType>::quiet_NaN();
     if (offset_ != kDecodeButSkipStore) {
@@ -191,6 +208,7 @@ inline void FieldDecoderFloat_Lossy<FloatType>::decode(ConstBufferView& input, B
 
 template <typename FloatType>
 inline void FieldDecoderFloat_XOR<FloatType>::decode(ConstBufferView& input, BufferView dest_point_view) {
+  // Bounds validated by PointcloudDecoder's per-point check + trim_front's own check
   IntType residual = 0;
   memcpy(&residual, input.data(), sizeof(IntType));
   input.trim_front(sizeof(IntType));

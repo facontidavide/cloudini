@@ -234,5 +234,6 @@ class PointcloudDecoder {
 
   std::vector<std::unique_ptr<FieldDecoder>> decoders_;
   std::vector<uint8_t> decompressed_buffer_;
+  size_t min_encoded_point_bytes_ = 0;
 };
 }  // namespace Cloudini
