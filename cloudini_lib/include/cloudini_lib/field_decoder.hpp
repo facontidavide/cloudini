@@ -181,9 +181,7 @@ class FieldDecoderFloatN_Lossy : public FieldDecoder {
 //------------------------------------------------------------------------------------------
 template <typename FloatType>
 inline void FieldDecoderFloat_Lossy<FloatType>::decode(ConstBufferView& input, BufferView dest_point_view) {
-  if (input.empty()) {
-    throw std::runtime_error("FieldDecoderFloat_Lossy::decode: empty input buffer");
-  }
+  // Bounds validated by PointcloudDecoder's per-point min_encoded_point_bytes_ check
   if (input.data()[0] == 0) {
     constexpr auto nan_value = std::numeric_limits<FloatType>::quiet_NaN();
     if (offset_ != kDecodeButSkipStore) {

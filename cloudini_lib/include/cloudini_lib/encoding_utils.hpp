@@ -95,36 +95,23 @@ inline void decode(ConstBufferView& buff, std::string& str) {
   buff.trim_front(len);
 };
 
-inline size_t decodeVarint(const uint8_t* buf, size_t max_size, int64_t& val) {
-  if (max_size == 0) {
-    throw std::runtime_error("decodeVarint: empty input");
-  }
+inline size_t decodeVarint(const uint8_t* buf, [[maybe_unused]] size_t max_size, int64_t& val) {
+  assert(max_size > 0 && "decodeVarint: empty input");
   uint64_t uval = 0;
   uint8_t shift = 0;
   const uint8_t* ptr = buf;
-  size_t consumed = 0;
   while (true) {
-    if (consumed >= max_size) {
-      throw std::runtime_error("decodeVarint: truncated input");
-    }
+    assert(static_cast<size_t>(ptr - buf) < max_size && "decodeVarint: truncated input");
     uint8_t byte = *ptr;
     ptr++;
-    consumed++;
-    // Check for shift overflow before the shift operation to avoid UB.
-    // At shift==63, only bit 0 of the payload is valid (bit 63 of the uint64_t).
-    if (shift >= 63 && (byte & 0x7f) > 1) {
-      throw std::runtime_error("decodeVarint: value overflow");
-    }
+    assert(!(shift >= 63 && (byte & 0x7f) > 1) && "decodeVarint: value overflow");
     uval |= (static_cast<uint64_t>(byte & 0x7f) << shift);
     shift += 7;
     if ((byte & 0x80) == 0) {
       break;
     }
   }
-  // Value 0 is reserved for NaN; guard against underflow on corrupted data
-  if (uval == 0) {
-    throw std::runtime_error("decodeVarint: unexpected NaN marker (value 0)");
-  }
+  assert(uval != 0 && "decodeVarint: unexpected NaN marker (value 0)");
   uval--;
   // Perform zigzag decoding to retrieve the original signed value.
   val = static_cast<int64_t>((uval >> 1) ^ static_cast<uint64_t>(-(static_cast<int64_t>(uval & 1))));
