@@ -50,21 +50,14 @@ target_include_directories(data_path INTERFACE ${CMAKE_BINARY_DIR}/include)
 
 ##################################################################################
 
-if(ament_cmake_FOUND)
-  message(STATUS "PCL found using ament_cmake")
-  find_package(pcl_ros REQUIRED)
-  set(PCL_SRC src/pcl_conversion.cpp)
+find_package(PCL COMPONENTS common io QUIET)
 
+if(PCL_FOUND)
+  message(STATUS "PCL found in system")
+  add_definitions(${PCL_DEFINITIONS})
+  set(PCL_SRC src/pcl_conversion.cpp)
 else()
-  find_package(PCL QUIET)
-  if(PCL_FOUND)
-    message(STATUS "PCL found in system")
-    add_definitions(${PCL_DEFINITIONS})
-    link_directories(${PCL_LIBRARY_DIRS})
-    set(PCL_SRC src/pcl_conversion.cpp)
-  else()
-    message(STATUS "PCL NOT found")
-  endif()
+  message(STATUS "PCL NOT found")
 endif()
 
 ##################################################################################
@@ -112,22 +105,13 @@ target_include_directories(cloudini_lib
     $<INSTALL_INTERFACE:include>
 )
 
-if(ament_cmake_FOUND)
-  find_package(pcl_ros REQUIRED)
-  target_link_libraries(cloudini_lib PUBLIC ${pcl_ros_TARGETS})
-else()
-  if(PCL_FOUND)
-    target_include_directories(cloudini_lib PUBLIC ${PCL_INCLUDE_DIRS})
-    target_link_libraries(cloudini_lib PUBLIC ${PCL_LIBRARIES})
-  endif()
-endif()
-
 target_link_libraries(cloudini_lib
   PRIVATE
     $<BUILD_INTERFACE:LZ4::lz4_static>
     $<BUILD_INTERFACE:zstd::libzstd_static>
   PUBLIC
-    ${PCL_LIBRARIES}
+    ${PCL_COMMON_LIBRARIES}
+    ${PCL_IO_LIBRARIES}
 )
 
 if(NOT EMSCRIPTEN)
@@ -211,8 +195,6 @@ INSTALL( DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
 
 if(ament_cmake_FOUND)
   ament_export_targets(cloudini_libTargets HAS_LIBRARY_TARGET)
-  ament_export_libraries(cloudini_lib)
-  ament_export_dependencies(pcl_ros)
-  ament_export_include_directories(include)
+  ament_export_dependencies(PCL)
   ament_package()
 endif()
