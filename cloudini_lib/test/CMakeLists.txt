@@ -1,7 +1,7 @@
 set(SRC_FILES
-  # test_field_encoders.cpp
-  # test_intrinsics.cpp
-  # test_header.cpp
+  test_field_encoders.cpp
+  test_intrinsics.cpp
+  test_header.cpp
   test_ros_msg.cpp
 )
 
@@ -32,7 +32,7 @@ else()
       GTest::gtest_main)
 
     if(PCL_FOUND)
-      target_link_libraries(test_cloudini ${PCL_LIBRARIES} )
+      target_link_libraries(test_cloudini ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES})
     endif()
 
 endif()

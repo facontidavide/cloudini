@@ -155,8 +155,15 @@ void convertPointCloud2ToCompressedCloud(
     return;
   }
 
+  if (encoding_info.point_step == 0) {
+    throw std::runtime_error("convertPointCloud2ToCompressedCloud: point_step cannot be 0");
+  }
+  // Derive point count from actual data size rather than trusting metadata width*height,
+  // which could be maliciously large and cause excessive allocation.
+  const size_t points_count = pc_info.data.size() / encoding_info.point_step;
+  const size_t max_compressed_size = Cloudini::MaxCompressedSize(encoding_info, points_count, true);
   // reserve enough memory for the compressed data. we will resize later to the actual size used
-  compressed_dds_msg.resize(prev_size + pc_info.data.size() + 16 * 1024);  // extra 16KB for compression overhead
+  compressed_dds_msg.resize(prev_size + max_compressed_size);
 
   Cloudini::BufferView compressed_data_view(
       compressed_dds_msg.data() + prev_size, compressed_dds_msg.size() - prev_size);

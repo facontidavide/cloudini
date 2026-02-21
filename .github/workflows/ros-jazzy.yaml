@@ -16,17 +16,14 @@ jobs:
         with:
           required-ros-distributions: jazzy
 
-      # Install missing Python packages
-      - name: Install ament Python packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-ament-package python3-colcon-common-extensions
-
       # Run ROS CI
+      # Use --merge-install to work around colcon not propagating
+      # CMAKE_PREFIX_PATH to dependent packages on Jazzy/Ubuntu 24.04.
       - uses: ros-tooling/action-ros-ci@v0.4
         with:
           package-name: |
             cloudini_lib
             cloudini_ros
           target-ros2-distro: jazzy
-          skip-tests: true
+          colcon-defaults: |
+            {"build": {"merge-install": true}, "test": {"merge-install": true}}

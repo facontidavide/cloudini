@@ -12,8 +12,8 @@ find_package(pluginlib REQUIRED)
 find_package(point_cloud_interfaces REQUIRED)
 find_package(point_cloud_transport REQUIRED)
 find_package(Draco QUIET)
+find_package(PCL COMPONENTS common REQUIRED)
 find_package(pcl_conversions REQUIRED)
-find_package(pcl_ros REQUIRED)
 
 set(PLUGIN_DEPS
   pluginlib::pluginlib
@@ -36,16 +36,16 @@ target_include_directories(cloudini_ros
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
-    ${PCL_INCLUDE_DIRS}
 )
 
 target_link_libraries(cloudini_ros
   PUBLIC
     ${PLUGIN_DEPS}
-    ${PCL_LIBRARIES}
+    ${PCL_COMMON_LIBRARIES}
 )
 
 install(TARGETS cloudini_ros
+  EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/cloudini_ros
@@ -104,12 +104,7 @@ add_executable(test_cloudini_subscriber test/test_cloudini_subscriber.cpp)
 
 target_link_libraries(test_cloudini_subscriber
   cloudini_ros
-  ${PCL_LIBRARIES}
-)
-
-target_include_directories(test_cloudini_subscriber
-  PRIVATE
-    ${PCL_INCLUDE_DIRS}
+  ${PCL_COMMON_LIBRARIES}
 )
 
 install(TARGETS test_cloudini_subscriber
@@ -123,15 +118,13 @@ add_executable(test_plugin_subscriber test/test_plugin_subscriber.cpp)
 
 target_link_libraries(test_plugin_subscriber
   cloudini_ros
-  ${PCL_LIBRARIES}
+  ${PCL_COMMON_LIBRARIES}
   ${point_cloud_interfaces_TARGETS}
-  ${pcl_conversions_TARGETS}
   point_cloud_transport::point_cloud_transport
 )
 
 target_include_directories(test_plugin_subscriber
   PRIVATE
-    ${PCL_INCLUDE_DIRS}
     ${pcl_conversions_INCLUDE_DIRS}
 )
 
@@ -157,6 +150,17 @@ install(TARGETS test_plugin_publisher
   RUNTIME DESTINATION lib/cloudini_ros
 )
 
+######### test_direct_publisher #########
+add_executable(test_direct_publisher test/test_direct_publisher.cpp)
+
+target_link_libraries(test_direct_publisher
+  cloudini_ros
+)
+
+install(TARGETS test_direct_publisher
+  RUNTIME DESTINATION lib/cloudini_ros
+)
+
 ######### plugins #########
 set(PLUGIN_NAME cloudini_point_cloud_transport)
 
@@ -178,6 +182,7 @@ target_include_directories(${PLUGIN_NAME} PRIVATE
 )
 
 install(TARGETS ${PLUGIN_NAME}
+  EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PLUGIN_NAME}
@@ -188,10 +193,17 @@ install(
   DESTINATION include/${PLUGIN_NAME}
 )
 
-
 pluginlib_export_plugin_description_file(point_cloud_transport cloudini_plugins.xml)
 
-ament_export_include_directories(include)
-ament_export_libraries(cloudini_ros ${PLUGIN_NAME})
-ament_export_dependencies(${PLUGIN_DEPS})
+ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
+ament_export_dependencies(
+  pluginlib
+  rosbag2_cpp
+  point_cloud_transport
+  rclcpp
+  cloudini_lib
+  sensor_msgs
+  point_cloud_interfaces
+  PCL
+)
 ament_package()

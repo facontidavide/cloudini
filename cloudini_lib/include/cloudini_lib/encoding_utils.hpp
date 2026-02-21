@@ -18,7 +18,9 @@
 
 #include <bit>
 #include <cassert>
+#include <cstring>
 #include <limits>
+#include <stdexcept>
 
 #include "cloudini_lib/basic_types.hpp"
 #include "cloudini_lib/contrib/span.hpp"
@@ -31,6 +33,9 @@ using BufferView = Span<uint8_t>;
 // Simple encoding that doesn't account for endianess (TODO?)
 template <typename T>
 inline void encode(const T& val, BufferView& buff) {
+  if (buff.size() < sizeof(val)) {
+    throw std::runtime_error("encode: not enough output buffer space");
+  }
   memcpy(buff.data(), &val, sizeof(val));
   buff.trim_front(sizeof(val));
 };
@@ -40,6 +45,9 @@ template <>
 inline void encode(const std::string& str, BufferView& buff) {
   uint16_t len = static_cast<uint16_t>(str.size());
   encode(len, buff);
+  if (buff.size() < len) {
+    throw std::runtime_error("encode(string): not enough output buffer space");
+  }
   memcpy(buff.data(), str.c_str(), len);
   buff.trim_front(len);
 }
@@ -68,6 +76,9 @@ int64_t ToInt64(const uint8_t* ptr) {
 
 template <typename T>
 inline void decode(ConstBufferView& buff, T& val) {
+  if (buff.size() < sizeof(val)) {
+    throw std::runtime_error("decode: not enough input data");
+  }
   memcpy(&val, buff.data(), sizeof(val));
   buff.trim_front(sizeof(val));
 };
@@ -76,28 +87,34 @@ template <>
 inline void decode(ConstBufferView& buff, std::string& str) {
   uint16_t len = 0;
   decode(buff, len);
+  if (buff.size() < len) {
+    throw std::runtime_error("decode(string): not enough input data");
+  }
   str.resize(len);
   memcpy(str.data(), buff.data(), len);
   buff.trim_front(len);
 };
 
-inline size_t decodeVarint(const uint8_t* buf, int64_t& val) {
-  int64_t uval = 0;
+inline size_t decodeVarint(const uint8_t* buf, [[maybe_unused]] size_t max_size, int64_t& val) {
+  assert(max_size > 0 && "decodeVarint: empty input");
+  uint64_t uval = 0;
   uint8_t shift = 0;
   const uint8_t* ptr = buf;
   while (true) {
+    assert(static_cast<size_t>(ptr - buf) < max_size && "decodeVarint: truncated input");
     uint8_t byte = *ptr;
     ptr++;
-    uval |= (byte & 0x7f) << shift;
+    assert(!(shift >= 63 && (byte & 0x7f) > 1) && "decodeVarint: value overflow");
+    uval |= (static_cast<uint64_t>(byte & 0x7f) << shift);
     shift += 7;
     if ((byte & 0x80) == 0) {
       break;
     }
   }
-  // we have reserved the value 0 for NaN
+  assert(uval != 0 && "decodeVarint: unexpected NaN marker (value 0)");
   uval--;
   // Perform zigzag decoding to retrieve the original signed value.
-  val = static_cast<int64_t>((uval >> 1) ^ -(uval & 1));
+  val = static_cast<int64_t>((uval >> 1) ^ static_cast<uint64_t>(-(static_cast<int64_t>(uval & 1))));
   const auto count = static_cast<size_t>(ptr - buf);
   return count;
 }
