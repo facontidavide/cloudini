@@ -16,9 +16,9 @@ jobs:
         with:
           required-ros-distributions: jazzy
 
-      # Install missing Python packages for ament build system
+      # Install missing Python packages for ament test runner
       - name: Install ament Python packages
-        run: sudo apt-get install -y python3-ament-package
+        run: sudo apt-get install -y ros-jazzy-ament-cmake-test
 
       # Run ROS CI
       # Use --merge-install to work around colcon not propagating
