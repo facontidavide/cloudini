@@ -17,8 +17,9 @@ jobs:
           required-ros-distributions: jazzy
 
       # Install missing Python packages for ament build system
+      # setup-ros intermittently fails to install ament_package on Ubuntu 24.04
       - name: Install ament Python packages
-        run: sudo apt-get install -y python3-ament-package
+        run: pip3 install ament-package
 
       # Run ROS CI
       # Use --merge-install to work around colcon not propagating
