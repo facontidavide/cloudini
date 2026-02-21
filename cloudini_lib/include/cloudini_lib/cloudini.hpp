@@ -84,6 +84,10 @@ struct EncodingInfo {
   // the second step is a general purpose compression
   CompressionOption compression_opt = CompressionOption::ZSTD;
 
+  // When false, compression runs in the calling thread instead of a worker thread.
+  // Ignored when compression_opt == NONE.
+  bool use_threads = true;
+
   uint8_t version = kEncodingVersion;
 
   bool operator==(const EncodingInfo& other) const {

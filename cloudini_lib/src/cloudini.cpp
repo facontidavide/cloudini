@@ -447,7 +447,9 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
       encoders_.push_back(std::make_unique<FieldEncoderCopy>(field.offset, field.type));
     }
     // Start the compression worker thread if we're using compression
-    compressing_thread_ = std::thread(&PointcloudEncoder::compressionWorker, this);
+    if (info_.compression_opt != CompressionOption::NONE && info_.use_threads) {
+      compressing_thread_ = std::thread(&PointcloudEncoder::compressionWorker, this);
+    }
     return;
   }
   //-------------------------------------------------------------------------------------------
@@ -522,7 +524,9 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
     }
   }
   // Start the compression worker thread if we're using compression
-  compressing_thread_ = std::thread(&PointcloudEncoder::compressionWorker, this);
+  if (info_.compression_opt != CompressionOption::NONE && info_.use_threads) {
+    compressing_thread_ = std::thread(&PointcloudEncoder::compressionWorker, this);
+  }
 }
 
 PointcloudEncoder::~PointcloudEncoder() {
@@ -647,7 +651,7 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
   }
 
   // If the worker thread died from a previous failure, join it and re-spawn
-  if (info_.compression_opt != CompressionOption::NONE) {
+  if (info_.compression_opt != CompressionOption::NONE && info_.use_threads) {
     bool need_respawn = false;
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -708,6 +712,31 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
         memcpy(output_view_.data(), buffer_.data(), serialized_size);
         output_view_.trim_front(serialized_size);
         compressed_size_ += serialized_size + sizeof(uint32_t);
+      } else if (!info_.use_threads) {
+        // Single-threaded compression: compress inline
+        uint8_t* chunk_size_ptr = output_view_.data();
+        output_view_.trim_front(4);
+        const char* src = reinterpret_cast<const char*>(buffer_.data());
+        char* dst = reinterpret_cast<char*>(output_view_.data());
+        uint32_t chunk_size = 0;
+
+        if (info_.compression_opt == CompressionOption::LZ4) {
+          int cs = LZ4_compress_default(src, dst, serialized_size, output_view_.size());
+          if (cs <= 0) {
+            throw std::runtime_error("LZ4 compression failed");
+          }
+          chunk_size = static_cast<uint32_t>(cs);
+        } else {
+          size_t cs = ZSTD_compress(dst, output_view_.size(), src, serialized_size, 1);
+          if (ZSTD_isError(cs)) {
+            throw std::runtime_error("ZSTD compression failed");
+          }
+          chunk_size = static_cast<uint32_t>(cs);
+        }
+
+        memcpy(chunk_size_ptr, &chunk_size, sizeof(uint32_t));
+        output_view_.trim_front(chunk_size);
+        compressed_size_ += chunk_size + sizeof(uint32_t);
       } else {
         waitForCompressionComplete();
         // swap buffers and start compressing in the other thread
@@ -732,7 +761,9 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
     }
   }
 
-  waitForCompressionComplete();
+  if (info_.use_threads && info_.compression_opt != CompressionOption::NONE) {
+    waitForCompressionComplete();
+  }
 
   // Return 0 as the actual size is handled by the vector version
   return compressed_size_;
