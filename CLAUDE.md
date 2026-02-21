@@ -166,8 +166,14 @@ ros2 run cloudini_ros test_direct_publisher --ros-args \
 
 **MCAP Rosbag Conversion**:
 ```bash
-# DATA folder may contain .mcap files
-./build_release/tools/cloudini_rosbag_converter -c -y -f DATA/<name_of_the_file>
+# Convert a ROS2 bag directory (creates <bag_dir>_encoded/ with .mcap + metadata.yaml)
+./build_release/tools/cloudini_rosbag_converter -c -y -f DATA/my_bag/
+
+# Convert a bare .mcap file (if sibling metadata.yaml exists, it is also transformed)
+./build_release/tools/cloudini_rosbag_converter -c -y -f DATA/my_bag/my_bag_0.mcap
+
+# Decode back to PointCloud2
+./build_release/tools/cloudini_rosbag_converter -d -y -f DATA/my_bag_encoded/
 ```
 
 ### Debugging with ROS2 CLI
@@ -497,7 +503,7 @@ Use correct type string:
 
 ## Tools
 
-- **cloudini_rosbag_converter**: Convert MCAP rosbags between compressed/uncompressed pointclouds
+- **cloudini_rosbag_converter**: Convert MCAP rosbags between compressed/uncompressed pointclouds. Accepts bag directories or bare `.mcap` files; generates a transformed `metadata.yaml` when one is present
 - **mcap_cutter**: Extract portions of MCAP files
 - **pcd_benchmark**: Benchmark compression on PCD files
 - **run_encoder.sh**: Batch processing script for test data
