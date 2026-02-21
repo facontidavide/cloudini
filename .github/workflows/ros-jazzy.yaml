@@ -16,6 +16,10 @@ jobs:
         with:
           required-ros-distributions: jazzy
 
+      # Install missing Python packages for ament build system
+      - name: Install ament Python packages
+        run: sudo apt-get install -y python3-ament-package
+
       # Run ROS CI
       # Use --merge-install to work around colcon not propagating
       # CMAKE_PREFIX_PATH to dependent packages on Jazzy/Ubuntu 24.04.
