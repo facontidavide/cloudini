@@ -56,25 +56,37 @@ install(
   DESTINATION include/cloudini_ros
 )
 
-######### topic converter #########
+######### topic converter (composable node) #########
+find_package(rclcpp_components REQUIRED)
 
-add_executable(cloudini_topic_converter
+add_library(cloudini_topic_converter_component SHARED
   src/topic_converter.cpp
 )
 
-target_include_directories(cloudini_topic_converter
-  PUBLIC
+target_include_directories(cloudini_topic_converter_component
+  PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 )
 
-target_link_libraries(cloudini_topic_converter
+target_link_libraries(cloudini_topic_converter_component
   cloudini_ros
   cloudini_lib::cloudini_lib
+  rclcpp_components::component
+)
+
+rclcpp_components_register_node(
+  cloudini_topic_converter_component
+  PLUGIN "CloudiniPointcloudConverter"
+  EXECUTABLE cloudini_topic_converter
+)
+
+install(TARGETS cloudini_topic_converter_component
+  EXPORT export_${PROJECT_NAME}
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
 )
 
 install(TARGETS cloudini_topic_converter
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/cloudini_ros
 )
 
@@ -201,6 +213,7 @@ ament_export_dependencies(
   rosbag2_cpp
   point_cloud_transport
   rclcpp
+  rclcpp_components
   cloudini_lib
   sensor_msgs
   point_cloud_interfaces

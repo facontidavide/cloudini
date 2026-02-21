@@ -44,6 +44,54 @@ ros2 run cloudini_ros cloudini_topic_converter --ros-args \
     -p topic_output:=/points/decompressed
 ```
 
+### Composable Node (Component Container)
+
+The topic converter is also available as a composable node, allowing it to be loaded
+into a component container for reduced overhead when running multiple nodes in the
+same process.
+
+```bash
+# Start a component container
+ros2 run rclcpp_components component_container
+
+# Load the topic converter as a component
+ros2 component load /ComponentManager cloudini_ros CloudiniPointcloudConverter \
+  -p compressing:=true \
+  -p topic_input:=/points \
+  -p topic_output:=/points/compressed \
+  -p resolution:=0.001
+```
+
+Or via launch file:
+
+```python
+from launch_ros.actions import ComposableNodeContainer, LoadComposableNodes
+from launch_ros.descriptions import ComposableNode
+
+container = ComposableNodeContainer(
+    name='cloudini_container',
+    namespace='',
+    package='rclcpp_components',
+    executable='component_container',
+)
+
+converter = LoadComposableNodes(
+    target_container='cloudini_container',
+    composable_node_descriptions=[
+        ComposableNode(
+            package='cloudini_ros',
+            plugin='CloudiniPointcloudConverter',
+            parameters=[{
+                'compressing': True,
+                'topic_input': '/points',
+                'topic_output': '/points/compressed',
+                'resolution': 0.001,
+            }],
+        ),
+    ],
+)
+```
+
 ## cloudini_rosbag_converter
 
 A command line tool that, given a rosbag (limited to MCAP format), converts
