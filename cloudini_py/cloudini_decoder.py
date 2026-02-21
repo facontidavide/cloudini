@@ -196,6 +196,21 @@ class CloudiniDecoder:
         finally:
             self.deallocate(input_ptr)
 
+    @staticmethod
+    def _parse_yaml_value(value: str):
+        """Convert a YAML scalar string to int, float, None, or str."""
+        if value == 'null' or value == 'None':
+            return None
+        try:
+            return int(value)
+        except ValueError:
+            pass
+        try:
+            return float(value)
+        except ValueError:
+            pass
+        return value
+
     def get_header_info(self, compressed_msg: bytes) -> dict:
         """
         Extract header information from compressed message.
@@ -250,15 +265,7 @@ class CloudiniDecoder:
                         value = value.strip()
 
                         if current_field is not None:
-                            # Try to convert to appropriate type
-                            if value == 'null' or value == 'None':
-                                current_field[key] = None
-                            elif value.isdigit():
-                                current_field[key] = int(value)
-                            elif value.replace('.', '').replace('-', '').isdigit():
-                                current_field[key] = float(value)
-                            else:
-                                current_field[key] = value
+                            current_field[key] = self._parse_yaml_value(value)
                 else:
                     # Top-level properties
                     if ':' in stripped:
@@ -266,13 +273,7 @@ class CloudiniDecoder:
                         key = key.strip()
                         value = value.strip()
 
-                        # Try to convert to appropriate type
-                        if value.isdigit():
-                            header[key] = int(value)
-                        elif value.replace('.', '').replace('-', '').isdigit():
-                            header[key] = float(value)
-                        else:
-                            header[key] = value
+                        header[key] = self._parse_yaml_value(value)
 
             # Add last field if exists
             if current_field:

@@ -43,9 +43,14 @@ uint32_t cldn_GetHeaderAsYAML(uintptr_t encoded_data_ptr, uint32_t encoded_data_
 }
 
 uint32_t cldn_GetHeaderAsYAMLFromDDS(uintptr_t raw_dds_msg, uint32_t dds_msg_size, uintptr_t output_yaml_ptr) {
-  cloudini_ros::RosPointCloud2 pc_info = cloudini_ros::getDeserializedPointCloudMessage(
-      Cloudini::ConstBufferView(reinterpret_cast<const uint8_t*>(raw_dds_msg), dds_msg_size));
-  return cldn_GetHeaderAsYAML(reinterpret_cast<uintptr_t>(pc_info.data.data()), pc_info.data.size(), output_yaml_ptr);
+  try {
+    cloudini_ros::RosPointCloud2 pc_info = cloudini_ros::getDeserializedPointCloudMessage(
+        Cloudini::ConstBufferView(reinterpret_cast<const uint8_t*>(raw_dds_msg), dds_msg_size));
+    return cldn_GetHeaderAsYAML(reinterpret_cast<uintptr_t>(pc_info.data.data()), pc_info.data.size(), output_yaml_ptr);
+  } catch (const std::exception& e) {
+    EM_ASM({ console.error('Exception in cldn_GetHeaderAsYAMLFromDDS:', UTF8ToString($0)); }, e.what());
+    return 0;
+  }
 }
 
 uint32_t cldn_ComputeCompressedSize(uintptr_t dds_msg_ptr, uint32_t dds_msg_size, float resolution) {
@@ -85,10 +90,15 @@ uint32_t cldn_ComputeCompressedSize(uintptr_t dds_msg_ptr, uint32_t dds_msg_size
 }
 
 uint32_t cldn_GetDecompressedSize(uintptr_t encoded_dds_ptr, uint32_t encoded_dds_size) {
-  const uint8_t* compressed_data = reinterpret_cast<const uint8_t*>(encoded_dds_ptr);
-  Cloudini::ConstBufferView raw_dds_msg(compressed_data, encoded_dds_size);
-  auto compressed_cloud = cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg);
-  return compressed_cloud.height * compressed_cloud.width * compressed_cloud.point_step;
+  try {
+    const uint8_t* compressed_data = reinterpret_cast<const uint8_t*>(encoded_dds_ptr);
+    Cloudini::ConstBufferView raw_dds_msg(compressed_data, encoded_dds_size);
+    auto compressed_cloud = cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg);
+    return compressed_cloud.height * compressed_cloud.width * compressed_cloud.point_step;
+  } catch (const std::exception& e) {
+    EM_ASM({ console.error('Exception in cldn_GetDecompressedSize:', UTF8ToString($0)); }, e.what());
+    return 0;
+  }
 }
 
 uint32_t cldn_ConvertCompressedMsgToPointCloud2Msg(
@@ -157,7 +167,7 @@ uint32_t cldn_DecodeCompressedData(uintptr_t encoded_data_ptr, uint32_t encoded_
 }
 
 uint32_t cldn_EncodePointcloudMessage(
-    const uintptr_t pointcloud_msg_ptr, size_t msg_size, float resolution, uintptr_t output_data_ptr) {
+    const uintptr_t pointcloud_msg_ptr, uint32_t msg_size, float resolution, uintptr_t output_data_ptr) {
   try {
     const uint8_t* raw_msg_data = reinterpret_cast<const uint8_t*>(pointcloud_msg_ptr);
     Cloudini::ConstBufferView raw_dds_msg(raw_msg_data, msg_size);

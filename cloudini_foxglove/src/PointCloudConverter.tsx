@@ -49,7 +49,6 @@ export const convertPointCloudWasm = (cloud: CompressedPointCloud): PointCloud =
   try {
 
     const bufferSize = data.byteLength;
-    console.info("Decompressing point cloud buffer of size:", bufferSize);
 
     // Check if data is too large for WASM memory
     if (wasmModule.HEAPU8) {

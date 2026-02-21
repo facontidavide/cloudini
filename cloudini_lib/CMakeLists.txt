@@ -145,6 +145,7 @@ else()
       "_cldn_DecodeCompressedData"
       "_cldn_ConvertCompressedMsgToPointCloud2Msg"
       "_cldn_EncodePointcloudData"
+      "_cldn_EncodePointcloudMessage"
     )
   set(QUOTED_FUNCTIONS "")
   FOREACH(Item IN LISTS CLD_EXPORTED_FUNCTIONS)
