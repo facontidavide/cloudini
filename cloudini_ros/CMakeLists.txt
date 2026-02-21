@@ -107,11 +107,6 @@ target_link_libraries(test_cloudini_subscriber
   ${PCL_COMMON_LIBRARIES}
 )
 
-target_include_directories(test_cloudini_subscriber
-  PRIVATE
-    ${PCL_INCLUDE_DIRS}
-)
-
 install(TARGETS test_cloudini_subscriber
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -152,6 +147,17 @@ target_link_libraries(test_plugin_publisher
 install(TARGETS test_plugin_publisher
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/cloudini_ros
+)
+
+######### test_direct_publisher #########
+add_executable(test_direct_publisher test/test_direct_publisher.cpp)
+
+target_link_libraries(test_direct_publisher
+  cloudini_ros
+)
+
+install(TARGETS test_direct_publisher
   RUNTIME DESTINATION lib/cloudini_ros
 )
 
