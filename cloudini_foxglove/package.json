@@ -32,7 +32,7 @@
     "typescript": "5.8.3"
   },
   "dependencies": {
-    "@foxglove/schemas": "^1.7.2",
+    "@foxglove/schemas": "^1.9.0",
     "css-loader": "^7.1.2"
   }
 }
