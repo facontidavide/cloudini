@@ -1,7 +1,10 @@
 function(find_or_download_zstd FORCE_VENDORED)
 
   if(NOT FORCE_VENDORED)
-    find_package(ZSTD QUIET)
+    find_package(zstd CONFIG QUIET)
+    if(NOT TARGET zstd::libzstd_static)
+      find_package(ZSTD QUIET)
+    endif()
   endif()
 
   # Check if ZSTD targets already exist (e.g., from Arrow)

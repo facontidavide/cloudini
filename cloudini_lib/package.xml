@@ -14,8 +14,7 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <depend>libpcl-common</depend>
-  <depend>libpcl-io</depend>
+  <depend>libpcl-dev</depend>
   <depend>libzstd-dev</depend>
   <depend>lz4</depend>
   <depend>mcap_vendor</depend>
