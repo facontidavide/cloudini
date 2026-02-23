@@ -25,7 +25,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 find_package(ament_cmake QUIET)
 if(ament_cmake_FOUND)
   message(STATUS "Found ament_cmake")
-  set(CLOUDINI_FORCE_VENDORED_DEPS ON FORCE)
+  set(CLOUDINI_FORCE_VENDORED_DEPS OFF FORCE)
 endif()
 
 include(FetchContent)
