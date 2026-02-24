@@ -14,8 +14,8 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <build_depend>libpcl-dev</build_depend>
-  <build_export_depend>libpcl-dev</build_export_depend>
+  <build_depend>libpcl-all-dev</build_depend>
+  <build_export_depend>libpcl-all-dev</build_export_depend>
   <exec_depend>libpcl-common</exec_depend>
   <exec_depend>libpcl-io</exec_depend>
   <build_depend>libzstd-dev</build_depend>
