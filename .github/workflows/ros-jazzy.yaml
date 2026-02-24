@@ -9,20 +9,14 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+    container:
+      image: rostooling/setup-ros-docker:ubuntu-noble-ros-jazzy-ros-base-latest
     steps:
-      # Set up ROS
       - uses: ros-tooling/setup-ros@v0.7
         with:
           required-ros-distributions: jazzy
 
-      # Install missing Python packages for ament test runner
-      - name: Install ament Python packages
-        run: sudo apt-get install -y ros-jazzy-ament-cmake-test
-
-      # Run ROS CI
-      # Use --merge-install to work around colcon not propagating
-      # CMAKE_PREFIX_PATH to dependent packages on Jazzy/Ubuntu 24.04.
       - uses: ros-tooling/action-ros-ci@v0.4
         with:
           package-name: |
