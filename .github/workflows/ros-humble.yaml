@@ -9,18 +9,14 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    container:
+      image: rostooling/setup-ros-docker:ubuntu-jammy-ros-humble-ros-base-latest
     steps:
-      # Set up ROS
       - uses: ros-tooling/setup-ros@v0.7
         with:
           required-ros-distributions: humble
 
-      # Install missing Python packages for ament test runner
-      - name: Install ament Python packages
-        run: sudo apt-get install -y ros-humble-ament-cmake-test
-
-      # Run ROS CI
       - uses: ros-tooling/action-ros-ci@v0.4
         with:
           package-name: |
