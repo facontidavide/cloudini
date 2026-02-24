@@ -1,17 +1,17 @@
 import { ExtensionContext, Immutable, MessageEvent } from "@foxglove/extension";
 import { convertPointCloudWasm, loadCloudiniWasm } from "./PointCloudConverter";
 
-import { CompressedPointCloud } from "./Schemas";
+import { CloudiniCompressedPointCloud } from "./Schemas";
 
 export function activate(extensionContext: ExtensionContext): void {
   // Preload WASM module
   loadCloudiniWasm().catch(console.error);
 
-  extensionContext.registerMessageConverter<CompressedPointCloud>({
+  extensionContext.registerMessageConverter<CloudiniCompressedPointCloud>({
     type: "schema",
-    fromSchemaName: "point_cloud_interfaces/msg/CompressedPointCloud2",
-    toSchemaName: "sensor_msgs/msg/PointCloud2",
-    converter: (inputMessage: CompressedPointCloud, _messageEvent: Immutable<MessageEvent<CompressedPointCloud>>) => {
+    fromSchemaName: "perception_types_ipc.proto.CloudiniCompressedPointCloud",
+    toSchemaName: "foxglove.PointCloud",
+    converter: (inputMessage: CloudiniCompressedPointCloud, _messageEvent: Immutable<MessageEvent<CloudiniCompressedPointCloud>>) => {
       return convertPointCloudWasm(inputMessage);
     },
   });

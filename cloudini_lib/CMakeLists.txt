@@ -141,6 +141,7 @@ else()
       "_cldn_GetHeaderAsYAMLFromDDS"
       "_cldn_ComputeCompressedSize"
       "_cldn_GetDecompressedSize"
+      "_cldn_GetDecompressedSizeFromData"
       "_cldn_DecodeCompressedMessage"
       "_cldn_DecodeCompressedData"
       "_cldn_ConvertCompressedMsgToPointCloud2Msg"
@@ -170,7 +171,7 @@ else()
   target_include_directories(cloudini_wasm_single PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_link_libraries(cloudini_wasm_single PRIVATE cloudini_lib)
   set_target_properties(cloudini_wasm_single PROPERTIES
-    LINK_FLAGS "-s SINGLE_FILE=1 -s NO_DISABLE_EXCEPTION_CATCHING -s ASSERTIONS -s EXPORTED_FUNCTIONS=[${CLD_EXPORTED_FUNCTIONS_STR}] -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8','HEAP8','UTF8ToString'] -s MODULARIZE=1 -s EXPORT_NAME='CloudiniModule' -s INITIAL_MEMORY=67108864 -s MAXIMUM_MEMORY=134217728 -s ALLOW_MEMORY_GROWTH=1 -s TOTAL_STACK=1048576"
+    LINK_FLAGS "-s SINGLE_FILE=1 -s ENVIRONMENT='web' -s FILESYSTEM=0 -s NO_DISABLE_EXCEPTION_CATCHING -s ASSERTIONS -s EXPORTED_FUNCTIONS=[${CLD_EXPORTED_FUNCTIONS_STR}] -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8','HEAP8','UTF8ToString'] -s MODULARIZE=1 -s EXPORT_NAME='CloudiniModule' -s INITIAL_MEMORY=67108864 -s MAXIMUM_MEMORY=134217728 -s ALLOW_MEMORY_GROWTH=1 -s TOTAL_STACK=1048576"
   )
 endif(NOT EMSCRIPTEN)
 

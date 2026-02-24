@@ -101,6 +101,18 @@ uint32_t cldn_GetDecompressedSize(uintptr_t encoded_dds_ptr, uint32_t encoded_dd
   }
 }
 
+uint32_t cldn_GetDecompressedSizeFromData(uintptr_t encoded_data_ptr, uint32_t encoded_data_size) {
+  try {
+    const uint8_t* encoded_data = reinterpret_cast<const uint8_t*>(encoded_data_ptr);
+    Cloudini::ConstBufferView encoded_view(encoded_data, encoded_data_size);
+    Cloudini::EncodingInfo info = Cloudini::DecodeHeader(encoded_view);
+    return info.height * info.width * info.point_step;
+  } catch (const std::exception& e) {
+    EM_ASM({ console.error('Exception in cldn_GetDecompressedSizeFromData:', UTF8ToString($0)); }, e.what());
+    return 0;
+  }
+}
+
 uint32_t cldn_ConvertCompressedMsgToPointCloud2Msg(
     uintptr_t compressed_msg_ptr, uint32_t encoded_data_size, uintptr_t output_msg_ptr) {
   const uint8_t* compressed_data = reinterpret_cast<const uint8_t*>(compressed_msg_ptr);

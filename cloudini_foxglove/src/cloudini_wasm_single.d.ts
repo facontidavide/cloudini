@@ -24,6 +24,11 @@ export interface CloudiniWasmModule extends EmscriptenModule {
   _cldn_DecodeCompressedData(inputPtr: number, inputSize: number, outputPtr: number): number;
   _cldn_DecodeCompressedMessage(inputPtr: number, inputSize: number, outputPtr: number): number;
   _cldn_GetDecompressedSize(inputPtr: number, inputSize: number): number;
+  _cldn_GetDecompressedSizeFromData(inputPtr: number, inputSize: number): number;
+  _cldn_GetHeaderAsYAML(inputPtr: number, inputSize: number, outputPtr: number): number;
+
+  // Emscripten runtime method to convert C string to JS string
+  UTF8ToString(ptr: number, maxBytesToRead?: number): string;
 }
 
 declare function CloudiniModule(): Promise<CloudiniWasmModule>;

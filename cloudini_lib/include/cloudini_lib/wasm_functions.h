@@ -40,8 +40,12 @@ uint32_t cldn_GetHeaderAsYAMLFromDDS(uintptr_t raw_dds_msg, uint32_t dds_msg_siz
 WASM_EXPORT uint32_t cldn_ComputeCompressedSize(uintptr_t dds_msg_ptr, uint32_t dds_msg_size, float resolution);
 
 // Preview the size of the decompressed point cloud data, needed to allocate memory in advance.
-// No actual decompression is performed.
+// No actual decompression is performed. Input is a DDS message.
 WASM_EXPORT uint32_t cldn_GetDecompressedSize(uintptr_t encoded_msg_ptr, uint32_t encoded_msg_size);
+
+// Preview the size of the decompressed point cloud data from raw compressed bytes.
+// No actual decompression is performed. Input is raw Cloudini compressed data (not CDR wrapped).
+WASM_EXPORT uint32_t cldn_GetDecompressedSizeFromData(uintptr_t encoded_data_ptr, uint32_t encoded_data_size);
 
 /**
  * @brief Given the a serialized DDS message containing "point_cloud_interfaces/CompressedPointCloud2",
