@@ -49,7 +49,7 @@ jobs:
           ./linuxdeploy-x86_64.AppImage --appdir AppDir --executable AppDir/usr/bin/cloudini_rosbag_converter -d cloudini_lib/tools/cloudini_converter.desktop -i cloudini.png --output appimage
 
       - name: Upload AppImage artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: appimage-artifact
           path: cloudini_rosbag_converter-*.AppImage
@@ -111,7 +111,7 @@ jobs:
           zip -r ../cloudini-wasm-${{ steps.get_version.outputs.VERSION }}.zip .
 
       - name: Upload WASM artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: wasm-artifact
           path: cloudini-wasm-*.zip
@@ -164,7 +164,7 @@ jobs:
           zip -r ../../cloudini-foxglove-${{ steps.get_version.outputs.VERSION }}.zip .
 
       - name: Upload Foxglove artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: foxglove-artifact
           path: cloudini-foxglove-*.zip
