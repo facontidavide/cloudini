@@ -2,8 +2,8 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+1.0.1 (2026-03-01)
+------------------
 * fix(ci): use correct rosdep key libpcl-all-dev for PCL
   libpcl-dev is not a valid rosdep key (KeyError on buildfarm).
   The correct key is libpcl-all-dev which resolves to apt package
