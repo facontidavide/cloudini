@@ -2,6 +2,9 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+
 1.0.0 (2026-02-21)
 -------------------
 * feat: make topic_converter composable for component container usage
