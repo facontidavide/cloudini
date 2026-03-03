@@ -7,12 +7,18 @@ function(find_or_download_zstd FORCE_VENDORED)
     endif()
     if(TARGET zstd::libzstd_static)
       # System libzstd.a is typically not compiled with -fPIC and cannot be
-      # embedded in a shared library. Redirect the static target to use the
-      # shared library location so cloudini_lib.so links correctly.
+      # embedded in a shared library. Override ALL config-specific IMPORTED_LOCATION
+      # properties (CMake checks IMPORTED_LOCATION_<CONFIG> before IMPORTED_LOCATION)
+      # so that cloudini_lib.so links against the shared zstd instead.
       if(TARGET zstd::libzstd_shared)
         get_property(_zstd_shared_loc TARGET zstd::libzstd_shared PROPERTY IMPORTED_LOCATION)
+        if(NOT _zstd_shared_loc)
+          get_property(_zstd_shared_loc TARGET zstd::libzstd_shared PROPERTY IMPORTED_LOCATION_RELEASE)
+        endif()
         if(_zstd_shared_loc)
-          set_property(TARGET zstd::libzstd_static PROPERTY IMPORTED_LOCATION "${_zstd_shared_loc}")
+          foreach(_cfg "" "_RELEASE" "_DEBUG" "_RELWITHDEBINFO" "_MINSIZEREL")
+            set_property(TARGET zstd::libzstd_static PROPERTY "IMPORTED_LOCATION${_cfg}" "${_zstd_shared_loc}")
+          endforeach()
         endif()
       endif()
       return()
