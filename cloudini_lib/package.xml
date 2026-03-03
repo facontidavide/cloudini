@@ -18,6 +18,7 @@
   <build_export_depend>libpcl-all-dev</build_export_depend>
   <exec_depend>libpcl-common</exec_depend>
   <exec_depend>libpcl-io</exec_depend>
+  <build_depend>libcxxopts-dev</build_depend>
   <build_depend>libzstd-dev</build_depend>
   <build_depend>lz4</build_depend>
   <build_depend>mcap_vendor</build_depend>

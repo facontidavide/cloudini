@@ -17,7 +17,10 @@ target_link_libraries(mcap_converter
 
 ########################################################
 
-CPMAddPackage("gh:jarro2783/cxxopts@3.3.1")
+find_package(cxxopts QUIET)
+if(NOT TARGET cxxopts::cxxopts)
+  CPMAddPackage("gh:jarro2783/cxxopts@3.3.1")
+endif()
 
 add_executable(cloudini_rosbag_converter
  src/cloudini_rosbag_converter.cpp)
@@ -25,7 +28,7 @@ add_executable(cloudini_rosbag_converter
 target_link_libraries(cloudini_rosbag_converter
   PRIVATE
    mcap_converter
-   cxxopts
+   cxxopts::cxxopts
 )
 
 add_executable(mcap_cutter
@@ -37,7 +40,7 @@ target_link_libraries(mcap_cutter
     LZ4::lz4_static
     zstd::libzstd_static
     mcap::mcap
-    cxxopts
+    cxxopts::cxxopts
 )
 
 add_executable(mcap_header_inspector
@@ -49,7 +52,7 @@ target_link_libraries(mcap_header_inspector
     LZ4::lz4_static
     zstd::libzstd_static
     mcap::mcap
-    cxxopts
+    cxxopts::cxxopts
 )
 
 install(TARGETS cloudini_rosbag_converter
