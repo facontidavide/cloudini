@@ -5,6 +5,17 @@ function(find_or_download_lz4 FORCE_VENDORED)
     if(NOT TARGET LZ4::lz4_static)
       find_package(LZ4 QUIET)
     endif()
+    # Fallback for systems without cmake config (e.g. Ubuntu Jammy liblz4-dev)
+    if(NOT TARGET LZ4::lz4_static)
+      find_library(LZ4_LIBRARY NAMES lz4)
+      find_path(LZ4_INCLUDE_DIR NAMES lz4.h)
+      if(LZ4_LIBRARY AND LZ4_INCLUDE_DIR)
+        add_library(LZ4::lz4_static INTERFACE IMPORTED)
+        set_target_properties(LZ4::lz4_static PROPERTIES
+          INTERFACE_INCLUDE_DIRECTORIES "${LZ4_INCLUDE_DIR}"
+          INTERFACE_LINK_LIBRARIES "${LZ4_LIBRARY}")
+      endif()
+    endif()
   endif()
 
   # Check if LZ4 targets already exist (e.g., from Arrow)

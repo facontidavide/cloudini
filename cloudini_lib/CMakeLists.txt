@@ -25,17 +25,17 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 find_package(ament_cmake QUIET)
 if(ament_cmake_FOUND)
   message(STATUS "Found ament_cmake")
-  set(CLOUDINI_FORCE_VENDORED_DEPS OFF FORCE)
+  set(CLOUDINI_FORCE_VENDORED_DEPS OFF)
 endif()
 
 include(FetchContent)
 include(cmake/CPM.cmake)
 
 include(cmake/find_or_download_zstd.cmake)
-find_or_download_zstd(CLOUDINI_FORCE_VENDORED_DEPS)
+find_or_download_zstd(${CLOUDINI_FORCE_VENDORED_DEPS})
 
 include(cmake/find_or_download_lz4.cmake)
-find_or_download_lz4(CLOUDINI_FORCE_VENDORED_DEPS)
+find_or_download_lz4(${CLOUDINI_FORCE_VENDORED_DEPS})
 
 include(cmake/find_or_download_mcap.cmake)
 find_or_download_mcap()
