@@ -37,8 +37,6 @@ find_or_download_zstd(${CLOUDINI_FORCE_VENDORED_DEPS})
 include(cmake/find_or_download_lz4.cmake)
 find_or_download_lz4(${CLOUDINI_FORCE_VENDORED_DEPS})
 
-include(cmake/find_or_download_mcap.cmake)
-find_or_download_mcap()
 
 ##################################################################################
 
@@ -174,10 +172,12 @@ else()
   )
 endif(NOT EMSCRIPTEN)
 
-if(CLOUDINI_BUILD_TOOLS)
+if(CLOUDINI_BUILD_TOOLS AND NOT ament_cmake_FOUND)
   if(EMSCRIPTEN)
     message(STATUS "Disabling tools build for Emscripten")
   else()
+    include(cmake/find_or_download_mcap.cmake)
+    find_or_download_mcap()
     add_subdirectory(tools)
   endif()
 endif()
