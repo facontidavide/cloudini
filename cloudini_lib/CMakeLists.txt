@@ -103,10 +103,18 @@ target_include_directories(cloudini_lib
     $<INSTALL_INTERFACE:include>
 )
 
+# In ament/ROS builds cloudini_lib is a shared library. System libzstd.a is not
+# compiled with -fPIC and cannot be embedded in a .so; use the shared variant.
+if(ament_cmake_FOUND AND TARGET zstd::libzstd_shared)
+  set(CLOUDINI_ZSTD_TARGET zstd::libzstd_shared)
+else()
+  set(CLOUDINI_ZSTD_TARGET zstd::libzstd_static)
+endif()
+
 target_link_libraries(cloudini_lib
   PRIVATE
     $<BUILD_INTERFACE:LZ4::lz4_static>
-    $<BUILD_INTERFACE:zstd::libzstd_static>
+    $<BUILD_INTERFACE:${CLOUDINI_ZSTD_TARGET}>
   PUBLIC
     ${PCL_COMMON_LIBRARIES}
     ${PCL_IO_LIBRARIES}
