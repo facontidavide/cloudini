@@ -2,6 +2,59 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* fix(cmake): link libzstd.so in ROS builds instead of non-PIC libzstd.a
+  The IMPORTED_LOCATION set_property hack on STATIC IMPORTED targets is ignored
+  by CMake at link time. The correct fix: explicitly select zstd::libzstd_shared
+  (always PIC) over zstd::libzstd_static (system libzstd.a, not PIC) when
+  building in ament context where cloudini_lib is compiled as a shared library.
+  Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+* fix(cmake): override all IMPORTED_LOCATION variants for system zstd to use shared lib
+  The zstd cmake config sets IMPORTED_LOCATION_RELEASE in addition to
+  IMPORTED_LOCATION; CMake checks config-specific properties first so overriding
+  only IMPORTED_LOCATION was insufficient. Override all four config variants so
+  cloudini_lib.so links against libzstd.so (PIC) instead of libzstd.a (non-PIC).
+  Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+* fix(cmake): fix two more buildfarm failures exposed by FETCHCONTENT_FULLY_DISCONNECTED
+  Jazzy (Noble) - libzstd.a not compiled with -fPIC:
+  System libzstd.a from libzstd-dev cannot be embedded in libcloudini_lib.so
+  (shared library). Redirect zstd::libzstd_static to point to libzstd.so when
+  both static and shared targets are available from the system package.
+  Humble - mcap_vendor types.inl missing:
+  ros-humble-mcap-vendor installs types.hpp that #include "types.inl" but
+  types.inl is absent from the installed headers. The mcap rosbag/cutter tools
+  are standalone utilities, not ROS nodes; skip building them when ament_cmake
+  is found. Move find_or_download_mcap() inside the tools block so mcap is only
+  fetched/linked in standalone builds where CPM downloads work.
+  Also remove mcap_vendor and libcxxopts-dev from package.xml build_depends
+  since neither is needed when tools are not built in ROS context.
+  Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+* fix(cmake): use system LZ4/ZSTD packages in ROS builds instead of CPM
+  Three bugs prevented the find_package fallbacks in find_or_download_zstd/lz4
+  from ever running:
+  1. set(CLOUDINI_FORCE_VENDORED_DEPS OFF FORCE) without CACHE created the
+  value "OFF;FORCE" (truthy) instead of "OFF"
+  2. find_or_download_zstd/lz4 called with the literal string
+  "CLOUDINI_FORCE_VENDORED_DEPS" instead of ${CLOUDINI_FORCE_VENDORED_DEPS},
+  so FORCE_VENDORED was always a truthy non-empty string and if(NOT
+  FORCE_VENDORED) was permanently false
+  3. Ubuntu Jammy liblz4-dev has no cmake config file, so find_package(lz4
+  CONFIG) and find_package(LZ4) both fail; add find_library fallback
+  Together these caused CPM to always attempt GitHub downloads — blocked on the
+  ROS buildfarm and now caught locally by FETCHCONTENT_FULLY_DISCONNECTED=ON.
+  Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+* fix(ci): add FETCHCONTENT_FULLY_DISCONNECTED=ON to match ROS buildfarm behavior
+  Pass -DFETCHCONTENT_FULLY_DISCONNECTED=ON through colcon-defaults in both
+  Jazzy and Humble workflows so CPM/FetchContent download attempts fail in CI
+  before reaching build.ros2.org.
+  Also include the cmake fixes that triggered this investigation:
+  - find_or_download_mcap: prefer system mcap_vendor before CPM download
+  - tools/CMakeLists.txt: prefer system cxxopts before CPM download
+  - package.xml: add libcxxopts-dev build_depend for buildfarm rosdep install
+  Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+* Contributors: Davide Faconti
+
 1.0.1 (2026-03-01)
 ------------------
 * fix(ci): use correct rosdep key libpcl-all-dev for PCL
