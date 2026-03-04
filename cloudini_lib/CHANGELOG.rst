@@ -2,8 +2,8 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+1.0.2 (2026-03-04)
+------------------
 * fix(cmake): link libzstd.so in ROS builds instead of non-PIC libzstd.a
   The IMPORTED_LOCATION set_property hack on STATIC IMPORTED targets is ignored
   by CMake at link time. The correct fix: explicitly select zstd::libzstd_shared
