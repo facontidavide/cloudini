@@ -136,6 +136,13 @@ target_link_libraries(test_plugin_subscriber
   ${pcl_conversions_TARGETS}
 )
 
+# pcl_conversions: older distros (Humble/Jazzy) export INCLUDE_DIRS; newer ones (Kilted/Rolling)
+# export cmake targets only. Use both so it works everywhere.
+target_include_directories(test_plugin_subscriber
+  PRIVATE
+    ${pcl_conversions_INCLUDE_DIRS}
+)
+
 install(TARGETS test_plugin_subscriber
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
