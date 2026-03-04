@@ -1,0 +1,33 @@
+name: ROS2 Rolling
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: rostooling/setup-ros-docker:ubuntu-noble-ros-rolling-ros-base-latest
+    steps:
+      - uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: rolling
+
+      - uses: ros-tooling/action-ros-ci@v0.4
+        with:
+          package-name: |
+            cloudini_lib
+            cloudini_ros
+          target-ros2-distro: rolling
+          colcon-defaults: |
+            {
+              "build": {
+                "merge-install": true,
+                "cmake-args": ["-DFETCHCONTENT_FULLY_DISCONNECTED=ON"]
+              },
+              "test": {"merge-install": true}
+            }

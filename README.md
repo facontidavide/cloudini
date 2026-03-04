@@ -1,6 +1,8 @@
 [![Ubuntu](https://github.com/facontidavide/cloudini/actions/workflows/ubuntu-build.yaml/badge.svg)](https://github.com/facontidavide/cloudini/actions/workflows/ubuntu-build.yaml)
 [![ROS2 Humble](https://github.com/facontidavide/cloudini/actions/workflows/ros-humble.yaml/badge.svg)](https://github.com/facontidavide/cloudini/actions/workflows/ros-humble.yaml)
 [![ROS2 Jazzy](https://github.com/facontidavide/cloudini/actions/workflows/ros-jazzy.yaml/badge.svg)](https://github.com/facontidavide/cloudini/actions/workflows/ros-jazzy.yaml)
+[![ROS2 Kilted](https://github.com/facontidavide/cloudini/actions/workflows/ros-kilted.yaml/badge.svg)](https://github.com/facontidavide/cloudini/actions/workflows/ros-kilted.yaml)
+[![ROS2 Rolling](https://github.com/facontidavide/cloudini/actions/workflows/ros-rolling.yaml/badge.svg)](https://github.com/facontidavide/cloudini/actions/workflows/ros-rolling.yaml)
 
 ![Cloudini](logo.png)
 
@@ -146,7 +148,7 @@ Considering that LiDARs accuracy is usually in the order of **+/- 1 cm** and tha
 The latter could achieve excellent compression ratios, but it is very sloooow and it doesn't preserve the original order
 of the points in the point cloud.
 
-Compared with the Draco sequential mode, Cloudini achieves approximately the same compression, but is considerably faster 
+Compared with the Draco sequential mode, Cloudini achieves approximately the same compression, but is considerably faster
 (about 3-4 times faster encoding).
 
 ### Does the decoder need to know the parameters used while encoding?
