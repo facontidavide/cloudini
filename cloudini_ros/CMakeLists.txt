@@ -133,11 +133,7 @@ target_link_libraries(test_plugin_subscriber
   ${PCL_COMMON_LIBRARIES}
   ${point_cloud_interfaces_TARGETS}
   point_cloud_transport::point_cloud_transport
-)
-
-target_include_directories(test_plugin_subscriber
-  PRIVATE
-    ${pcl_conversions_INCLUDE_DIRS}
+  ${pcl_conversions_TARGETS}
 )
 
 install(TARGETS test_plugin_subscriber
