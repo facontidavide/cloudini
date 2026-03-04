@@ -17,7 +17,6 @@ find_package(pcl_conversions REQUIRED)
 
 set(PLUGIN_DEPS
   pluginlib::pluginlib
-  rosbag2_cpp::rosbag2_cpp
   point_cloud_transport::point_cloud_transport
   rclcpp::rclcpp
   cloudini_lib::cloudini_lib
@@ -98,6 +97,7 @@ add_executable(rosbag_benchmark
 
 target_link_libraries(rosbag_benchmark
   cloudini_ros
+  rosbag2_cpp::rosbag2_cpp
 )
 
 if(Draco_FOUND)
@@ -210,7 +210,6 @@ pluginlib_export_plugin_description_file(point_cloud_transport cloudini_plugins.
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 ament_export_dependencies(
   pluginlib
-  rosbag2_cpp
   point_cloud_transport
   rclcpp
   rclcpp_components
