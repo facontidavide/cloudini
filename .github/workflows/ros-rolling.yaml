@@ -21,6 +21,17 @@ jobs:
         with:
           required-ros-distributions: rolling
 
+      # Rolling is a rolling release - the Docker base image can have older packages
+      # than the newly installed ones (e.g. point_cloud_transport built vs installed rclcpp).
+      # Upgrade core ROS packages to ensure ABI consistency.
+      - name: Upgrade core ROS Rolling packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --only-upgrade \
+            ros-rolling-rclcpp \
+            ros-rolling-rclcpp-components \
+            ros-rolling-ament-index-cpp
+
       - uses: ros-tooling/action-ros-ci@v0.4
         with:
           package-name: |
