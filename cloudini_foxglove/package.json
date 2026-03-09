@@ -33,6 +33,6 @@
   },
   "dependencies": {
     "@foxglove/schemas": "^1.10.2",
-    "css-loader": "^7.1.2"
+    "css-loader": "^7.1.4"
   }
 }
