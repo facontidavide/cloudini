@@ -2,6 +2,9 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+
 1.0.2 (2026-03-04)
 ------------------
 * fix(cmake): link libzstd.so in ROS builds instead of non-PIC libzstd.a

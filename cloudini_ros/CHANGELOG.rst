@@ -2,6 +2,17 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* fix(ros): use ament_target_dependencies for pcl_conversions
+  pcl_conversions 2.8.0 on Kilted switched from
+  ament_export_include_directories to ament_export_targets, making
+  ${pcl_conversions_INCLUDE_DIRS} empty and breaking the buildfarm.
+  Use ament_target_dependencies which handles both old-style
+  (INCLUDE_DIRS) and new-style (TARGETS) exports idiomatically.
+  Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+* Contributors: Davide Faconti
+
 1.0.2 (2026-03-04)
 ------------------
 
