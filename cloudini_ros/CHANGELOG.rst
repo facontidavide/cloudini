@@ -2,8 +2,8 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+1.0.4 (2026-04-06)
+------------------
 * fix(ros): use ament_target_dependencies for pcl_conversions
   pcl_conversions 2.8.0 on Kilted switched from
   ament_export_include_directories to ament_export_targets, making
