@@ -21,6 +21,15 @@ jobs:
         with:
           required-ros-distributions: kilted
 
+      # The Docker image can ship stale packages. Upgrade ALL installed
+      # ros-kilted-* packages atomically to match the buildfarm and catch
+      # breakages from upstream dependency changes (e.g. pcl_conversions
+      # switching cmake export style).
+      - name: Upgrade all ROS Kilted packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --only-upgrade $(dpkg -l 'ros-kilted-*' | awk '/^ii/{print $2}' | tr '\n' ' ')
+
       - uses: ros-tooling/action-ros-ci@v0.4
         with:
           package-name: |
