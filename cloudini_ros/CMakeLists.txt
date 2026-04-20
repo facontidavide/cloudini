@@ -135,7 +135,14 @@ target_link_libraries(test_plugin_subscriber
   point_cloud_transport::point_cloud_transport
 )
 
-ament_target_dependencies(test_plugin_subscriber pcl_conversions)
+# pcl_conversions exports:
+#   - old style (Humble/Jazzy): ament_export_include_directories -> sets _INCLUDE_DIRS
+#   - new style (Kilted+): ament_export_targets -> sets _TARGETS
+# ament_target_dependencies handled both but was removed in Rolling. Apply both
+# the modern _TARGETS link AND the legacy _INCLUDE_DIRS include. Each is a no-op
+# when undefined, so a single recipe works across Humble, Jazzy, Kilted, Rolling.
+target_link_libraries(test_plugin_subscriber ${pcl_conversions_TARGETS})
+target_include_directories(test_plugin_subscriber PRIVATE ${pcl_conversions_INCLUDE_DIRS})
 
 install(TARGETS test_plugin_subscriber
   ARCHIVE DESTINATION lib

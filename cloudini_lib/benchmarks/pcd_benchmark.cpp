@@ -121,6 +121,44 @@ static void PCD_Encode_Lossles_LZ4(benchmark::State& state) {
   PCD_Encode_Impl(state, cloud, info);
 }
 
+static void PCD_Decode_Lossles_ZST(benchmark::State& state) {
+  const auto cloud = loadCloud();
+  auto info = defaultEncodingInfo(cloud);
+  info.encoding_opt = Cloudini::EncodingOptions::LOSSLESS;
+  info.compression_opt = Cloudini::CompressionOption::ZSTD;
+  PCD_Decode_Impl(state, cloud, info);
+}
+
+static void PCD_Decode_Lossles_LZ4(benchmark::State& state) {
+  const auto cloud = loadCloud();
+  auto info = defaultEncodingInfo(cloud);
+  info.encoding_opt = Cloudini::EncodingOptions::LOSSLESS;
+  info.compression_opt = Cloudini::CompressionOption::LZ4;
+  PCD_Decode_Impl(state, cloud, info);
+}
+
+// v3 XOR baseline: force info.version = 3 so the encoder picks FieldEncoderFloat_XOR
+// (raw 4 bytes per float) instead of the v4 Gorilla bit-packed variant. Not a full
+// round-trip (the header's magic still advertises v4), just a stage-1+2 compression
+// measurement for comparison.
+static void PCD_Encode_LosslesXOR_v3_ZST(benchmark::State& state) {
+  const auto cloud = loadCloud();
+  auto info = defaultEncodingInfo(cloud);
+  info.encoding_opt = Cloudini::EncodingOptions::LOSSLESS;
+  info.compression_opt = Cloudini::CompressionOption::ZSTD;
+  info.version = 3;
+  PCD_Encode_Impl(state, cloud, info);
+}
+
+static void PCD_Encode_LosslesXOR_v3_LZ4(benchmark::State& state) {
+  const auto cloud = loadCloud();
+  auto info = defaultEncodingInfo(cloud);
+  info.encoding_opt = Cloudini::EncodingOptions::LOSSLESS;
+  info.compression_opt = Cloudini::CompressionOption::LZ4;
+  info.version = 3;
+  PCD_Encode_Impl(state, cloud, info);
+}
+
 //------------------------------------------------------------------------------------------
 static void PCD_Encode_Lossy_LZ4(benchmark::State& state) {
   const auto cloud = loadCloud();
@@ -219,6 +257,10 @@ static void PCD_Encode_Draco(benchmark::State& state) {
 
 BENCHMARK(PCD_Encode_Lossy_ZST);
 BENCHMARK(PCD_Encode_Lossy_LZ4);
+BENCHMARK(PCD_Encode_Lossles_ZST);
+BENCHMARK(PCD_Encode_Lossles_LZ4);
+BENCHMARK(PCD_Encode_LosslesXOR_v3_ZST);
+BENCHMARK(PCD_Encode_LosslesXOR_v3_LZ4);
 BENCHMARK(PCD_Encode_ZSTD_only);
 BENCHMARK(PCD_Encode_LZ4_only);
 
@@ -228,6 +270,8 @@ BENCHMARK(PCD_Encode_Draco);
 
 BENCHMARK(PCD_Decode_Lossy_ZST);
 BENCHMARK(PCD_Decode_Lossy_LZ4);
+BENCHMARK(PCD_Decode_Lossles_ZST);
+BENCHMARK(PCD_Decode_Lossles_LZ4);
 BENCHMARK(PCD_Decode_ZSTD_only);
 BENCHMARK(PCD_Decode_LZ4_only);
 

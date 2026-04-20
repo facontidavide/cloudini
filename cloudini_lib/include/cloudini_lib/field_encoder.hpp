@@ -139,6 +139,179 @@ class FieldEncoderFloat_XOR : public FieldEncoder {
 };
 
 //------------------------------------------------------------------------------------------
+// Gorilla/Chimp-style bit-packed XOR for lossless float compression.
+// Encoding (per value after the first):
+//   - If XOR(curr, prev) == 0: emit 1 bit '0'.
+//   - Else emit '1'; if the non-zero window (leading_zeros, trailing_zeros) fits
+//     INSIDE the previously-emitted window (curr_leading >= prev_leading AND
+//     curr_trailing >= prev_trailing), emit '0' + meaningful bits (prev window size).
+//     Otherwise emit '1' + leading_zeros(5b) + meaningful_bit_count-1 (6b) + meaningful bits.
+// The first value is emitted raw (32 or 64 bits).
+//
+// IMPORTANT: to make the encoder composable with other byte-oriented encoders in the same
+// per-point loop (each field encoder writes to a shared output buffer), encode() flushes
+// its internal bit buffer to a byte boundary at the END of each call. This costs up to 7
+// padding bits per call but keeps each point's output contiguous per encoder.
+// flush() is retained for API symmetry but is a no-op for this class.
+template <typename FloatType>
+class FieldEncoderFloat_Gorilla : public FieldEncoder {
+ public:
+  FieldEncoderFloat_Gorilla(size_t field_offset) : offset_(field_offset) {
+    static_assert(std::is_floating_point<FloatType>::value, "FieldEncoderFloat_Gorilla requires a floating point type");
+  }
+
+  size_t encode(const ConstBufferView& point_view, BufferView& output) override;
+
+  // Flush partial bits to the next byte boundary. Returns number of bytes written.
+  size_t flush(BufferView& output) override;
+
+  void reset() override {
+    prev_bits_ = 0;
+    prev_leading_ = kLeadingSentinel;
+    prev_trailing_ = 0;
+    bit_buf_ = 0;
+    bit_count_ = 0;
+    first_ = true;
+  }
+
+ private:
+  using IntType = std::conditional_t<std::is_same<FloatType, float>::value, uint32_t, uint64_t>;
+  static constexpr size_t kTypeBits = sizeof(IntType) * 8;
+  static constexpr uint8_t kLeadingSentinel = 255;  // impossible-leading marker
+
+  // Writes `nbits` low bits of `bits` into the internal bit buffer, draining full bytes to `output`.
+  // Returns number of bytes written to `output`.
+  inline size_t putBits(uint64_t bits, uint8_t nbits, BufferView& output);
+
+  size_t offset_;
+  IntType prev_bits_ = 0;
+  uint8_t prev_leading_ = kLeadingSentinel;
+  uint8_t prev_trailing_ = 0;
+
+  // Internal bit accumulator: low-order bits are the earliest emitted.
+  // `bit_count_` is the number of valid bits currently held.
+  uint64_t bit_buf_ = 0;
+  uint8_t bit_count_ = 0;
+
+  bool first_ = true;
+};
+
+template <typename FloatType>
+inline size_t FieldEncoderFloat_Gorilla<FloatType>::putBits(uint64_t bits, uint8_t nbits, BufferView& output) {
+  // Mask to avoid polluting upper bits (for nbits < 64).
+  if (nbits < 64) {
+    bits &= (uint64_t{1} << nbits) - 1;
+  }
+  size_t bytes_written = 0;
+
+  // If inserting `nbits` at position `bit_count_` would overflow the 64-bit accumulator,
+  // split into two halves: emit the low `space = 64 - bit_count_` bits first, drain bytes,
+  // then emit the remaining high bits.
+  uint8_t space = static_cast<uint8_t>(64 - bit_count_);
+  if (nbits > space) {
+    // Low `space` bits first.
+    const uint64_t low_mask = (space == 64) ? ~uint64_t{0} : ((uint64_t{1} << space) - 1);
+    const uint64_t low_bits = bits & low_mask;
+    bit_buf_ |= (low_bits << bit_count_);
+    bit_count_ += space;
+    // Drain full bytes (bit_count_ is now 64).
+    while (bit_count_ >= 8) {
+      output.data()[0] = static_cast<uint8_t>(bit_buf_ & 0xFF);
+      output.trim_front(1);
+      bit_buf_ >>= 8;
+      bit_count_ -= 8;
+      ++bytes_written;
+    }
+    // Remaining high bits.
+    const uint8_t remaining = static_cast<uint8_t>(nbits - space);
+    const uint64_t high_bits = bits >> space;
+    bit_buf_ |= (high_bits << bit_count_);
+    bit_count_ += remaining;
+  } else {
+    bit_buf_ |= (bits << bit_count_);
+    bit_count_ += nbits;
+  }
+
+  while (bit_count_ >= 8) {
+    output.data()[0] = static_cast<uint8_t>(bit_buf_ & 0xFF);
+    output.trim_front(1);
+    bit_buf_ >>= 8;
+    bit_count_ -= 8;
+    ++bytes_written;
+  }
+  return bytes_written;
+}
+
+template <typename FloatType>
+inline size_t FieldEncoderFloat_Gorilla<FloatType>::encode(const ConstBufferView& point_view, BufferView& output) {
+  IntType current_val_uint;
+  memcpy(&current_val_uint, point_view.data() + offset_, sizeof(IntType));
+
+  size_t bytes_written = 0;
+
+  if (first_) {
+    // Emit the first value raw, 32 or 64 bits.
+    first_ = false;
+    prev_bits_ = current_val_uint;
+    bytes_written += putBits(static_cast<uint64_t>(current_val_uint), static_cast<uint8_t>(kTypeBits), output);
+  } else {
+    const IntType xor_val = current_val_uint ^ prev_bits_;
+    prev_bits_ = current_val_uint;
+
+    if (xor_val == 0) {
+      // Same value: single '0' bit.
+      bytes_written += putBits(0, 1, output);
+    } else {
+      // Non-zero XOR: emit '1' first.
+      bytes_written += putBits(1, 1, output);
+      const uint8_t leading = static_cast<uint8_t>(std::countl_zero(static_cast<IntType>(xor_val)));
+      const uint8_t trailing = static_cast<uint8_t>(std::countr_zero(static_cast<IntType>(xor_val)));
+
+      if (prev_leading_ != kLeadingSentinel && leading >= prev_leading_ && trailing >= prev_trailing_) {
+        // Fits inside previous window.
+        bytes_written += putBits(0, 1, output);
+        const uint8_t meaningful = static_cast<uint8_t>(kTypeBits - prev_leading_ - prev_trailing_);
+        const uint64_t bits = static_cast<uint64_t>(xor_val >> prev_trailing_);
+        bytes_written += putBits(bits, meaningful, output);
+      } else {
+        // New window.
+        bytes_written += putBits(1, 1, output);
+        uint8_t stored_leading = leading;
+        if (stored_leading > 31) {
+          stored_leading = 31;
+        }
+        const uint8_t meaningful = static_cast<uint8_t>(kTypeBits - stored_leading - trailing);
+        bytes_written += putBits(static_cast<uint64_t>(stored_leading), 5, output);
+        bytes_written += putBits(static_cast<uint64_t>(meaningful - 1), 6, output);
+        const uint64_t bits = static_cast<uint64_t>(xor_val >> trailing);
+        bytes_written += putBits(bits, meaningful, output);
+        prev_leading_ = stored_leading;
+        prev_trailing_ = trailing;
+      }
+    }
+  }
+
+  // Byte-align: flush any partial byte to the output so each encode() call produces a
+  // contiguous byte stream. This is what lets the encoder compose with other byte-oriented
+  // encoders in the shared per-point output buffer.
+  if (bit_count_ > 0) {
+    output.data()[0] = static_cast<uint8_t>(bit_buf_ & 0xFF);
+    output.trim_front(1);
+    bit_buf_ = 0;
+    bit_count_ = 0;
+    ++bytes_written;
+  }
+
+  return bytes_written;
+}
+
+template <typename FloatType>
+inline size_t FieldEncoderFloat_Gorilla<FloatType>::flush(BufferView& /*output*/) {
+  // Per-call byte-alignment in encode() leaves nothing to flush at chunk boundaries.
+  return 0;
+}
+
+//------------------------------------------------------------------------------------------
 // Specialization for points XYZ and XYZI
 class FieldEncoderFloatN_Lossy : public FieldEncoder {
  public:
