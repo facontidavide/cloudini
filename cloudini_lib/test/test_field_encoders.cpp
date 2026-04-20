@@ -434,3 +434,75 @@ TEST(FieldEncoders, PointcloudLossless_Gorilla_MultiChunk) {
 //     }
 //   }
 // }
+
+// Regression guard for the Gorilla narrowing: when info.version = 3, a FLOAT64
+// lossless field MUST go through FieldEncoderFloat_XOR (raw 8 bytes per value),
+// not Gorilla. A v4 encode of the same data uses Gorilla and produces a
+// different byte stream. This locks the dispatch narrowing in place.
+TEST(FieldEncoders, Gorilla_DoesNotActivateForV3) {
+  using namespace Cloudini;
+
+  const size_t n = 1024;
+  std::vector<double> input(n);
+  // Monotonic-ish timestamps: Gorilla's best case (huge trailing-zero runs in XOR).
+  // If Gorilla were wrongly activated on v3, the v3 output would be much
+  // smaller than raw XOR bytes and would MATCH the v4 output.
+  for (size_t i = 0; i < n; ++i) {
+    input[i] = 1700000000.0 + 1e-6 * static_cast<double>(i);
+  }
+
+  auto make_info = [n](uint8_t version) {
+    EncodingInfo info;
+    info.version = version;
+    info.width = static_cast<uint32_t>(n);
+    info.height = 1;
+    info.point_step = sizeof(double);
+    info.encoding_opt = EncodingOptions::LOSSLESS;
+    info.compression_opt = CompressionOption::NONE;  // inspect raw stage-1 bytes
+    info.use_threads = false;
+    info.fields.push_back({"v", 0, FieldType::FLOAT64, std::nullopt});
+    return info;
+  };
+
+  std::vector<uint8_t> out_v3, out_v4;
+  {
+    auto info3 = make_info(3);
+    PointcloudEncoder enc3(info3);
+    ConstBufferView in(reinterpret_cast<const uint8_t*>(input.data()), input.size() * sizeof(double));
+    enc3.encode(in, out_v3);
+  }
+  {
+    auto info4 = make_info(4);
+    PointcloudEncoder enc4(info4);
+    ConstBufferView in(reinterpret_cast<const uint8_t*>(input.data()), input.size() * sizeof(double));
+    enc4.encode(in, out_v4);
+  }
+
+  // v3 magic must start with CLOUDINI_V03; v4 with CLOUDINI_V04.
+  ASSERT_GE(out_v3.size(), 12u);
+  ASSERT_GE(out_v4.size(), 12u);
+  EXPECT_EQ(std::string(reinterpret_cast<const char*>(out_v3.data()), 12), "CLOUDINI_V03");
+  EXPECT_EQ(std::string(reinterpret_cast<const char*>(out_v4.data()), 12), "CLOUDINI_V04");
+
+  // The byte streams must differ: v3 uses raw 8-byte XOR residuals, v4 uses
+  // bit-packed Gorilla. For monotonic timestamps Gorilla is substantially
+  // smaller than XOR — so out_v4.size() must be STRICTLY less than out_v3.size().
+  EXPECT_LT(out_v4.size(), out_v3.size())
+      << "Gorilla (v4) should compress monotonic FLOAT64 better than plain XOR (v3).";
+
+  // Both must still round-trip bit-exactly.
+  for (auto& blob : {std::cref(out_v3), std::cref(out_v4)}) {
+    ConstBufferView view(blob.get().data(), blob.get().size());
+    auto info_dec = DecodeHeader(view);
+    std::vector<double> output(n, 0.0);
+    PointcloudDecoder dec;
+    BufferView out_view(reinterpret_cast<uint8_t*>(output.data()), output.size() * sizeof(double));
+    dec.decode(info_dec, view, out_view);
+    for (size_t i = 0; i < n; ++i) {
+      uint64_t a, b;
+      std::memcpy(&a, &input[i], sizeof(double));
+      std::memcpy(&b, &output[i], sizeof(double));
+      ASSERT_EQ(a, b) << "Bit mismatch at " << i << " (version " << static_cast<int>(info_dec.version) << ")";
+    }
+  }
+}

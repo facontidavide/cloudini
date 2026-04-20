@@ -316,12 +316,14 @@ size_t MaxCompressedSize(const EncodingInfo& info, size_t points_count, bool inc
 void EncodeHeader(const EncodingInfo& header, std::vector<uint8_t>& output, HeaderEncoding encoding) {
   output.clear();
 
-  auto write_magic = [](BufferView& output_buffer) {
+  auto write_magic = [&header](BufferView& output_buffer) {
     memcpy(output_buffer.data(), kMagicHeader, kMagicHeaderLength);
     output_buffer.trim_front(kMagicHeaderLength);
-    // version as two ASCII digits
-    encode<char>('0' + (kEncodingVersion / 10), output_buffer);
-    encode<char>('0' + (kEncodingVersion % 10), output_buffer);
+    // version as two ASCII digits. Respects header.version so callers can request
+    // an older wire format (e.g. v3) for backward compatibility with old readers.
+    const uint8_t v = header.version;
+    encode<char>('0' + (v / 10), output_buffer);
+    encode<char>('0' + (v % 10), output_buffer);
   };
 
   if (encoding == HeaderEncoding::YAML) {
@@ -406,7 +408,11 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
     }
     yaml_str = yaml_str.substr(0, null_pos);
     input.trim_front(null_pos + 1);  // consume header + null terminator
-    return EncodingInfoFromYAML(yaml_str);
+    EncodingInfo yaml_header = EncodingInfoFromYAML(yaml_str);
+    // The magic-header version is authoritative. YAML's parseScalar<uint8_t> reads a
+    // single character (e.g. "3" -> 51), so the YAML-parsed info.version is unreliable.
+    yaml_header.version = version;
+    return yaml_header;
   }
 
   // Binary encoded header
@@ -490,11 +496,7 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
         if (info_.encoding_opt == EncodingOptions::LOSSY && field.resolution.has_value()) {
           encoders_.push_back(std::make_unique<FieldEncoderFloat_Lossy<float>>(offset, *field.resolution));
         } else if (info_.encoding_opt == EncodingOptions::LOSSLESS) {
-          if (info_.version >= 4) {
-            encoders_.push_back(std::make_unique<FieldEncoderFloat_Gorilla<float>>(offset));
-          } else {
-            encoders_.push_back(std::make_unique<FieldEncoderFloat_XOR<float>>(offset));
-          }
+          encoders_.push_back(std::make_unique<FieldEncoderFloat_XOR<float>>(offset));
         } else {
           encoders_.push_back(std::make_unique<FieldEncoderCopy>(offset, field.type));
         }
@@ -503,7 +505,9 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
       case FieldType::FLOAT64: {
         if (info_.encoding_opt == EncodingOptions::LOSSY && field.resolution.has_value()) {
           encoders_.push_back(std::make_unique<FieldEncoderFloat_Lossy<double>>(offset, *field.resolution));
-        } else if (info_.version >= 4) {
+        } else if (!field.resolution.has_value() && info_.version >= 4) {
+          // FLOAT64 without a resolution is treated as lossless (even when encoding_opt == LOSSY).
+          // On v4, use Gorilla bit-packing; on v3 and earlier, use raw XOR.
           encoders_.push_back(std::make_unique<FieldEncoderFloat_Gorilla<double>>(offset));
         } else {
           encoders_.push_back(std::make_unique<FieldEncoderFloat_XOR<double>>(offset));
@@ -799,11 +803,7 @@ void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
         if (info.encoding_opt == EncodingOptions::LOSSY && field.resolution) {
           return std::make_unique<FieldDecoderFloat_Lossy<float>>(offset, *field.resolution);
         } else if (info.encoding_opt == EncodingOptions::LOSSLESS) {
-          if (info.version >= 4) {
-            return std::make_unique<FieldDecoderFloat_Gorilla<float>>(offset);
-          } else {
-            return std::make_unique<FieldDecoderFloat_XOR<float>>(offset);
-          }
+          return std::make_unique<FieldDecoderFloat_XOR<float>>(offset);
         } else if (field.resolution) {
           // Legacy compatibility: if resolution is set but encoding_opt is not LOSSY.
           return std::make_unique<FieldDecoderFloat_Lossy<float>>(offset, *field.resolution);
@@ -816,7 +816,8 @@ void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
           return std::make_unique<FieldDecoderFloat_Lossy<double>>(offset, *field.resolution);
         } else if (field.resolution && info.encoding_opt != EncodingOptions::LOSSLESS) {
           return std::make_unique<FieldDecoderFloat_Lossy<double>>(offset, *field.resolution);
-        } else if (info.version >= 4) {
+        } else if (!field.resolution && info.version >= 4) {
+          // FLOAT64 without a resolution is treated as lossless regardless of encoding_opt.
           return std::make_unique<FieldDecoderFloat_Gorilla<double>>(offset);
         } else {
           return std::make_unique<FieldDecoderFloat_XOR<double>>(offset);
