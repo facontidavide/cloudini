@@ -247,12 +247,15 @@ size_t MaxSerializedFieldSize(const PointField& field, EncodingOptions encoding_
       if (encoding_opt == EncodingOptions::LOSSY && field.resolution.has_value()) {
         return 10;  // quantized int64 delta as varint
       }
-      return sizeof(float);
+      // Gorilla worst-case bits: 1 (flag) + 1 (control) + 5 (leading) + 6 (length) + 32 (bits) = 45 bits.
+      // With byte-alignment slop from other fields + final flush, 7 bytes is a safe upper bound per value.
+      return 7;
     case FieldType::FLOAT64:
       if (encoding_opt == EncodingOptions::LOSSY && field.resolution.has_value()) {
         return 10;  // quantized int64 delta as varint
       }
-      return sizeof(double);  // XOR residual
+      // Gorilla worst-case bits: 1 + 1 + 5 + 6 + 64 = 77 bits → 10 bytes.
+      return 11;  // XOR residual or Gorilla bit-pack, rounded up
     case FieldType::INT8:
     case FieldType::UINT8:
       return 1;
@@ -389,6 +392,8 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
         "Unsupported encoding version. Current is:" + std::to_string(kEncodingVersion) +
         ", got: " + std::to_string(version));
   }
+  // Note: version 4 adds Gorilla bit-packing for lossless FLOAT32/FLOAT64 XOR residuals.
+  // Versions 2 and 3 keep the raw-XOR path (8 bytes per double, 4 bytes per float).
 
   // check if encoded as YAML (starts with newline after version, then non-brace character)
   if (input.size() >= 2 && input.data()[0] == '\n' && input.data()[1] != '{') {
@@ -484,6 +489,12 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
       case FieldType::FLOAT32: {
         if (info_.encoding_opt == EncodingOptions::LOSSY && field.resolution.has_value()) {
           encoders_.push_back(std::make_unique<FieldEncoderFloat_Lossy<float>>(offset, *field.resolution));
+        } else if (info_.encoding_opt == EncodingOptions::LOSSLESS) {
+          if (info_.version >= 4) {
+            encoders_.push_back(std::make_unique<FieldEncoderFloat_Gorilla<float>>(offset));
+          } else {
+            encoders_.push_back(std::make_unique<FieldEncoderFloat_XOR<float>>(offset));
+          }
         } else {
           encoders_.push_back(std::make_unique<FieldEncoderCopy>(offset, field.type));
         }
@@ -492,6 +503,8 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
       case FieldType::FLOAT64: {
         if (info_.encoding_opt == EncodingOptions::LOSSY && field.resolution.has_value()) {
           encoders_.push_back(std::make_unique<FieldEncoderFloat_Lossy<double>>(offset, *field.resolution));
+        } else if (info_.version >= 4) {
+          encoders_.push_back(std::make_unique<FieldEncoderFloat_Gorilla<double>>(offset));
         } else {
           encoders_.push_back(std::make_unique<FieldEncoderFloat_XOR<double>>(offset));
         }
@@ -690,7 +703,10 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
     compressed_size_ += header_.size();
     output_view_.trim_front(header_.size());
   }
-  const size_t kChunkSize = POINTS_PER_CHUNK * info_.point_step;
+  // Stage-1 output per point can exceed point_step in lossless mode (e.g. Gorilla may emit
+  // up to 7 bytes for a FLOAT32, or 11 for a FLOAT64). Size the staging buffer accordingly.
+  const size_t max_per_point = MaxSerializedPointSize(info_);
+  const size_t kChunkSize = POINTS_PER_CHUNK * std::max<size_t>(info_.point_step, max_per_point);
 
   buffer_.resize(kChunkSize);
   BufferView buffer_view(buffer_);
@@ -706,6 +722,10 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
     points_in_current_chunk++;
     // end of chunk ?
     if (points_in_current_chunk >= POINTS_PER_CHUNK || cloud_data.empty()) {
+      // flush any per-encoder buffered bits/bytes (e.g. Gorilla bit-packer) before stage 2
+      for (auto& encoder : encoders_) {
+        serialized_size += encoder->flush(buffer_view);
+      }
       // simple case: no compression. Execute in the same thread
       if (info_.compression_opt == CompressionOption::NONE) {
         Cloudini::encode(static_cast<uint32_t>(serialized_size), output_view_);
@@ -772,19 +792,32 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
 //------------------------------------------------------------------------------------------
 
 void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
-  auto create_decoder = [](const PointField& field) -> std::unique_ptr<FieldDecoder> {
+  auto create_decoder = [&info](const PointField& field) -> std::unique_ptr<FieldDecoder> {
     const auto offset = field.offset;
     switch (field.type) {
       case FieldType::FLOAT32:
-        if (field.resolution) {
+        if (info.encoding_opt == EncodingOptions::LOSSY && field.resolution) {
+          return std::make_unique<FieldDecoderFloat_Lossy<float>>(offset, *field.resolution);
+        } else if (info.encoding_opt == EncodingOptions::LOSSLESS) {
+          if (info.version >= 4) {
+            return std::make_unique<FieldDecoderFloat_Gorilla<float>>(offset);
+          } else {
+            return std::make_unique<FieldDecoderFloat_XOR<float>>(offset);
+          }
+        } else if (field.resolution) {
+          // Legacy compatibility: if resolution is set but encoding_opt is not LOSSY.
           return std::make_unique<FieldDecoderFloat_Lossy<float>>(offset, *field.resolution);
         } else {
           return std::make_unique<FieldDecoderCopy>(field.offset, field.type);
         }
         break;
       case FieldType::FLOAT64:
-        if (field.resolution) {
+        if (info.encoding_opt == EncodingOptions::LOSSY && field.resolution) {
           return std::make_unique<FieldDecoderFloat_Lossy<double>>(offset, *field.resolution);
+        } else if (field.resolution && info.encoding_opt != EncodingOptions::LOSSLESS) {
+          return std::make_unique<FieldDecoderFloat_Lossy<double>>(offset, *field.resolution);
+        } else if (info.version >= 4) {
+          return std::make_unique<FieldDecoderFloat_Gorilla<double>>(offset);
         } else {
           return std::make_unique<FieldDecoderFloat_XOR<double>>(offset);
         }
@@ -865,6 +898,8 @@ void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compres
   }
 
   if (info.version >= 3) {
+    const size_t kChunkPoints = 32 * 1024;  // must match PointcloudEncoder::POINTS_PER_CHUNK
+    size_t points_remaining = static_cast<size_t>(info.width) * static_cast<size_t>(info.height);
     while (!compressed_data.empty()) {
       uint32_t chunk_size = 0;
       Cloudini::decode(compressed_data, chunk_size);
@@ -872,15 +907,18 @@ void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compres
         throw std::runtime_error("Invalid chunk size found while decoding");
       }
       ConstBufferView chunk_view(compressed_data.data(), chunk_size);
-      decodeChunk(info, chunk_view, output);
+      const size_t points_in_chunk = std::min(points_remaining, kChunkPoints);
+      decodeChunk(info, chunk_view, output, points_in_chunk);
       compressed_data.trim_front(chunk_size);
+      points_remaining -= points_in_chunk;
     }
   } else {
-    decodeChunk(info, compressed_data, output);
+    decodeChunk(info, compressed_data, output, /*expected_points=*/0);
   }
 }
 
-void PointcloudDecoder::decodeChunk(const EncodingInfo& info, ConstBufferView chunk_data, BufferView& output_buffer) {
+void PointcloudDecoder::decodeChunk(
+    const EncodingInfo& info, ConstBufferView chunk_data, BufferView& output_buffer, size_t expected_points) {
   // allocate sufficient space in the buffer
   decompressed_buffer_.resize(info.width * info.height * info.point_step);
 
@@ -920,18 +958,35 @@ void PointcloudDecoder::decodeChunk(const EncodingInfo& info, ConstBufferView ch
     decoder->reset();
   }
 
-  while (encoded_view.size() > 0) {
-    if (encoded_view.size() < min_encoded_point_bytes_) {
-      throw std::runtime_error("Truncated encoded data: not enough bytes for a complete point");
+  if (expected_points > 0) {
+    // Chunked (v3+) path: decode exactly `expected_points` points. Byte-based termination
+    // cannot be used because some field decoders (e.g. Gorilla bit-packing) consume bytes
+    // non-uniformly across points.
+    for (size_t p = 0; p < expected_points; ++p) {
+      if (output_buffer.size() < info.point_step) {
+        throw std::runtime_error("Output buffer is too small to hold the decoded data");
+      }
+      BufferView point_view(output_buffer.data(), info.point_step);
+      for (auto& decoder : decoders_) {
+        decoder->decode(encoded_view, point_view);
+      }
+      output_buffer.trim_front(info.point_step);
     }
-    if (output_buffer.size() < info.point_step) {
-      throw std::runtime_error("Output buffer is too small to hold the decoded data");
+  } else {
+    // Legacy (v2) path: terminate when input bytes are exhausted.
+    while (encoded_view.size() > 0) {
+      if (encoded_view.size() < min_encoded_point_bytes_) {
+        throw std::runtime_error("Truncated encoded data: not enough bytes for a complete point");
+      }
+      if (output_buffer.size() < info.point_step) {
+        throw std::runtime_error("Output buffer is too small to hold the decoded data");
+      }
+      BufferView point_view(output_buffer.data(), info.point_step);
+      for (auto& decoder : decoders_) {
+        decoder->decode(encoded_view, point_view);
+      }
+      output_buffer.trim_front(info.point_step);
     }
-    BufferView point_view(output_buffer.data(), info.point_step);
-    for (auto& decoder : decoders_) {
-      decoder->decode(encoded_view, point_view);
-    }
-    output_buffer.trim_front(info.point_step);
   }
 }
 

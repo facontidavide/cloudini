@@ -60,7 +60,7 @@ EncodingOptions EncodingOptionsFromString(std::string_view str);
 CompressionOption CompressionOptionFromString(std::string_view str);
 FieldType FieldTypeFromString(std::string_view str);
 
-constexpr const uint8_t kEncodingVersion = 3;
+constexpr const uint8_t kEncodingVersion = 4;
 
 struct EncodingInfo {
   // Fields in the point cloud
@@ -234,7 +234,8 @@ class PointcloudDecoder {
  private:
   void updateDecoders(const EncodingInfo& info);
 
-  void decodeChunk(const EncodingInfo& info, ConstBufferView compressed_data, BufferView& output);
+  void decodeChunk(
+      const EncodingInfo& info, ConstBufferView compressed_data, BufferView& output, size_t expected_points);
 
   std::vector<std::unique_ptr<FieldDecoder>> decoders_;
   std::vector<uint8_t> decompressed_buffer_;
