@@ -1,3 +1,5 @@
 dist/
 node_modules/
 *.foxe
+src/cloudini_wasm.wasm
+src/cloudini_wasm_single.js
