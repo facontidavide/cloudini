@@ -2,6 +2,11 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* feat(gorilla): Gorilla bit-packed XOR for FLOAT64 lossless (backward compatible) (`#93 <https://github.com/facontidavide/cloudini/issues/93>`_)
+* Contributors: Davide Faconti
+
 1.0.4 (2026-04-06)
 ------------------
 * fix(ros): use ament_target_dependencies for pcl_conversions
