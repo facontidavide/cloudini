@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>cloudini_lib</name>
-  <version>1.0.4</version>
+  <version>1.1.0</version>
   <description>
   Main library of Cloudini, the pointcloud compression library
   </description>

@@ -2,8 +2,8 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+1.1.0 (2026-04-20)
+------------------
 * feat(gorilla): Gorilla bit-packed XOR for FLOAT64 lossless (backward compatible) (`#93 <https://github.com/facontidavide/cloudini/issues/93>`_)
 * Contributors: Davide Faconti
 
