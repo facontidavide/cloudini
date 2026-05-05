@@ -303,7 +303,7 @@ std::vector<IntType> makeIntSequence(size_t points, Generator generator) {
 
 TEST(FieldEncoders, FloatXOR_RoundTrip_Float32) {
   // Multi-chunk test: ensures the chunk-boundary reset path is covered.
-  const size_t kChunkPoints = 32 * 1024;            // must match PointcloudEncoder::POINTS_PER_CHUNK
+  const size_t kChunkPoints = 32 * 1024;            // must match Cloudini::detail::kPointsPerChunk
   const size_t kNumpoints = kChunkPoints * 3 + 17;  // cross chunk boundary several times
 
   std::mt19937 rng(42);
@@ -397,8 +397,8 @@ TEST(FieldEncoders, FloatGorilla_EdgeCases_Float32) {
       input, /*chunk_points=*/input.size() + 1, 7);
 }
 
-// Full PointcloudEncoder/Decoder round-trip in LOSSLESS mode, > POINTS_PER_CHUNK points,
-// covers the full chunk-flush integration.
+// Full PointcloudEncoder/Decoder round-trip in LOSSLESS mode across multiple
+// kPointsPerChunk-sized chunks; exercises the chunk-flush integration.
 TEST(FieldEncoders, PointcloudLossless_Gorilla_MultiChunk) {
   using namespace Cloudini;
 

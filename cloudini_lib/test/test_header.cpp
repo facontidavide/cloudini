@@ -184,7 +184,7 @@ TEST(Cloudini, DecodeV3_FromLegacyEncoder) {
   };
   static_assert(sizeof(Point) == 24, "unexpected layout");
 
-  const size_t n = 64 * 1024 + 7;  // multi-chunk (POINTS_PER_CHUNK = 32K)
+  const size_t n = 64 * 1024 + 7;  // multi-chunk (kPointsPerChunk = 32K)
   std::vector<Point> input(n);
   for (size_t i = 0; i < n; ++i) {
     input[i].x = 0.01f * static_cast<float>(i);

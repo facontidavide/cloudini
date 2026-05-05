@@ -149,32 +149,12 @@ void appendRawBits(std::vector<uint8_t>& out, uint64_t value, size_t bytes) {
   std::memcpy(out.data() + offset, &value, bytes);
 }
 
-void appendU16(BufferView& out, uint16_t value) {
-  appendRawBits(out, value, sizeof(value));
-}
-
-void appendU32(BufferView& out, uint32_t value) {
-  appendRawBits(out, value, sizeof(value));
-}
-
 void appendU32(std::vector<uint8_t>& out, uint32_t value) {
   appendRawBits(out, value, sizeof(value));
 }
 
 void patchU32(std::vector<uint8_t>& out, size_t offset, uint32_t value) {
   std::memcpy(out.data() + offset, &value, sizeof(value));
-}
-
-uint16_t readU16(ConstBufferView& input) {
-  uint16_t value = 0;
-  decode(input, value);
-  return value;
-}
-
-uint32_t readU32(ConstBufferView& input) {
-  uint32_t value = 0;
-  decode(input, value);
-  return value;
 }
 
 void appendUVarint(uint64_t value, BufferView& out) {
@@ -467,7 +447,7 @@ void appendVarint64(int64_t value, std::vector<uint8_t>& out) {
 void appendDeltaRleSection(const std::vector<int64_t>& values, BufferView& out) {
   appendByte(out, static_cast<uint8_t>(AdaptiveIntMode::DeltaRle));
   uint8_t* run_count_ptr = out.data();
-  appendU32(out, 0);
+  encode(uint32_t{0}, out);
 
   uint32_t run_count = 0;
   forEachDeltaRun(values, [&](int64_t diff, size_t run_len) {
@@ -481,7 +461,7 @@ void appendDeltaRleSection(const std::vector<int64_t>& values, BufferView& out) 
 
 void appendPaletteSection(const V5AdaptiveIntField& field, BufferView& out) {
   appendByte(out, static_cast<uint8_t>(AdaptiveIntMode::Palette));
-  appendU16(out, static_cast<uint16_t>(field.palette.size()));
+  encode(static_cast<uint16_t>(field.palette.size()), out);
   for (uint64_t value : field.palette) {
     appendRawBits(out, value, field.bytes_per_value);
   }
@@ -491,7 +471,7 @@ void appendPaletteSection(const V5AdaptiveIntField& field, BufferView& out) {
 void appendRleSection(const std::vector<uint64_t>& raw_values, size_t bytes_per_value, BufferView& out) {
   appendByte(out, static_cast<uint8_t>(AdaptiveIntMode::Rle));
   uint8_t* run_count_ptr = out.data();
-  appendU32(out, 0);
+  encode(uint32_t{0}, out);
 
   uint32_t run_count = 0;
   size_t i = 0;
@@ -787,8 +767,13 @@ void decodeV5AdaptiveIntSection(
   if (input.empty()) {
     throw std::runtime_error("V5 adaptive int: missing mode byte");
   }
-  const auto mode = static_cast<AdaptiveIntMode>(input.data()[0]);
+  const uint8_t mode_byte = input.data()[0];
   input.trim_front(1);
+  if (mode_byte > static_cast<uint8_t>(AdaptiveIntMode::DeltaRle)) {
+    throw std::runtime_error(
+        "V5 adaptive int: unknown mode byte " + std::to_string(static_cast<int>(mode_byte)));
+  }
+  const auto mode = static_cast<AdaptiveIntMode>(mode_byte);
 
   switch (mode) {
     case AdaptiveIntMode::DeltaVarint: {
@@ -806,7 +791,8 @@ void decodeV5AdaptiveIntSection(
     } break;
 
     case AdaptiveIntMode::Palette: {
-      const uint16_t palette_count = readU16(input);
+      uint16_t palette_count = 0;
+      decode(input, palette_count);
       if (palette_count == 0) {
         throw std::runtime_error("V5 adaptive int: empty palette");
       }
@@ -837,7 +823,8 @@ void decodeV5AdaptiveIntSection(
     } break;
 
     case AdaptiveIntMode::Rle: {
-      const uint32_t run_count = readU32(input);
+      uint32_t run_count = 0;
+      decode(input, run_count);
       size_t out_index = 0;
       for (uint32_t r = 0; r < run_count; ++r) {
         if (input.size() < field.bytes_per_value) {
@@ -860,7 +847,8 @@ void decodeV5AdaptiveIntSection(
     } break;
 
     case AdaptiveIntMode::DeltaRle: {
-      const uint32_t run_count = readU32(input);
+      uint32_t run_count = 0;
+      decode(input, run_count);
       int64_t prev = 0;
       size_t out_index = 0;
       for (uint32_t r = 0; r < run_count; ++r) {

@@ -356,10 +356,9 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
   }
   const uint8_t* buff = input.data();
 
-  // check the magic header
   if (memcmp(buff, kMagicHeader, kMagicHeaderLength) != 0) {
     std::string fist_bytes = std::string(reinterpret_cast<const char*>(buff), kMagicHeaderLength);
-    throw std::runtime_error(std::string("Invalid magic header. Expecter 'CLOUDINI_V', got: ") + fist_bytes);
+    throw std::runtime_error(std::string("Invalid magic header. Expected 'CLOUDINI_V', got: ") + fist_bytes);
   }
   input.trim_front(kMagicHeaderLength);
 
@@ -375,9 +374,9 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
   // Note: version 4 adds Gorilla bit-packing for lossless FLOAT32/FLOAT64 XOR residuals.
   // Versions 2 and 3 keep the raw-XOR path (8 bytes per double, 4 bytes per float).
 
-  // check if encoded as YAML (starts with newline after version, then non-brace character)
+  // YAML payload starts with newline followed by a non-brace; legacy binary
+  // payload starts with the brace of an inline schema.
   if (input.size() >= 2 && input.data()[0] == '\n' && input.data()[1] != '{') {
-    // YAML encoded header
     input.trim_front(1);  // consume newline
     std::string_view yaml_str(reinterpret_cast<const char*>(input.data()), input.size());
     size_t null_pos = yaml_str.find('\0');

@@ -115,15 +115,8 @@ void configureMode(Cloudini::EncodingInfo& info, Mode mode, bool with_zstd) {
   info.compression_opt =
       with_zstd ? Cloudini::CompressionOption::ZSTD : Cloudini::CompressionOption::NONE;
   info.version = (mode == Mode::V5 || mode == Mode::V5_VIZ) ? 5 : 4;
-  switch (mode) {
-    case Mode::V4:
-    case Mode::V4_VIZ:
-    case Mode::V5:
-    case Mode::V5_VIZ:
-      // Viz modes differ only in the per-message preprocessing step applied
-      // to pc_info before this configureMode runs.
-      break;
-  }
+  // Viz modes differ only in the per-message preprocessing step applied to
+  // pc_info before this configureMode runs.
 }
 
 std::string fmtMiB(uint64_t bytes) {

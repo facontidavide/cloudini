@@ -189,8 +189,6 @@ class PointcloudEncoder {
   std::vector<uint8_t> header_;
 
   // Double buffering and threading
-  static constexpr size_t POINTS_PER_CHUNK = 32 * 1024;  // Fixed chunk size in points
-
   std::unique_ptr<uint8_t[]> buffer_compressing_;
   size_t buffer_compressing_capacity_ = 0;
   size_t buffer_compressing_size_ = 0;
