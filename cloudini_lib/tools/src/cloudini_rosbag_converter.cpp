@@ -90,6 +90,13 @@ int main(int argc, char** argv) {
       ("c,compress", "Convert PointCloud2 to CompressedPointCloud2")  //
       ("d,decode", "Convert CompressedPointCloud2 to PointCloud2")    //
       ("s,stats", "Print compression statistics")                     //
+      ("viz",
+       "Visualization-oriented lossy preprocessing (compression only). Bundles three "
+       "operations applied per message before encoding: drop NaN points, voxel-dedupe "
+       "at the xyz resolution (first occurrence wins; order preserved), and quantize "
+       "FLOAT64 fields without a resolution to 1us (typically per-point timestamps). "
+       "Roughly halves output size on real LIDAR with stage-2 ZSTD. Lossy on NaN "
+       "positions, mm-coincident duplicates, and sub-microsecond FLOAT64 precision.")  //
       ("m,method", "Compression method to use when writing data back to mcap ('zstd', 'none')",
        cxxopts::value<std::string>()->default_value("zstd"));
 
@@ -132,6 +139,7 @@ int main(int argc, char** argv) {
   const double resolution = parse_result["resolution"].as<double>();
   const bool encode = parse_result.count("compress");
   const bool decode = parse_result.count("decode");
+  const bool viz_lossy = parse_result.count("viz") > 0;
 
   if (encode && decode) {
     std::cerr << "Error: Cannot specify both --compress and --decode options." << std::endl;
@@ -139,6 +147,10 @@ int main(int argc, char** argv) {
   }
   if (!encode && !decode) {
     std::cerr << "Error: Must specify either --compress or --decode option." << std::endl;
+    return 1;
+  }
+  if (viz_lossy && !encode) {
+    std::cerr << "Error: --viz can only be used with --compress." << std::endl;
     return 1;
   }
 
@@ -312,7 +324,11 @@ int main(int argc, char** argv) {
           std::cout << "  " << field << ": " << resolution << std::endl;
         }
       }
-      converter.encodePointClouds(output_filename, resolution, mcap_writer_compression);
+      if (viz_lossy) {
+        std::cout << "\nViz-lossy preprocessing: drop NaN, voxel-dedupe at "
+                  << resolution << " m, quantize FLOAT64 to 1us\n";
+      }
+      converter.encodePointClouds(output_filename, resolution, mcap_writer_compression, viz_lossy);
     }
     if (decode) {
       converter.decodePointClouds(output_filename, mcap_writer_compression);

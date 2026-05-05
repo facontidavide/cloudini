@@ -2,6 +2,14 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* fix(cmake): vendor ankerl::unordered_dense to fix ROS buildfarm
+* chore: clean up v5 codec review notes
+* fix: harden cloudini decode error handling
+* feat: add cloudini v5 adaptive codec
+* Contributors: Davide Faconti
+
 1.1.0 (2026-04-20)
 ------------------
 * feat(gorilla): Gorilla bit-packed XOR for FLOAT64 lossless (backward compatible) (`#93 <https://github.com/facontidavide/cloudini/issues/93>`_)

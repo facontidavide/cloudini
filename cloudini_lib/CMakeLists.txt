@@ -37,7 +37,6 @@ find_or_download_zstd(${CLOUDINI_FORCE_VENDORED_DEPS})
 include(cmake/find_or_download_lz4.cmake)
 find_or_download_lz4(${CLOUDINI_FORCE_VENDORED_DEPS})
 
-
 ##################################################################################
 
 # ----  Trick to pass an absolute path to C++ code  ----
@@ -73,10 +72,14 @@ option(CLOUDINI_BUILD_BENCHMARKS "Build benchmarks" ON)
 
 # Use SHARED library when building with ament, STATIC otherwise
 SET(CLOUDINI_SRC
+  src/chunk_writer.cpp
   src/cloudini.cpp
+  src/codec_common.cpp
   src/field_encoder.cpp
   src/field_decoder.cpp
   src/ros_msg_utils.cpp
+  src/v4_codec.cpp
+  src/v5_codec.cpp
 )
 
 if(ament_cmake_FOUND)

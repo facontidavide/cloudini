@@ -53,7 +53,7 @@ class McapConverter {
 
   void encodePointClouds(
       std::filesystem::path file_out, std::optional<float> default_resolution,
-      Cloudini::CompressionOption mcap_writer_compression);
+      Cloudini::CompressionOption mcap_writer_compression, bool viz_lossy = false);
 
   void decodePointClouds(std::filesystem::path file_out, Cloudini::CompressionOption mcap_writer_compression);
 

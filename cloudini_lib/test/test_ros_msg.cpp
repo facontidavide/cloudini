@@ -142,3 +142,15 @@ TEST(Cloudini, DDS_Roundtrip) {
 
   VerifyRoundTrip(encoding_info, original_data, resolution);
 }
+
+TEST(Cloudini, RosPointCloud2CopyRebindsOwnedDataView) {
+  cloudini_ros::RosPointCloud2 original;
+  original.owned_data = {1, 2, 3, 4};
+  original.data = ConstBufferView(original.owned_data.data(), original.owned_data.size());
+
+  const cloudini_ros::RosPointCloud2 copied = original;
+
+  ASSERT_EQ(copied.owned_data, original.owned_data);
+  EXPECT_EQ(copied.data.data(), copied.owned_data.data());
+  EXPECT_EQ(copied.data.size(), copied.owned_data.size());
+}

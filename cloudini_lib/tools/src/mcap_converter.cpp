@@ -139,7 +139,7 @@ mcap::Compression toMcapCompression(Cloudini::CompressionOption compression) {
 //------------------------------------------------------
 void McapConverter::encodePointClouds(
     std::filesystem::path file_out, std::optional<float> default_resolution,
-    Cloudini::CompressionOption mcap_writer_compression) {
+    Cloudini::CompressionOption mcap_writer_compression, bool viz_lossy) {
   if (!reader_) {
     throw std::runtime_error("McapReader is not initialized. Call open() first.");
   }
@@ -187,6 +187,14 @@ void McapConverter::encodePointClouds(
     // Apply the profile to the encoding info. removing fields if resolution is 0
     // Remove first all fields that have resolution 0.0 in the profile
     cloudini_ros::applyResolutionProfile(profile_resolutions_, pc_info.fields, default_resolution);
+
+    // Visualization-oriented lossy preprocessing: drop NaN, voxel-dedupe,
+    // 1µs FLOAT64. Applied after applyResolutionProfile so xyz fields have
+    // their resolutions set (used for the dedup voxel size). Modifies
+    // pc_info in place; sets pc_info.owned_data with the new bytes.
+    if (viz_lossy) {
+      cloudini_ros::applyVizLossyPreprocessing(pc_info);
+    }
 
     auto encoding_info = cloudini_ros::toEncodingInfo(pc_info);
     // no need to do ZSTD compression twice

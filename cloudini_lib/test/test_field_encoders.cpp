@@ -17,11 +17,15 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <random>
+#include <stdexcept>
 
 #include "cloudini_lib/cloudini.hpp"
 #include "cloudini_lib/field_decoder.hpp"
@@ -143,6 +147,21 @@ TEST(FieldEncoders, FloatLossy) {
   }
 }
 
+TEST(FieldEncoders, DecodeVarintRejectsTruncatedInputBeforeReadingPastBound) {
+  using namespace Cloudini;
+
+  const std::array<uint8_t, 2> bytes = {0x80u, 0x00u};
+  int64_t value = 0;
+
+  EXPECT_THROW(
+      {
+        // max_size intentionally exposes only the first continuation byte.
+        // A correct decoder must reject this without reading bytes[1].
+        (void)decodeVarint(bytes.data(), 1, value);
+      },
+      std::runtime_error);
+}
+
 namespace {
 
 // Helper: round-trip a sequence of FloatType values through encoder/decoder,
@@ -200,11 +219,91 @@ void runFieldRoundTrip(const std::vector<FloatType>& input, size_t chunk_points,
   }
 }
 
+Cloudini::EncodingInfo makeV5IntOnlyInfo(
+    size_t points, Cloudini::FieldType type, Cloudini::CompressionOption compression) {
+  using namespace Cloudini;
+  EncodingInfo info;
+  info.version = 5;
+  info.width = static_cast<uint32_t>(points);
+  info.height = 1;
+  info.point_step = static_cast<uint32_t>(SizeOf(type));
+  info.encoding_opt = EncodingOptions::LOSSY;
+  info.compression_opt = compression;
+  info.use_threads = false;
+  info.fields.push_back({"value", 0, type, std::nullopt});
+  return info;
+}
+
+template <typename IntType>
+std::vector<uint8_t> encodeV5IntOnly(
+    const std::vector<IntType>& values, Cloudini::FieldType type, Cloudini::CompressionOption compression) {
+  using namespace Cloudini;
+  const EncodingInfo info = makeV5IntOnlyInfo(values.size(), type, compression);
+  PointcloudEncoder encoder(info);
+  ConstBufferView in_view(reinterpret_cast<const uint8_t*>(values.data()), values.size() * sizeof(IntType));
+  std::vector<uint8_t> encoded;
+  encoder.encode(in_view, encoded);
+  return encoded;
+}
+
+template <typename IntType>
+void expectV5IntOnlyRoundTrip(
+    const std::vector<IntType>& values, Cloudini::FieldType type, const std::vector<uint8_t>& encoded) {
+  using namespace Cloudini;
+  ConstBufferView encoded_view(encoded.data(), encoded.size());
+  const EncodingInfo decoded_info = DecodeHeader(encoded_view);
+  ASSERT_EQ(decoded_info.version, 5);
+  ASSERT_EQ(decoded_info.encoding_opt, EncodingOptions::LOSSY);
+  ASSERT_EQ(decoded_info.point_step, sizeof(IntType));
+  ASSERT_EQ(decoded_info.fields.size(), 1u);
+  ASSERT_EQ(decoded_info.fields[0].type, type);
+
+  std::vector<IntType> output(values.size(), 0);
+  PointcloudDecoder decoder;
+  BufferView out_view(reinterpret_cast<uint8_t*>(output.data()), output.size() * sizeof(IntType));
+  decoder.decode(decoded_info, encoded_view, out_view);
+  ASSERT_EQ(output, values);
+}
+
+std::vector<uint8_t> v5UncompressedChunkModes(const std::vector<uint8_t>& encoded) {
+  using namespace Cloudini;
+  ConstBufferView encoded_view(encoded.data(), encoded.size());
+  const EncodingInfo decoded_info = DecodeHeader(encoded_view);
+  if (decoded_info.version != 5 || decoded_info.compression_opt != CompressionOption::NONE) {
+    throw std::runtime_error("expected uncompressed V5 data");
+  }
+
+  std::vector<uint8_t> modes;
+  while (!encoded_view.empty()) {
+    if (encoded_view.size() < sizeof(uint32_t)) {
+      throw std::runtime_error("truncated V5 chunk size");
+    }
+    uint32_t chunk_size = 0;
+    std::memcpy(&chunk_size, encoded_view.data(), sizeof(chunk_size));
+    encoded_view.trim_front(sizeof(chunk_size));
+    if (chunk_size == 0 || chunk_size > encoded_view.size()) {
+      throw std::runtime_error("invalid V5 chunk size");
+    }
+    modes.push_back(encoded_view.data()[0]);
+    encoded_view.trim_front(chunk_size);
+  }
+  return modes;
+}
+
+template <typename IntType, typename Generator>
+std::vector<IntType> makeIntSequence(size_t points, Generator generator) {
+  std::vector<IntType> values(points);
+  for (size_t i = 0; i < points; ++i) {
+    values[i] = static_cast<IntType>(generator(i));
+  }
+  return values;
+}
+
 }  // namespace
 
 TEST(FieldEncoders, FloatXOR_RoundTrip_Float32) {
   // Multi-chunk test: ensures the chunk-boundary reset path is covered.
-  const size_t kChunkPoints = 32 * 1024;            // must match PointcloudEncoder::POINTS_PER_CHUNK
+  const size_t kChunkPoints = 32 * 1024;            // must match Cloudini::detail::kPointsPerChunk
   const size_t kNumpoints = kChunkPoints * 3 + 17;  // cross chunk boundary several times
 
   std::mt19937 rng(42);
@@ -298,8 +397,8 @@ TEST(FieldEncoders, FloatGorilla_EdgeCases_Float32) {
       input, /*chunk_points=*/input.size() + 1, 7);
 }
 
-// Full PointcloudEncoder/Decoder round-trip in LOSSLESS mode, > POINTS_PER_CHUNK points,
-// covers the full chunk-flush integration.
+// Full PointcloudEncoder/Decoder round-trip in LOSSLESS mode across multiple
+// kPointsPerChunk-sized chunks; exercises the chunk-flush integration.
 TEST(FieldEncoders, PointcloudLossless_Gorilla_MultiChunk) {
   using namespace Cloudini;
 
@@ -345,6 +444,7 @@ TEST(FieldEncoders, PointcloudLossless_Gorilla_MultiChunk) {
 
   ConstBufferView comp_view(compressed.data(), compressed.size());
   auto decoded_info = DecodeHeader(comp_view);
+  ASSERT_EQ(decoded_info.version, kEncodingVersion);
   ASSERT_EQ(decoded_info.encoding_opt, EncodingOptions::LOSSLESS);
 
   std::vector<PointXYZI> output(kNumpoints);
@@ -370,6 +470,209 @@ TEST(FieldEncoders, PointcloudLossless_Gorilla_MultiChunk) {
     std::memcpy(&b, &output[i].i, 4);
     ASSERT_EQ(a, b) << "intensity at " << i;
   }
+}
+
+TEST(FieldEncoders, PointcloudV5_AdaptiveIntModes_RoundTripAndModeSelection) {
+  using namespace Cloudini;
+
+  constexpr size_t kPoints = 32 * 1024 + 19;
+  constexpr uint8_t kPaletteMode = 1;
+  constexpr uint8_t kRleMode = 2;
+  constexpr uint8_t kDeltaRleMode = 3;
+
+  {
+    const auto values = makeIntSequence<uint32_t>(kPoints, [](size_t i) { return 100000u + i * 3u; });
+    const std::vector<uint8_t> encoded_none =
+        encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::NONE);
+    EXPECT_EQ(v5UncompressedChunkModes(encoded_none), std::vector<uint8_t>({kDeltaRleMode, kDeltaRleMode}));
+    expectV5IntOnlyRoundTrip(values, FieldType::UINT32, encoded_none);
+
+    const std::vector<uint8_t> encoded_zstd =
+        encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::ZSTD);
+    expectV5IntOnlyRoundTrip(values, FieldType::UINT32, encoded_zstd);
+  }
+
+  {
+    const auto values = makeIntSequence<uint32_t>(kPoints, [](size_t i) { return static_cast<uint32_t>(i % 4); });
+    const std::vector<uint8_t> encoded_none =
+        encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::NONE);
+    EXPECT_EQ(v5UncompressedChunkModes(encoded_none), std::vector<uint8_t>({kPaletteMode, kPaletteMode}));
+    expectV5IntOnlyRoundTrip(values, FieldType::UINT32, encoded_none);
+
+    const std::vector<uint8_t> encoded_zstd =
+        encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::ZSTD);
+    expectV5IntOnlyRoundTrip(values, FieldType::UINT32, encoded_zstd);
+  }
+
+  {
+    const auto values = makeIntSequence<uint16_t>(kPoints, [](size_t i) { return static_cast<uint16_t>((i / 256) % 8); });
+    const std::vector<uint8_t> encoded_none =
+        encodeV5IntOnly(values, FieldType::UINT16, CompressionOption::NONE);
+    EXPECT_EQ(v5UncompressedChunkModes(encoded_none), std::vector<uint8_t>({kRleMode, kRleMode}));
+    expectV5IntOnlyRoundTrip(values, FieldType::UINT16, encoded_none);
+
+    const std::vector<uint8_t> encoded_zstd =
+        encodeV5IntOnly(values, FieldType::UINT16, CompressionOption::ZSTD);
+    expectV5IntOnlyRoundTrip(values, FieldType::UINT16, encoded_zstd);
+  }
+
+  {
+    std::vector<uint32_t> values(kPoints);
+    uint32_t value = 1000;
+    for (size_t i = 0; i < values.size(); ++i) {
+      const uint32_t diff = ((i / 64) % 2 == 0) ? 3u : 7u;
+      value += diff;
+      values[i] = value;
+    }
+    const std::vector<uint8_t> encoded_none =
+        encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::NONE);
+    EXPECT_EQ(v5UncompressedChunkModes(encoded_none), std::vector<uint8_t>({kDeltaRleMode, kDeltaRleMode}));
+    expectV5IntOnlyRoundTrip(values, FieldType::UINT32, encoded_none);
+  }
+
+  {
+    const auto values = makeIntSequence<int32_t>(kPoints, [](size_t i) {
+      return 200000 - static_cast<int32_t>(i * 5);
+    });
+    const std::vector<uint8_t> encoded_none =
+        encodeV5IntOnly(values, FieldType::INT32, CompressionOption::NONE);
+    EXPECT_EQ(v5UncompressedChunkModes(encoded_none), std::vector<uint8_t>({kDeltaRleMode, kDeltaRleMode}));
+    expectV5IntOnlyRoundTrip(values, FieldType::INT32, encoded_none);
+  }
+
+  {
+    std::mt19937 rng(12345);
+    std::uniform_int_distribution<uint32_t> dist(0, 0xFFFFu);
+    std::vector<uint32_t> values(kPoints);
+    for (uint32_t& value : values) {
+      value = dist(rng);
+    }
+    const std::vector<uint8_t> encoded_none =
+        encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::NONE);
+    const std::vector<uint8_t> modes = v5UncompressedChunkModes(encoded_none);
+    ASSERT_EQ(modes.size(), 2u);
+    for (uint8_t mode : modes) {
+      EXPECT_NE(mode, kDeltaRleMode);
+    }
+    expectV5IntOnlyRoundTrip(values, FieldType::UINT32, encoded_none);
+  }
+}
+
+TEST(FieldEncoders, PointcloudV5_AdaptiveProbeBoundaries_RoundTrip) {
+  using namespace Cloudini;
+
+  constexpr uint8_t kDeltaRleMode = 3;
+  const std::array<size_t, 5> point_counts = {4095, 4096, 4097, 32 * 1024, 32 * 1024 + 7};
+
+  for (size_t points : point_counts) {
+    const auto values = makeIntSequence<uint32_t>(points, [](size_t i) { return static_cast<uint32_t>(1000 + i * 3); });
+    const std::vector<uint8_t> encoded =
+        encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::NONE);
+    const std::vector<uint8_t> modes = v5UncompressedChunkModes(encoded);
+    ASSERT_FALSE(modes.empty()) << "points=" << points;
+    for (uint8_t mode : modes) {
+      EXPECT_EQ(mode, kDeltaRleMode) << "points=" << points;
+    }
+    expectV5IntOnlyRoundTrip(values, FieldType::UINT32, encoded);
+  }
+}
+
+TEST(FieldEncoders, PointcloudV5_LossyFloatOnlyRoundTrip) {
+  using namespace Cloudini;
+
+  struct PointXYZI {
+    float x = 0.0F;
+    float y = 0.0F;
+    float z = 0.0F;
+    float intensity = 0.0F;
+  };
+
+  constexpr size_t kPoints = 4096 + 37;
+  std::vector<PointXYZI> input(kPoints);
+  for (size_t i = 0; i < input.size(); ++i) {
+    input[i].x = 0.001F * static_cast<float>(i);
+    input[i].y = -0.002F * static_cast<float>(i % 97);
+    input[i].z = 10.0F + 0.003F * static_cast<float>(i % 251);
+    input[i].intensity = 0.01F * static_cast<float>(i % 1024);
+  }
+
+  EncodingInfo info;
+  info.width = static_cast<uint32_t>(input.size());
+  info.height = 1;
+  info.point_step = sizeof(PointXYZI);
+  info.encoding_opt = EncodingOptions::LOSSY;
+  info.compression_opt = CompressionOption::NONE;
+  info.use_threads = false;
+  info.fields.push_back({"x", offsetof(PointXYZI, x), FieldType::FLOAT32, 0.001F});
+  info.fields.push_back({"y", offsetof(PointXYZI, y), FieldType::FLOAT32, 0.001F});
+  info.fields.push_back({"z", offsetof(PointXYZI, z), FieldType::FLOAT32, 0.001F});
+  info.fields.push_back({"intensity", offsetof(PointXYZI, intensity), FieldType::FLOAT32, 0.001F});
+
+  std::vector<uint8_t> encoded;
+  {
+    PointcloudEncoder encoder(info);
+    ConstBufferView in_view(reinterpret_cast<const uint8_t*>(input.data()), input.size() * sizeof(PointXYZI));
+    encoder.encode(in_view, encoded);
+  }
+
+  EncodingInfo v4_info = info;
+  v4_info.version = 4;
+  std::vector<uint8_t> encoded_v4;
+  {
+    PointcloudEncoder encoder(v4_info);
+    ConstBufferView in_view(reinterpret_cast<const uint8_t*>(input.data()), input.size() * sizeof(PointXYZI));
+    encoder.encode(in_view, encoded_v4);
+  }
+
+  ConstBufferView encoded_view(encoded.data(), encoded.size());
+  const EncodingInfo decoded_info = DecodeHeader(encoded_view);
+  ASSERT_EQ(decoded_info.version, kEncodingVersion);
+  ASSERT_EQ(decoded_info.encoding_opt, EncodingOptions::LOSSY);
+
+  ConstBufferView encoded_v4_view(encoded_v4.data(), encoded_v4.size());
+  const EncodingInfo decoded_v4_info = DecodeHeader(encoded_v4_view);
+  ASSERT_EQ(decoded_v4_info.version, 4);
+  ASSERT_EQ(encoded_view.size(), encoded_v4_view.size());
+  EXPECT_EQ(
+      std::vector<uint8_t>(encoded_view.data(), encoded_view.data() + encoded_view.size()),
+      std::vector<uint8_t>(encoded_v4_view.data(), encoded_v4_view.data() + encoded_v4_view.size()));
+
+  std::vector<PointXYZI> output(input.size());
+  {
+    PointcloudDecoder decoder;
+    BufferView out_view(reinterpret_cast<uint8_t*>(output.data()), output.size() * sizeof(PointXYZI));
+    decoder.decode(decoded_info, encoded_view, out_view);
+  }
+
+  constexpr float kTolerance = 0.0011F;
+  for (size_t i = 0; i < input.size(); ++i) {
+    ASSERT_NEAR(input[i].x, output[i].x, kTolerance) << "x @" << i;
+    ASSERT_NEAR(input[i].y, output[i].y, kTolerance) << "y @" << i;
+    ASSERT_NEAR(input[i].z, output[i].z, kTolerance) << "z @" << i;
+    ASSERT_NEAR(input[i].intensity, output[i].intensity, kTolerance) << "intensity @" << i;
+  }
+}
+
+TEST(FieldEncoders, PointcloudDecoderRejectsMissingChunksForDeclaredPoints) {
+  using namespace Cloudini;
+
+  EncodingInfo info;
+  info.version = 4;
+  info.width = 1;
+  info.height = 1;
+  info.point_step = sizeof(uint8_t);
+  info.encoding_opt = EncodingOptions::NONE;
+  info.compression_opt = CompressionOption::NONE;
+  info.use_threads = false;
+  info.fields.push_back({"value", 0, FieldType::UINT8, std::nullopt});
+
+  std::array<uint8_t, 1> output = {0};
+  std::vector<uint8_t> encoded;
+  ConstBufferView encoded_view(encoded.data(), encoded.size());
+  BufferView output_view(output.data(), output.size());
+
+  PointcloudDecoder decoder;
+  EXPECT_THROW(decoder.decode(info, encoded_view, output_view), std::runtime_error);
 }
 
 // TEST(FieldEncoders, XYZLossy) {

@@ -60,7 +60,7 @@ EncodingOptions EncodingOptionsFromString(std::string_view str);
 CompressionOption CompressionOptionFromString(std::string_view str);
 FieldType FieldTypeFromString(std::string_view str);
 
-constexpr const uint8_t kEncodingVersion = 4;
+constexpr const uint8_t kEncodingVersion = 5;
 
 struct EncodingInfo {
   // Fields in the point cloud
@@ -184,13 +184,14 @@ class PointcloudEncoder {
 
   EncodingInfo info_;
   std::vector<std::unique_ptr<FieldEncoder>> encoders_;
-  std::vector<uint8_t> buffer_;
+  std::unique_ptr<uint8_t[]> buffer_;
+  size_t buffer_capacity_ = 0;
   std::vector<uint8_t> header_;
 
   // Double buffering and threading
-  static constexpr size_t POINTS_PER_CHUNK = 32 * 1024;  // Fixed chunk size in points
-
-  std::vector<uint8_t> buffer_compressing_;
+  std::unique_ptr<uint8_t[]> buffer_compressing_;
+  size_t buffer_compressing_capacity_ = 0;
+  size_t buffer_compressing_size_ = 0;
 
   // Thread synchronization
   std::mutex mutex_;

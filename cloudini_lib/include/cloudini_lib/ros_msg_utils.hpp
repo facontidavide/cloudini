@@ -17,6 +17,7 @@
 #pragma once
 
 #include <map>
+#include <utility>
 #include <vector>
 
 #include "cloudini_lib/cloudini.hpp"
@@ -54,6 +55,82 @@ struct RosHeader {
 
 // This structure mimics the sensor_msgs/msg/PointCloud2 message fields
 struct RosPointCloud2 {
+  RosPointCloud2() = default;
+
+  RosPointCloud2(const RosPointCloud2& other)
+      : cdr_header(other.cdr_header),
+        ros_header(other.ros_header),
+        height(other.height),
+        width(other.width),
+        fields(other.fields),
+        point_step(other.point_step),
+        row_step(other.row_step),
+        is_bigendian(other.is_bigendian),
+        data(other.data),
+        is_dense(other.is_dense),
+        owned_data(other.owned_data) {
+    rebindOwnedDataView(other);
+  }
+
+  RosPointCloud2(RosPointCloud2&& other) noexcept {
+    const bool owned_data_view = other.dataViewsOwnedData();
+    cdr_header = std::move(other.cdr_header);
+    ros_header = std::move(other.ros_header);
+    height = other.height;
+    width = other.width;
+    fields = std::move(other.fields);
+    point_step = other.point_step;
+    row_step = other.row_step;
+    is_bigendian = other.is_bigendian;
+    data = other.data;
+    is_dense = other.is_dense;
+    owned_data = std::move(other.owned_data);
+    if (owned_data_view) {
+      data = Cloudini::ConstBufferView(owned_data.data(), owned_data.size());
+    }
+  }
+
+  RosPointCloud2& operator=(const RosPointCloud2& other) {
+    if (this == &other) {
+      return *this;
+    }
+    cdr_header = other.cdr_header;
+    ros_header = other.ros_header;
+    height = other.height;
+    width = other.width;
+    fields = other.fields;
+    point_step = other.point_step;
+    row_step = other.row_step;
+    is_bigendian = other.is_bigendian;
+    data = other.data;
+    is_dense = other.is_dense;
+    owned_data = other.owned_data;
+    rebindOwnedDataView(other);
+    return *this;
+  }
+
+  RosPointCloud2& operator=(RosPointCloud2&& other) noexcept {
+    if (this == &other) {
+      return *this;
+    }
+    const bool owned_data_view = other.dataViewsOwnedData();
+    cdr_header = std::move(other.cdr_header);
+    ros_header = std::move(other.ros_header);
+    height = other.height;
+    width = other.width;
+    fields = std::move(other.fields);
+    point_step = other.point_step;
+    row_step = other.row_step;
+    is_bigendian = other.is_bigendian;
+    data = other.data;
+    is_dense = other.is_dense;
+    owned_data = std::move(other.owned_data);
+    if (owned_data_view) {
+      data = Cloudini::ConstBufferView(owned_data.data(), owned_data.size());
+    }
+    return *this;
+  }
+
   nanocdr::CdrHeader cdr_header;
   RosHeader ros_header;                      // ROS header
   uint32_t height = 1;                       // default to unorganized point cloud
@@ -64,6 +141,23 @@ struct RosPointCloud2 {
   bool is_bigendian = false;                 // endianness (not used)
   Cloudini::ConstBufferView data;
   bool is_dense = true;  // whether all points are valid
+
+  // Optional owned buffer used by lossy preprocessing helpers (e.g.
+  // applyVizLossyPreprocessing) to hold a rewritten point payload. When
+  // non-empty, `data` is expected to be a view over `owned_data`. Default
+  // empty: `data` views the original DDS buffer.
+  std::vector<uint8_t> owned_data;
+
+ private:
+  bool dataViewsOwnedData() const {
+    return !owned_data.empty() && data.data() == owned_data.data() && data.size() == owned_data.size();
+  }
+
+  void rebindOwnedDataView(const RosPointCloud2& source) {
+    if (source.dataViewsOwnedData()) {
+      data = Cloudini::ConstBufferView(owned_data.data(), owned_data.size());
+    }
+  }
 };
 
 // Resolutions to be applied to the fields in RosPointCloud2 or EncodingInfo.
@@ -100,5 +194,30 @@ void convertPointCloud2ToCompressedCloud(
 
 // Assumining that pc_info contains compressed data, decompress it directly into raw_dds_msg
 void convertCompressedCloudToPointCloud2(const RosPointCloud2& pc_info, std::vector<uint8_t>& pc2_dds_msg);
+
+/**
+ * @brief Visualization-oriented lossy preprocessing applied in place.
+ *
+ * Bundles three lossy operations that approximately halve output size on
+ * real LIDAR after stage-2 ZSTD, while preserving every declared field:
+ *   1. NaN drop. Points whose geometry triple (xyz) contains NaN/inf are
+ *      removed.
+ *   2. Voxel dedup (1mm resolution by default — uses xyz fields' resolution).
+ *      Hash-based, order-preserving: first occurrence of each voxel wins.
+ *   3. 1µs FLOAT64 quantization. Every FLOAT64 field whose `resolution` is
+ *      unset gets `resolution = 1e-6` so the encoder routes it through
+ *      FieldEncoderFloat_Lossy (quantize+varint) instead of Gorilla. Affects
+ *      typically per-point `timestamp` / `time` fields stored as
+ *      seconds-since-epoch FLOAT64.
+ *
+ * Modifies pc_info in place: rewrites pc_info.owned_data with the cleaned
+ * point bytes, points pc_info.data at it, updates pc_info.width to the new
+ * point count, and sets resolution=1µs on FLOAT64 fields without one.
+ *
+ * No-op if pc_info has no geometry triple. The triple is detected
+ * structurally (first 3 FLOAT32 fields with shared resolution and consecutive
+ * offsets {b, b+4, b+8}); the field names are never read.
+ */
+void applyVizLossyPreprocessing(RosPointCloud2& pc_info);
 
 }  // namespace cloudini_ros
