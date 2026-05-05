@@ -2,8 +2,8 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+1.2.0 (2026-05-05)
+------------------
 * fix(cmake): vendor ankerl::unordered_dense to fix ROS buildfarm
 * chore: clean up v5 codec review notes
 * fix: harden cloudini decode error handling
