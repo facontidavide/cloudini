@@ -95,23 +95,35 @@ inline void decode(ConstBufferView& buff, std::string& str) {
   buff.trim_front(len);
 };
 
-inline size_t decodeVarint(const uint8_t* buf, [[maybe_unused]] size_t max_size, int64_t& val) {
-  assert(max_size > 0 && "decodeVarint: empty input");
+inline size_t decodeVarint(const uint8_t* buf, size_t max_size, int64_t& val) {
+  if (max_size == 0) {
+    throw std::runtime_error("decodeVarint: empty input");
+  }
   uint64_t uval = 0;
   uint8_t shift = 0;
   const uint8_t* ptr = buf;
   while (true) {
-    assert(static_cast<size_t>(ptr - buf) < max_size && "decodeVarint: truncated input");
+    if (static_cast<size_t>(ptr - buf) >= max_size) {
+      throw std::runtime_error("decodeVarint: truncated input");
+    }
     uint8_t byte = *ptr;
     ptr++;
-    assert(!(shift >= 63 && (byte & 0x7f) > 1) && "decodeVarint: value overflow");
-    uval |= (static_cast<uint64_t>(byte & 0x7f) << shift);
-    shift += 7;
+    const uint8_t payload = byte & 0x7f;
+    if (shift >= 64 || (shift == 63 && payload > 1)) {
+      throw std::runtime_error("decodeVarint: value overflow");
+    }
+    uval |= (static_cast<uint64_t>(payload) << shift);
     if ((byte & 0x80) == 0) {
       break;
     }
+    if (shift >= 63) {
+      throw std::runtime_error("decodeVarint: value overflow");
+    }
+    shift = static_cast<uint8_t>(shift + 7);
   }
-  assert(uval != 0 && "decodeVarint: unexpected NaN marker (value 0)");
+  if (uval == 0) {
+    throw std::runtime_error("decodeVarint: unexpected NaN marker");
+  }
   uval--;
   // Perform zigzag decoding to retrieve the original signed value.
   val = static_cast<int64_t>((uval >> 1) ^ static_cast<uint64_t>(-(static_cast<int64_t>(uval & 1))));

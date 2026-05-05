@@ -101,6 +101,9 @@ void DecodeV4Stage1Chunk(
 
   if (expected_points > 0) {
     for (size_t p = 0; p < expected_points; ++p) {
+      if (encoded_view.size() < min_encoded_point_bytes) {
+        throw std::runtime_error("Truncated encoded data: not enough bytes for a complete point");
+      }
       decode_point();
     }
   } else {

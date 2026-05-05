@@ -646,6 +646,9 @@ void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compres
   if (info.version >= 3) {
     size_t points_remaining = static_cast<size_t>(info.width) * static_cast<size_t>(info.height);
     while (!compressed_data.empty()) {
+      if (points_remaining == 0) {
+        throw std::runtime_error("Encoded data contains more chunks than declared points");
+      }
       uint32_t chunk_size = 0;
       Cloudini::decode(compressed_data, chunk_size);
       if (chunk_size > compressed_data.size()) {
@@ -656,6 +659,9 @@ void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compres
       decodeChunk(info, chunk_view, output, points_in_chunk);
       compressed_data.trim_front(chunk_size);
       points_remaining -= points_in_chunk;
+    }
+    if (points_remaining != 0) {
+      throw std::runtime_error("Encoded data ended before all declared points were decoded");
     }
   } else {
     decodeChunk(info, compressed_data, output, /*expected_points=*/0);

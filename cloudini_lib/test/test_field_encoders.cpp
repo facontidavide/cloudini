@@ -147,6 +147,21 @@ TEST(FieldEncoders, FloatLossy) {
   }
 }
 
+TEST(FieldEncoders, DecodeVarintRejectsTruncatedInputBeforeReadingPastBound) {
+  using namespace Cloudini;
+
+  const std::array<uint8_t, 2> bytes = {0x80u, 0x00u};
+  int64_t value = 0;
+
+  EXPECT_THROW(
+      {
+        // max_size intentionally exposes only the first continuation byte.
+        // A correct decoder must reject this without reading bytes[1].
+        (void)decodeVarint(bytes.data(), 1, value);
+      },
+      std::runtime_error);
+}
+
 namespace {
 
 // Helper: round-trip a sequence of FloatType values through encoder/decoder,
@@ -636,6 +651,28 @@ TEST(FieldEncoders, PointcloudV5_LossyFloatOnlyRoundTrip) {
     ASSERT_NEAR(input[i].z, output[i].z, kTolerance) << "z @" << i;
     ASSERT_NEAR(input[i].intensity, output[i].intensity, kTolerance) << "intensity @" << i;
   }
+}
+
+TEST(FieldEncoders, PointcloudDecoderRejectsMissingChunksForDeclaredPoints) {
+  using namespace Cloudini;
+
+  EncodingInfo info;
+  info.version = 4;
+  info.width = 1;
+  info.height = 1;
+  info.point_step = sizeof(uint8_t);
+  info.encoding_opt = EncodingOptions::NONE;
+  info.compression_opt = CompressionOption::NONE;
+  info.use_threads = false;
+  info.fields.push_back({"value", 0, FieldType::UINT8, std::nullopt});
+
+  std::array<uint8_t, 1> output = {0};
+  std::vector<uint8_t> encoded;
+  ConstBufferView encoded_view(encoded.data(), encoded.size());
+  BufferView output_view(output.data(), output.size());
+
+  PointcloudDecoder decoder;
+  EXPECT_THROW(decoder.decode(info, encoded_view, output_view), std::runtime_error);
 }
 
 // TEST(FieldEncoders, XYZLossy) {

@@ -17,6 +17,7 @@
 #pragma once
 
 #include <map>
+#include <utility>
 #include <vector>
 
 #include "cloudini_lib/cloudini.hpp"
@@ -54,6 +55,82 @@ struct RosHeader {
 
 // This structure mimics the sensor_msgs/msg/PointCloud2 message fields
 struct RosPointCloud2 {
+  RosPointCloud2() = default;
+
+  RosPointCloud2(const RosPointCloud2& other)
+      : cdr_header(other.cdr_header),
+        ros_header(other.ros_header),
+        height(other.height),
+        width(other.width),
+        fields(other.fields),
+        point_step(other.point_step),
+        row_step(other.row_step),
+        is_bigendian(other.is_bigendian),
+        data(other.data),
+        is_dense(other.is_dense),
+        owned_data(other.owned_data) {
+    rebindOwnedDataView(other);
+  }
+
+  RosPointCloud2(RosPointCloud2&& other) noexcept {
+    const bool owned_data_view = other.dataViewsOwnedData();
+    cdr_header = std::move(other.cdr_header);
+    ros_header = std::move(other.ros_header);
+    height = other.height;
+    width = other.width;
+    fields = std::move(other.fields);
+    point_step = other.point_step;
+    row_step = other.row_step;
+    is_bigendian = other.is_bigendian;
+    data = other.data;
+    is_dense = other.is_dense;
+    owned_data = std::move(other.owned_data);
+    if (owned_data_view) {
+      data = Cloudini::ConstBufferView(owned_data.data(), owned_data.size());
+    }
+  }
+
+  RosPointCloud2& operator=(const RosPointCloud2& other) {
+    if (this == &other) {
+      return *this;
+    }
+    cdr_header = other.cdr_header;
+    ros_header = other.ros_header;
+    height = other.height;
+    width = other.width;
+    fields = other.fields;
+    point_step = other.point_step;
+    row_step = other.row_step;
+    is_bigendian = other.is_bigendian;
+    data = other.data;
+    is_dense = other.is_dense;
+    owned_data = other.owned_data;
+    rebindOwnedDataView(other);
+    return *this;
+  }
+
+  RosPointCloud2& operator=(RosPointCloud2&& other) noexcept {
+    if (this == &other) {
+      return *this;
+    }
+    const bool owned_data_view = other.dataViewsOwnedData();
+    cdr_header = std::move(other.cdr_header);
+    ros_header = std::move(other.ros_header);
+    height = other.height;
+    width = other.width;
+    fields = std::move(other.fields);
+    point_step = other.point_step;
+    row_step = other.row_step;
+    is_bigendian = other.is_bigendian;
+    data = other.data;
+    is_dense = other.is_dense;
+    owned_data = std::move(other.owned_data);
+    if (owned_data_view) {
+      data = Cloudini::ConstBufferView(owned_data.data(), owned_data.size());
+    }
+    return *this;
+  }
+
   nanocdr::CdrHeader cdr_header;
   RosHeader ros_header;                      // ROS header
   uint32_t height = 1;                       // default to unorganized point cloud
@@ -70,6 +147,17 @@ struct RosPointCloud2 {
   // non-empty, `data` is expected to be a view over `owned_data`. Default
   // empty: `data` views the original DDS buffer.
   std::vector<uint8_t> owned_data;
+
+ private:
+  bool dataViewsOwnedData() const {
+    return !owned_data.empty() && data.data() == owned_data.data() && data.size() == owned_data.size();
+  }
+
+  void rebindOwnedDataView(const RosPointCloud2& source) {
+    if (source.dataViewsOwnedData()) {
+      data = Cloudini::ConstBufferView(owned_data.data(), owned_data.size());
+    }
+  }
 };
 
 // Resolutions to be applied to the fields in RosPointCloud2 or EncodingInfo.
