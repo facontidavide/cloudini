@@ -55,6 +55,18 @@ target_link_libraries(mcap_header_inspector
     cxxopts::cxxopts
 )
 
+add_executable(mcap_codec_benchmark
+ src/mcap_codec_benchmark.cpp)
+
+target_link_libraries(mcap_codec_benchmark
+  PRIVATE
+    cloudini_lib
+    LZ4::lz4_static
+    zstd::libzstd_static
+    mcap::mcap
+    cxxopts::cxxopts
+)
+
 install(TARGETS cloudini_rosbag_converter
         RUNTIME DESTINATION bin)
 

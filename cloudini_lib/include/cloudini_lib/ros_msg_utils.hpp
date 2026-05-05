@@ -64,6 +64,12 @@ struct RosPointCloud2 {
   bool is_bigendian = false;                 // endianness (not used)
   Cloudini::ConstBufferView data;
   bool is_dense = true;  // whether all points are valid
+
+  // Optional owned buffer used by lossy preprocessing helpers (e.g.
+  // applyVizLossyPreprocessing) to hold a rewritten point payload. When
+  // non-empty, `data` is expected to be a view over `owned_data`. Default
+  // empty: `data` views the original DDS buffer.
+  std::vector<uint8_t> owned_data;
 };
 
 // Resolutions to be applied to the fields in RosPointCloud2 or EncodingInfo.
@@ -100,5 +106,30 @@ void convertPointCloud2ToCompressedCloud(
 
 // Assumining that pc_info contains compressed data, decompress it directly into raw_dds_msg
 void convertCompressedCloudToPointCloud2(const RosPointCloud2& pc_info, std::vector<uint8_t>& pc2_dds_msg);
+
+/**
+ * @brief Visualization-oriented lossy preprocessing applied in place.
+ *
+ * Bundles three lossy operations that approximately halve output size on
+ * real LIDAR after stage-2 ZSTD, while preserving every declared field:
+ *   1. NaN drop. Points whose geometry triple (xyz) contains NaN/inf are
+ *      removed.
+ *   2. Voxel dedup (1mm resolution by default — uses xyz fields' resolution).
+ *      Hash-based, order-preserving: first occurrence of each voxel wins.
+ *   3. 1µs FLOAT64 quantization. Every FLOAT64 field whose `resolution` is
+ *      unset gets `resolution = 1e-6` so the encoder routes it through
+ *      FieldEncoderFloat_Lossy (quantize+varint) instead of Gorilla. Affects
+ *      typically per-point `timestamp` / `time` fields stored as
+ *      seconds-since-epoch FLOAT64.
+ *
+ * Modifies pc_info in place: rewrites pc_info.owned_data with the cleaned
+ * point bytes, points pc_info.data at it, updates pc_info.width to the new
+ * point count, and sets resolution=1µs on FLOAT64 fields without one.
+ *
+ * No-op if pc_info has no geometry triple. The triple is detected
+ * structurally (first 3 FLOAT32 fields with shared resolution and consecutive
+ * offsets {b, b+4, b+8}); the field names are never read.
+ */
+void applyVizLossyPreprocessing(RosPointCloud2& pc_info);
 
 }  // namespace cloudini_ros

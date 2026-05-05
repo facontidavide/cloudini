@@ -172,9 +172,55 @@ ros2 run cloudini_ros test_direct_publisher --ros-args \
 # Convert a bare .mcap file (if sibling metadata.yaml exists, it is also transformed)
 ./build_release/tools/cloudini_rosbag_converter -c -y -f DATA/my_bag/my_bag_0.mcap
 
+# Convert with --viz: visualization-oriented lossy preprocessing
+# (drop NaN points, voxel-dedupe at xyz resolution, quantize FLOAT64 to 1us).
+# Roughly halves output size on real LIDAR with stage-2 ZSTD.
+./build_release/tools/cloudini_rosbag_converter -c -y --viz -f DATA/my_bag/
+
 # Decode back to PointCloud2
 ./build_release/tools/cloudini_rosbag_converter -d -y -f DATA/my_bag_encoded/
 ```
+
+**Visualization workflow (`--viz`)**:
+
+The `--viz` flag bundles three lossy preprocessing operations applied per
+message before V4 encoding:
+1. Drop points whose geometry triple (xyz) contains NaN/inf.
+2. Voxel-dedupe at the xyz resolution (default 1mm). Hash-based,
+   order-preserving — first occurrence of each voxel wins.
+3. Quantize FLOAT64 fields without an explicit resolution to 1µs (typically
+   per-point timestamps stored as seconds-since-epoch).
+
+The wire format produced is plain V4 — any standard `mcap` / ROS2 consumer
+reads it without changes. The flag is for compression workflows where the
+original NaN/duplicate/sub-µs-precision data isn't needed by downstream
+visualizers. Empirical results on real LIDAR bags: ratio drops from ~30-40%
+(V4 lossless) to ~13-30% codec-only, ~15-17% after stage-2 ZSTD.
+
+Implementation: `cloudini_ros::applyVizLossyPreprocessing` in
+`cloudini_lib/src/ros_msg_utils.cpp`. Public API in `ros_msg_utils.hpp`.
+
+**Codec benchmark**:
+```bash
+# Per-topic ratio + encode/decode speed for V4 vs V4+viz
+./build_release/tools/mcap_codec_benchmark DATA/my_bag.mcap --max-messages 100
+
+# Add --zstd for after-ZSTD-3 sizes (production-equivalent)
+./build_release/tools/mcap_codec_benchmark DATA/my_bag.mcap --max-messages 100 --zstd
+
+# --explain prints field schema + viz-preprocessing effect for the first
+# message of each topic (NaN count, dedup count, FLOAT64 fields quantized)
+./build_release/tools/mcap_codec_benchmark DATA/my_bag.mcap --explain
+```
+
+**V5 naming note**: A previous research branch
+(`feat/lossy-v2-bitpacked-default`, git tag `v5-reference-2026-05`) used "V5"
+for a GPU-decodable bit-packed format. That format is archived and should not
+be confused with the current V5 wire version on this branch. Current V5 keeps
+the V4 float paths and adds adaptive integer sections per chunk: integer fields
+can choose V4 delta-varint, palette indexes, raw-value RLE, or Delta-RLE
+for repeated increments. Use
+`mcap_codec_benchmark` to compare V4/V5 and V4-viz/V5-viz.
 
 ### Debugging with ROS2 CLI
 
