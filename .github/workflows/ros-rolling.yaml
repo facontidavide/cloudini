@@ -14,6 +14,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Rolling is allowed to fail: ros-rolling-point-cloud-interfaces was dropped
+    # from the apt sync circa 2026-04-25 (last green Rolling on main: 2026-04-20).
+    # Remove this once upstream restores the package or we migrate off it.
+    continue-on-error: true
     container:
       image: rostooling/setup-ros-docker:ubuntu-noble-ros-rolling-ros-base-latest
     steps:
