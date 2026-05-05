@@ -37,18 +37,6 @@ find_or_download_zstd(${CLOUDINI_FORCE_VENDORED_DEPS})
 include(cmake/find_or_download_lz4.cmake)
 find_or_download_lz4(${CLOUDINI_FORCE_VENDORED_DEPS})
 
-# ankerl::unordered_dense — single-header MIT, used by ros_msg_utils.cpp's
-# applyVizLossyPreprocessing for fast voxel-dedup hash set.
-find_package(unordered_dense QUIET)
-if(NOT TARGET unordered_dense::unordered_dense)
-  CPMAddPackage(
-    NAME unordered_dense
-    GITHUB_REPOSITORY martinus/unordered_dense
-    VERSION 4.8.1
-  )
-endif()
-
-
 ##################################################################################
 
 # ----  Trick to pass an absolute path to C++ code  ----
@@ -130,7 +118,6 @@ target_link_libraries(cloudini_lib
   PRIVATE
     $<BUILD_INTERFACE:LZ4::lz4_static>
     $<BUILD_INTERFACE:${CLOUDINI_ZSTD_TARGET}>
-    $<BUILD_INTERFACE:unordered_dense::unordered_dense>
   PUBLIC
     ${PCL_COMMON_LIBRARIES}
     ${PCL_IO_LIBRARIES}

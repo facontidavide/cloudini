@@ -23,7 +23,7 @@
 #include <limits>
 #include <vector>
 
-#include "ankerl/unordered_dense.h"
+#include "cloudini_lib/contrib/ankerl/unordered_dense.h"
 
 namespace cloudini_ros {
 
