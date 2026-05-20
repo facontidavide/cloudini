@@ -83,12 +83,14 @@ SET(CLOUDINI_SRC
 )
 
 if(ament_cmake_FOUND)
+  # ROS/ament always builds shared so the plugin pluginlib can dlopen it.
   add_library(cloudini_lib SHARED
     ${CLOUDINI_SRC}
     ${PCL_SRC}
   )
 else()
-  add_library(cloudini_lib STATIC
+  # Standalone builds honor BUILD_SHARED_LIBS (static by default).
+  add_library(cloudini_lib
     ${CLOUDINI_SRC}
     ${PCL_SRC}
   )

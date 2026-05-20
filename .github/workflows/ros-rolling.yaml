@@ -14,13 +14,14 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Rolling is allowed to fail: ros-rolling-point-cloud-interfaces was dropped
-    # from the apt sync circa 2026-04-25 (last green Rolling on main: 2026-04-20).
-    # Remove this once upstream restores the package or we migrate off it.
-    continue-on-error: true
     container:
       image: rostooling/setup-ros-docker:ubuntu-noble-ros-rolling-ros-base-latest
     steps:
+      # action-ros-ci checks the repo out to its own ros_ws/src, not to
+      # ${{ github.workspace }}. Do an explicit checkout first so the
+      # .repos file passed to vcs-repo-file-url below is reachable.
+      - uses: actions/checkout@v4
+
       - uses: ros-tooling/setup-ros@v0.7
         with:
           required-ros-distributions: rolling
@@ -33,12 +34,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --only-upgrade $(dpkg -l 'ros-rolling-*' | awk '/^ii/{print $2}' | tr '\n' ' ')
 
+      # point_cloud_interfaces was dropped from the Rolling apt sync circa 2026-04-25.
+      # Build it from source via vcstool until it reappears in the binary repo.
       - uses: ros-tooling/action-ros-ci@v0.4
         with:
           package-name: |
             cloudini_lib
             cloudini_ros
           target-ros2-distro: rolling
+          vcs-repo-file-url: ${{ github.workspace }}/.github/workflows/rolling.repos
           colcon-defaults: |
             {
               "build": {

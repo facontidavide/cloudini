@@ -1,0 +1,5 @@
+repositories:
+  point_cloud_transport_plugins:
+    type: git
+    url: https://github.com/ros-perception/point_cloud_transport_plugins.git
+    version: rolling
