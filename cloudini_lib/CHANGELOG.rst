@@ -2,6 +2,10 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.2.1 (2026-05-20)
+------------------
+* build(cmake): honor BUILD_SHARED_LIBS for standalone (non-ament) builds
+
 1.2.0 (2026-05-05)
 ------------------
 * fix(cmake): vendor ankerl::unordered_dense to fix ROS buildfarm
