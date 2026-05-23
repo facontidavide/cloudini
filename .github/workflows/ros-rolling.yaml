@@ -20,7 +20,7 @@ jobs:
       # action-ros-ci checks the repo out to its own ros_ws/src, not to
       # ${{ github.workspace }}. Do an explicit checkout first so the
       # .repos file passed to vcs-repo-file-url below is reachable.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: ros-tooling/setup-ros@v0.7
         with:
