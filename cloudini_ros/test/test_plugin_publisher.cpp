@@ -42,8 +42,11 @@ class CloudiniPluginPublisherTestNode : public rclcpp::Node {
     RCLCPP_INFO(this->get_logger(), "Subscribing to: %s", input_topic.c_str());
     RCLCPP_INFO(this->get_logger(), "Publishing to: %s", output_topic.c_str());
 
-    // Create point_cloud_transport publisher
-    pct_ = std::make_shared<point_cloud_transport::PointCloudTransport>(shared_from_this());
+    // Create point_cloud_transport publisher. PointCloudTransport binds the node by
+    // non-const lvalue ref (rclcpp::NodeInterfaces), so pass a named lvalue — Rolling
+    // dropped the deprecated by-value Node::SharedPtr ctor.
+    std::shared_ptr<rclcpp::Node> node = shared_from_this();
+    pct_ = std::make_shared<point_cloud_transport::PointCloudTransport>(node);
     transport_publisher_ = pct_->advertise(output_topic, 10);
 
     // Create standard ROS2 subscriber

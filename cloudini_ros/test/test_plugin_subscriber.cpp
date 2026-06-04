@@ -48,7 +48,10 @@ class CloudiniPluginTestNode : public rclcpp::Node {
     RCLCPP_INFO(this->get_logger(), "Subscribing to topic: %s", topic.c_str());
     RCLCPP_INFO(this->get_logger(), "Using transport: %s", transport.c_str());
 
-    pct_ = std::make_shared<point_cloud_transport::PointCloudTransport>(shared_from_this());
+    // PointCloudTransport binds the node by non-const lvalue ref (rclcpp::NodeInterfaces),
+    // so pass a named lvalue — Rolling dropped the deprecated by-value Node::SharedPtr ctor.
+    std::shared_ptr<rclcpp::Node> node = shared_from_this();
+    pct_ = std::make_shared<point_cloud_transport::PointCloudTransport>(node);
 
     // Create transport hints to specify which compression to use
     auto transport_hint = std::make_shared<point_cloud_transport::TransportHints>(transport);
