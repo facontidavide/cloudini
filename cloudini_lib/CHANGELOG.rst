@@ -2,6 +2,10 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.2.2 (2026-06-04)
+------------------
+* fix(field_encoder): use C++20 [[likely]]/[[unlikely]] instead of __builtin_expect (enables MSVC)
+
 1.2.1 (2026-05-20)
 ------------------
 * build(cmake): honor BUILD_SHARED_LIBS for standalone (non-ament) builds

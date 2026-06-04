@@ -2,6 +2,10 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.2.2 (2026-06-04)
+------------------
+* build: synchronized version bump with cloudini_lib (MSVC support; no functional changes here)
+
 1.2.1 (2026-05-20)
 ------------------
 * ci(rolling): build point_cloud_interfaces from source via vcstool until the apt-sync drop is resolved
