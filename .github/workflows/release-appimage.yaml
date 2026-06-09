@@ -154,20 +154,15 @@ jobs:
         working-directory: cloudini_foxglove
         run: npm ci
 
-      - name: Build Foxglove extension
+      - name: Package Foxglove extension (.foxe)
         working-directory: cloudini_foxglove
-        run: npm run build
-
-      - name: Package Foxglove extension
-        run: |
-          cd cloudini_foxglove/dist
-          zip -r ../../cloudini-foxglove-${{ steps.get_version.outputs.VERSION }}.zip .
+        run: npm run package
 
       - name: Upload Foxglove artifact
         uses: actions/upload-artifact@v7
         with:
           name: foxglove-artifact
-          path: cloudini-foxglove-*.zip
+          path: cloudini_foxglove/release/*.foxe
 
   create-release:
     needs: [build-appimage, build-wasm, build-foxglove]
@@ -194,6 +189,6 @@ jobs:
           files: |
             appimage-artifact/cloudini_rosbag_converter-*.AppImage
             wasm-artifact/cloudini-wasm-*.zip
-            foxglove-artifact/cloudini-foxglove-*.zip
+            foxglove-artifact/*.foxe
           draft: false
           prerelease: false
