@@ -28,6 +28,7 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "module": "esnext",
-    "moduleResolution": "node"
+    "moduleResolution": "node",
+    "ignoreDeprecations": "6.0"
   }
 }
