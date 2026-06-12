@@ -107,6 +107,7 @@ CloudiniPointcloudConverter::CloudiniPointcloudConverter(const rclcpp::NodeOptio
   this->declare_parameter<std::string>("topic_input", "/points");
   this->declare_parameter<std::string>("topic_output", "");
   this->declare_parameter<double>("resolution", 0.001);
+  this->declare_parameter<bool>("log_compression_stats", true);
 
   // read parameters
   compressing_ = this->get_parameter("compressing").as_bool();
@@ -177,6 +178,10 @@ void CloudiniPointcloudConverter::callback(std::shared_ptr<rclcpp::SerializedMes
   output_message_.get_rcl_serialized_message().buffer_length = output_raw_message_.size();
   output_message_.get_rcl_serialized_message().buffer = output_raw_message_.data();
   point_cloud_publisher_->publish(output_message_);
+
+  if (!this->get_parameter("log_compression_stats").as_bool()) {
+    return;
+  }
 
   tot_original_size += input_msg.buffer_length;
   tot_compressed_size += output_raw_message_.size();
