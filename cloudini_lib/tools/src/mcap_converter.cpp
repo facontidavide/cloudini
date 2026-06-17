@@ -100,7 +100,10 @@ void McapConverter::duplicateSchemasAndChannels(
   for (const auto& channel_id : ordered_channels_id) {
     const auto channel_ptr = old_channels.at(channel_id);
     auto new_schema_id = old_to_new_schema_id_.at(channel_ptr->schemaId);
-    mcap::Channel new_channel(channel_ptr->topic, channel_ptr->messageEncoding, new_schema_id);
+    // Preserve the channel metadata (e.g. ROS2 offered_qos_profiles); the mcap::Channel
+    // constructor defaults metadata to empty, which would silently drop the QoS profiles.
+    mcap::Channel new_channel(channel_ptr->topic, channel_ptr->messageEncoding, new_schema_id,
+                              channel_ptr->metadata);
     writer.addChannel(new_channel);
     old_to_new_channel_id_.insert({channel_ptr->id, new_channel.id});
   }
