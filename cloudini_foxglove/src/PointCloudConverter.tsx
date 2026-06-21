@@ -33,7 +33,7 @@ export const convertPointCloudWasm = (cloud: CompressedPointCloud): PointCloud =
     point_step: cloud.point_step,
     row_step: cloud.point_step * cloud.width,
     is_dense: cloud.is_dense,
-    data: new Uint8Array(),
+    data: new Uint8Array(0),
   };
 
   // Nothing to do, the point cloud is empty

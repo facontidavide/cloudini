@@ -164,6 +164,121 @@ TEST(FieldEncoders, DecodeVarintRejectsTruncatedInputBeforeReadingPastBound) {
 
 namespace {
 
+// Oracle: the pre-optimization, loop-only decodeVarint. Kept here verbatim so
+// the optimized fast-path implementation can be differentially compared against
+// it. Any divergence (value, byte count, or throw/no-throw) is a regression.
+size_t decodeVarintOracle(const uint8_t* buf, size_t max_size, int64_t& val) {
+  if (max_size == 0) {
+    throw std::runtime_error("decodeVarint: empty input");
+  }
+  uint64_t uval = 0;
+  uint8_t shift = 0;
+  const uint8_t* ptr = buf;
+  while (true) {
+    if (static_cast<size_t>(ptr - buf) >= max_size) {
+      throw std::runtime_error("decodeVarint: truncated input");
+    }
+    uint8_t byte = *ptr;
+    ptr++;
+    const uint8_t payload = byte & 0x7f;
+    if (shift >= 64 || (shift == 63 && payload > 1)) {
+      throw std::runtime_error("decodeVarint: value overflow");
+    }
+    uval |= (static_cast<uint64_t>(payload) << shift);
+    if ((byte & 0x80) == 0) {
+      break;
+    }
+    if (shift >= 63) {
+      throw std::runtime_error("decodeVarint: value overflow");
+    }
+    shift = static_cast<uint8_t>(shift + 7);
+  }
+  if (uval == 0) {
+    throw std::runtime_error("decodeVarint: unexpected NaN marker");
+  }
+  uval--;
+  val = static_cast<int64_t>((uval >> 1) ^ static_cast<uint64_t>(-(static_cast<int64_t>(uval & 1))));
+  return static_cast<size_t>(ptr - buf);
+}
+
+// Compare the optimized decodeVarint against the oracle for one (buf, max_size)
+// case: both must throw, or both must return identical (count, value).
+void expectVarintMatchesOracle(const uint8_t* buf, size_t max_size) {
+  int64_t opt_val = 0;
+  size_t opt_count = 0;
+  bool opt_threw = false;
+  try {
+    opt_count = Cloudini::decodeVarint(buf, max_size, opt_val);
+  } catch (const std::exception&) {
+    opt_threw = true;
+  }
+
+  int64_t ref_val = 0;
+  size_t ref_count = 0;
+  bool ref_threw = false;
+  try {
+    ref_count = decodeVarintOracle(buf, max_size, ref_val);
+  } catch (const std::exception&) {
+    ref_threw = true;
+  }
+
+  ASSERT_EQ(opt_threw, ref_threw) << "throw mismatch at max_size=" << max_size;
+  if (!opt_threw) {
+    ASSERT_EQ(opt_count, ref_count) << "count mismatch at max_size=" << max_size;
+    ASSERT_EQ(opt_val, ref_val) << "value mismatch at max_size=" << max_size;
+  }
+}
+
+}  // namespace
+
+TEST(FieldEncoders, DecodeVarintMatchesOracleExhaustiveAndRandom) {
+  // Exhaustive over all 1- and 2-byte prefixes (the new fast paths and their
+  // boundary with the general path) with every truncation length in [0, len].
+  std::array<uint8_t, 16> buf{};
+  for (int b0 = 0; b0 < 256; ++b0) {
+    buf[0] = static_cast<uint8_t>(b0);
+    for (size_t ms = 0; ms <= 1; ++ms) {
+      expectVarintMatchesOracle(buf.data(), ms);
+    }
+    for (int b1 = 0; b1 < 256; ++b1) {
+      buf[1] = static_cast<uint8_t>(b1);
+      for (size_t ms = 0; ms <= 2; ++ms) {
+        expectVarintMatchesOracle(buf.data(), ms);
+      }
+      // 3-byte prefixes: sample b2 at the byte-value boundaries (the general
+      // path here is the original code verbatim, so full enumeration is
+      // unnecessary; the randomized sweep below covers the interior).
+      for (uint8_t b2 : {0x00u, 0x01u, 0x7eu, 0x7fu, 0x80u, 0x81u, 0xfeu, 0xffu}) {
+        buf[2] = b2;
+        expectVarintMatchesOracle(buf.data(), 3);
+      }
+    }
+  }
+
+  // Randomized sweep over the general (3+ byte) path and all truncation
+  // lengths, including malformed all-continuation and overflow-edge varints.
+  // The 1- and 2-byte fast paths are already proven exhaustively above and the
+  // 3+ byte path is the original code verbatim, so this sweep is supplementary
+  // coverage of the interior; 200k keeps the ASan/Debug ctest run fast.
+  std::mt19937_64 rng(0xC10D1217ULL);
+  for (int iter = 0; iter < 200'000; ++iter) {
+    const size_t len = 1 + (rng() % 12);  // up to 12 bytes (varint64 worst case is 10)
+    for (size_t i = 0; i < len; ++i) {
+      // Bias toward continuation bytes so we exercise long/overflowing varints.
+      const uint32_t r = static_cast<uint32_t>(rng());
+      uint8_t byte = static_cast<uint8_t>(r);
+      if ((r >> 8) & 1) {
+        byte |= 0x80u;  // force continuation ~50% of the time
+      }
+      buf[i] = byte;
+    }
+    const size_t max_size = rng() % (len + 1);  // 0 .. len
+    expectVarintMatchesOracle(buf.data(), max_size);
+  }
+}
+
+namespace {
+
 // Helper: round-trip a sequence of FloatType values through encoder/decoder,
 // periodically flushing+resetting both at chunk boundaries to exercise the
 // chunk-flush path (the classic bit-packer gotcha).

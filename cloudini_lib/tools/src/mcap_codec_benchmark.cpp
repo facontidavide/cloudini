@@ -100,6 +100,14 @@ struct DecodeSample {
   std::vector<uint8_t> encoded;
 };
 
+inline uint64_t fnv1a(uint64_t h, const uint8_t* data, size_t n) {
+  for (size_t i = 0; i < n; ++i) {
+    h ^= data[i];
+    h *= 0x100000001b3ULL;
+  }
+  return h;
+}
+
 inline uint64_t elapsedNs(Clock::time_point t0, Clock::time_point t1) {
   return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count());
 }
@@ -237,6 +245,7 @@ int main(int argc, char** argv) {
        cxxopts::value<uint64_t>()->default_value("1"))                                                     //
       ("profile-sleep-ms", "Sleep after preload and before decode replay so perf can attach",               //
        cxxopts::value<uint64_t>()->default_value("0"))                                                     //
+      ("hash", "Print an FNV-1a fingerprint of decoded output per mode (correctness gate)")                 //
       ("explain", "Print the field schema and viz-preprocessing effect for the first message of each topic and exit");
   options.parse_positional({"filename"});
   options.positional_help("<file.mcap>");
@@ -263,6 +272,7 @@ int main(int argc, char** argv) {
   const bool decode_replay = parse_result.count("decode-replay") > 0;
   const uint64_t decode_repeat = std::max<uint64_t>(1, parse_result["decode-repeat"].as<uint64_t>());
   const uint64_t profile_sleep_ms = parse_result["profile-sleep-ms"].as<uint64_t>();
+  const bool do_hash = parse_result.count("hash") > 0;
   int only_mode = -1;
   if (parse_result.count("mode") > 0) {
     only_mode = modeIndexFromName(parse_result["mode"].as<std::string>());
@@ -278,6 +288,12 @@ int main(int argc, char** argv) {
   }
   if (decode_replay && only_mode < 0) {
     std::cerr << "Error: --decode-replay requires --mode so the in-memory replay stays bounded\n";
+    return 1;
+  }
+  if (do_hash && !decode_replay) {
+    // The fingerprint pass lives inside the decode-replay block, so without it
+    // --hash would silently print nothing — a footgun for a correctness gate.
+    std::cerr << "Error: --hash requires --decode-replay (and --mode)\n";
     return 1;
   }
 
@@ -517,6 +533,29 @@ int main(int argc, char** argv) {
     std::cout << "\nDecode replay: samples=" << decode_samples.size()
               << "  repeat=" << decode_repeat << "  total-decodes=" << replay_count
               << "  (MCAP read/decompression excluded)\n";
+    if (do_hash) {
+      // Untimed correctness pass: decode each sample once and fingerprint the
+      // decoded output bytes per mode. A pure performance refactor of the
+      // deterministic decode path MUST leave these values unchanged.
+      uint64_t mode_hash[kModeCount];
+      std::fill(std::begin(mode_hash), std::end(mode_hash), 0xcbf29ce484222325ULL);
+      for (const auto& sample : decode_samples) {
+        if (dec_buf[sample.mode].size() < sample.out_bytes_needed) {
+          dec_buf[sample.mode].resize(sample.out_bytes_needed);
+        }
+        Cloudini::ConstBufferView enc_view(sample.encoded.data(), sample.encoded.size());
+        Cloudini::BufferView out_view(dec_buf[sample.mode].data(), sample.out_bytes_needed);
+        Cloudini::PointcloudDecoder decoder;
+        decoder.decode(sample.header_info, enc_view, out_view);
+        mode_hash[sample.mode] =
+            fnv1a(mode_hash[sample.mode], dec_buf[sample.mode].data(), sample.out_bytes_needed);
+      }
+      std::cout << "Decoded-output fingerprint (FNV-1a):\n";
+      for (int m = 0; m < kModeCount; ++m) {
+        if (only_mode >= 0 && m != only_mode) continue;
+        std::cout << "  " << kModeNames[m] << " : 0x" << std::hex << mode_hash[m] << std::dec << "\n";
+      }
+    }
     if (profile_sleep_ms > 0) {
       std::cout << "Sleeping " << profile_sleep_ms << " ms before decode replay"
                 << " so perf can attach...\n" << std::flush;
