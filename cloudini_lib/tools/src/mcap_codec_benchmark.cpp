@@ -290,6 +290,12 @@ int main(int argc, char** argv) {
     std::cerr << "Error: --decode-replay requires --mode so the in-memory replay stays bounded\n";
     return 1;
   }
+  if (do_hash && !decode_replay) {
+    // The fingerprint pass lives inside the decode-replay block, so without it
+    // --hash would silently print nothing — a footgun for a correctness gate.
+    std::cerr << "Error: --hash requires --decode-replay (and --mode)\n";
+    return 1;
+  }
 
   if (!std::filesystem::exists(input_file)) {
     std::cerr << "Error: file does not exist: " << input_file << "\n";
