@@ -257,8 +257,11 @@ TEST(FieldEncoders, DecodeVarintMatchesOracleExhaustiveAndRandom) {
 
   // Randomized sweep over the general (3+ byte) path and all truncation
   // lengths, including malformed all-continuation and overflow-edge varints.
+  // The 1- and 2-byte fast paths are already proven exhaustively above and the
+  // 3+ byte path is the original code verbatim, so this sweep is supplementary
+  // coverage of the interior; 200k keeps the ASan/Debug ctest run fast.
   std::mt19937_64 rng(0xC10D1217ULL);
-  for (int iter = 0; iter < 1'000'000; ++iter) {
+  for (int iter = 0; iter < 200'000; ++iter) {
     const size_t len = 1 + (rng() % 12);  // up to 12 bytes (varint64 worst case is 10)
     for (size_t i = 0; i < len; ++i) {
       // Bias toward continuation bytes so we exercise long/overflowing varints.
