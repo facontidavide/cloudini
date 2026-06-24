@@ -154,9 +154,7 @@ jobs:
         working-directory: cloudini_foxglove
         run: npm ci
 
-      # Sync the extension version to the release tag so the packaged .foxe
-      # filename and its embedded package.json version always match the tag.
-      # Skipped on manual (workflow_dispatch) runs where VERSION is "latest".
+      # Set the extension version from the tag
       - name: Set extension version from tag
         if: github.event_name == 'push'
         working-directory: cloudini_foxglove
