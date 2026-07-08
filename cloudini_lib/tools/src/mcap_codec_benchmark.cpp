@@ -50,6 +50,7 @@
 #include <vector>
 
 #include "cloudini_lib/cloudini.hpp"
+#include "cloudini_lib/contrib/ankerl/unordered_dense.h"
 #include "cloudini_lib/ros_message_definitions.hpp"
 #include "cloudini_lib/ros_msg_utils.hpp"
 #include "cxxopts.hpp"
@@ -59,6 +60,66 @@
 #include "mcap/types.hpp"
 
 namespace {
+
+// Pack a quantized voxel coordinate into a 63-bit key (mirror of
+// cloudini_ros::packVoxelKey21, which lives in an anonymous namespace).
+inline uint64_t packVoxelKey21(int32_t qx, int32_t qy, int32_t qz) {
+  constexpr int64_t kBias = int64_t{1} << 20;
+  constexpr uint64_t kAxisMask = (uint64_t{1} << 21) - 1;
+  const uint64_t ux = static_cast<uint64_t>(static_cast<int64_t>(qx) + kBias) & kAxisMask;
+  const uint64_t uy = static_cast<uint64_t>(static_cast<int64_t>(qy) + kBias) & kAxisMask;
+  const uint64_t uz = static_cast<uint64_t>(static_cast<int64_t>(qz) + kBias) & kAxisMask;
+  return ux | (uy << 21) | (uz << 42);
+}
+
+// Voxel-dedup at an arbitrary grid, DECOUPLED from the field quantization
+// resolution: the grid only decides which points survive; survivors keep their
+// original (full-precision) bytes and are quantized later by the encoder. Uses
+// the same hash primitive as applyVizLossyPreprocessing (first-occurrence,
+// order-preserving). Non-finite xyz points are passed through unchanged so this
+// isolates the dedup effect (no implicit NaN drop). Rewrites pc in place.
+void voxelDedupDecoupled(cloudini_ros::RosPointCloud2& pc, float grid) {
+  if (pc.fields.size() < 3 || pc.point_step == 0 || pc.data.size() == 0 || !(grid > 0.0f)) return;
+  const auto& f0 = pc.fields[0];
+  const auto& f1 = pc.fields[1];
+  const auto& f2 = pc.fields[2];
+  const bool triple = f0.type == Cloudini::FieldType::FLOAT32 && f1.type == Cloudini::FieldType::FLOAT32 &&
+                      f2.type == Cloudini::FieldType::FLOAT32 && f1.offset == f0.offset + 4u &&
+                      f2.offset == f0.offset + 8u;
+  if (!triple) return;
+
+  const float inv = 1.0f / grid;
+  const uint32_t off[3] = {f0.offset, f1.offset, f2.offset};
+  const size_t n = pc.data.size() / pc.point_step;
+
+  ankerl::unordered_dense::set<uint64_t> seen;
+  seen.reserve(n);
+  std::vector<uint8_t> out;
+  out.reserve(pc.data.size());
+  uint64_t kept = 0;
+  for (size_t i = 0; i < n; ++i) {
+    const uint8_t* p = pc.data.data() + i * pc.point_step;
+    float x, y, z;
+    std::memcpy(&x, p + off[0], 4);
+    std::memcpy(&y, p + off[1], 4);
+    std::memcpy(&z, p + off[2], 4);
+    if (std::isfinite(x) && std::isfinite(y) && std::isfinite(z)) {
+      const uint64_t key = packVoxelKey21(
+          static_cast<int32_t>(std::lround(x * inv)), static_cast<int32_t>(std::lround(y * inv)),
+          static_cast<int32_t>(std::lround(z * inv)));
+      if (!seen.insert(key).second) continue;  // duplicate voxel
+    }
+    const size_t before = out.size();
+    out.resize(before + pc.point_step);
+    std::memcpy(out.data() + before, p, pc.point_step);
+    ++kept;
+  }
+  pc.owned_data = std::move(out);
+  pc.data = Cloudini::ConstBufferView(pc.owned_data.data(), pc.owned_data.size());
+  pc.width = static_cast<uint32_t>(kept);
+  pc.height = 1;
+  pc.row_step = pc.point_step * pc.width;
+}
 
 enum class Mode { V4 = 0, V5 = 1, V4_VIZ = 2, V5_VIZ = 3 };
 constexpr int kModeCount = 4;
@@ -232,6 +293,9 @@ int main(int argc, char** argv) {
       ("f,filename", "Input MCAP file (positional also accepted)", cxxopts::value<std::string>())          //
       ("r,resolution", "XYZ tick size in meters (default 0.001)", cxxopts::value<float>()->default_value(  //
                                                                       "0.001"))                            //
+      ("dedup-res", "Voxel-dedup grid in meters, DECOUPLED from --resolution (0 = off). "                  //
+                    "Applied before encoding; ratios stay vs the original raw cloud.",                     //
+       cxxopts::value<float>()->default_value("0"))                                                        //
       ("max-messages", "Stop after N messages per topic (0 = unlimited)",                                  //
        cxxopts::value<uint64_t>()->default_value("0"))                                                     //
       ("sample-every", "Process only 1 of every N messages per topic (>=1)",                               //
@@ -264,6 +328,7 @@ int main(int argc, char** argv) {
 
   const std::filesystem::path input_file = parse_result["filename"].as<std::string>();
   const float default_resolution = parse_result["resolution"].as<float>();
+  const float dedup_res = parse_result["dedup-res"].as<float>();
   const uint64_t max_per_topic = parse_result["max-messages"].as<uint64_t>();
   const uint64_t sample_every = std::max<uint64_t>(1, parse_result["sample-every"].as<uint64_t>());
   const bool show_zstd = parse_result.count("zstd") > 0;
@@ -309,6 +374,7 @@ int main(int argc, char** argv) {
   else
     std::cout << max_per_topic;
   std::cout << "   sample-every: " << sample_every;
+  if (dedup_res > 0.0f) std::cout << "   dedup-res: " << dedup_res << " m";
   if (show_zstd) std::cout << "   +zstd";
   std::cout << "\n";
 
@@ -403,17 +469,28 @@ int main(int argc, char** argv) {
       continue;
     }
     cloudini_ros::applyResolutionProfile({}, pc_info_orig.fields, default_resolution);
+
+    // Capture the ORIGINAL cloud size/points before any decoupled dedup, so the
+    // reported compression ratio is measured against the original raw bytes —
+    // dedup's point removal then correctly counts as a compression gain.
+    const uint64_t original_raw_size = static_cast<uint64_t>(pc_info_orig.data.size());
+    if (original_raw_size == 0 || pc_info_orig.point_step == 0) continue;
+    const uint64_t original_points = original_raw_size / pc_info_orig.point_step;
+
+    if (dedup_res > 0.0f) {
+      voxelDedupDecoupled(pc_info_orig, dedup_res);
+    }
+
     Cloudini::EncodingInfo base = cloudini_ros::toEncodingInfo(pc_info_orig);
 
     Cloudini::ConstBufferView raw_points(pc_info_orig.data.data(), pc_info_orig.data.size());
     const uint64_t raw_size = static_cast<uint64_t>(raw_points.size());
     if (raw_size == 0 || base.point_step == 0) continue;
-    const uint64_t point_count = raw_size / base.point_step;
 
     auto& st = stats[topic];
     st.messages += 1;
-    st.points += point_count;
-    st.in_bytes += raw_size;
+    st.points += original_points;
+    st.in_bytes += original_raw_size;
 
     bool encode_ok[kModeCount];
     std::fill(std::begin(encode_ok), std::end(encode_ok), true);

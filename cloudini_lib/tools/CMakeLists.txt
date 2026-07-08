@@ -67,6 +67,18 @@ target_link_libraries(mcap_codec_benchmark
     cxxopts::cxxopts
 )
 
+add_executable(voxel_decimation_benchmark
+ src/voxel_decimation_benchmark.cpp)
+
+target_link_libraries(voxel_decimation_benchmark
+  PRIVATE
+    cloudini_lib
+    LZ4::lz4_static
+    zstd::libzstd_static
+    mcap::mcap
+    cxxopts::cxxopts
+)
+
 install(TARGETS cloudini_rosbag_converter
         RUNTIME DESTINATION bin)
 
