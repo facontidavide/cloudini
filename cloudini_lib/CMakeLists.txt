@@ -1,5 +1,16 @@
 cmake_minimum_required(VERSION 3.16)
-project(cloudini_lib)
+# NOTE: keep the default languages (C and CXX). The vendored zstd/lz4 fallback
+# compiles .c sources, so restricting to CXX only would break standalone builds.
+project(cloudini_lib VERSION 1.2.4)
+
+# Make installed executables relocatable: find the co-installed shared library
+# through an $ORIGIN-relative RPATH (bin/ -> ../lib). conda/conda-forge tooling
+# manages RPATHs on its own, so this mainly benefits a plain `cmake --install`.
+if(APPLE)
+  set(CMAKE_INSTALL_RPATH "@loader_path/../lib")
+else()
+  set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib")
+endif()
 
 # If not specified, set the default build type to Release
 if (NOT CMAKE_BUILD_TYPE)
@@ -108,17 +119,26 @@ target_include_directories(cloudini_lib
     $<INSTALL_INTERFACE:include>
 )
 
-# In ament/ROS builds cloudini_lib is a shared library. System libzstd.a is not
-# compiled with -fPIC and cannot be embedded in a .so; use the shared variant.
-if(ament_cmake_FOUND AND TARGET zstd::libzstd_shared)
+# When cloudini_lib is a shared library (ROS/ament, or a standalone build with
+# BUILD_SHARED_LIBS=ON such as the conda package), prefer the *shared* variants
+# of zstd/lz4 when available: a non-PIC system libzstd.a / liblz4.a cannot be
+# embedded into a .so. Vendored builds only expose the *_static targets, which
+# are used as the fallback.
+get_target_property(_cloudini_lib_type cloudini_lib TYPE)
+if(_cloudini_lib_type STREQUAL "SHARED_LIBRARY" AND TARGET zstd::libzstd_shared)
   set(CLOUDINI_ZSTD_TARGET zstd::libzstd_shared)
 else()
   set(CLOUDINI_ZSTD_TARGET zstd::libzstd_static)
 endif()
+if(_cloudini_lib_type STREQUAL "SHARED_LIBRARY" AND TARGET LZ4::lz4_shared)
+  set(CLOUDINI_LZ4_TARGET LZ4::lz4_shared)
+else()
+  set(CLOUDINI_LZ4_TARGET LZ4::lz4_static)
+endif()
 
 target_link_libraries(cloudini_lib
   PRIVATE
-    $<BUILD_INTERFACE:LZ4::lz4_static>
+    $<BUILD_INTERFACE:${CLOUDINI_LZ4_TARGET}>
     $<BUILD_INTERFACE:${CLOUDINI_ZSTD_TARGET}>
   PUBLIC
     ${PCL_COMMON_LIBRARIES}
@@ -211,4 +231,36 @@ if(ament_cmake_FOUND)
   ament_export_targets(cloudini_libTargets HAS_LIBRARY_TARGET)
   ament_export_dependencies(PCL)
   ament_package()
+else()
+  # Standalone (non-ament) install: generate a CMake package config so downstream
+  # projects can do find_package(cloudini_lib) and link cloudini::cloudini_lib.
+  # This is what the conda / system packages ship. zstd/lz4 are linked PRIVATE +
+  # BUILD_INTERFACE, so they never leak into the exported interface; PCL does when
+  # enabled, hence the conditional find_dependency in the config template.
+  include(CMakePackageConfigHelpers)
+
+  install(EXPORT cloudini_libTargets
+    FILE cloudini_libTargets.cmake
+    NAMESPACE cloudini::
+    DESTINATION lib/cmake/cloudini_lib)
+
+  set(CLOUDINI_HAS_PCL 0)
+  if(PCL_FOUND)
+    set(CLOUDINI_HAS_PCL 1)
+  endif()
+
+  configure_package_config_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/cloudini_libConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/cloudini_libConfig.cmake
+    INSTALL_DESTINATION lib/cmake/cloudini_lib)
+
+  write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/cloudini_libConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion)
+
+  install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/cloudini_libConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/cloudini_libConfigVersion.cmake
+    DESTINATION lib/cmake/cloudini_lib)
 endif()

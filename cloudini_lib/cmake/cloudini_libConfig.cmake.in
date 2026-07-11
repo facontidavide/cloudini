@@ -1,0 +1,12 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# PCL only leaks into the interface when cloudini_lib was built with PCL support.
+if(@CLOUDINI_HAS_PCL@)
+  find_dependency(PCL COMPONENTS common io)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/cloudini_libTargets.cmake")
+
+check_required_components(cloudini_lib)
