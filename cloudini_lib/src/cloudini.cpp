@@ -23,12 +23,12 @@
 #include <stdexcept>
 
 #include "chunk_writer.hpp"
-#include "codec_common.hpp"
 #include "cloudini_lib/encoding_utils.hpp"
 #include "cloudini_lib/yaml_parser.hpp"
+#include "codec_common.hpp"
+#include "lz4.h"
 #include "v4_codec.hpp"
 #include "v5_codec.hpp"
-#include "lz4.h"
 #include "zstd.h"
 
 namespace Cloudini {
@@ -598,8 +598,7 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
         info_, cloud_data, points_count, detail::kPointsPerChunk, get_stage_buffer, write_stage1_chunk);
   } else {
     const size_t max_per_point = detail::MaxSerializedPointSize(info_);
-    const size_t stage_capacity =
-        detail::kPointsPerChunk * std::max<size_t>(info_.point_step, max_per_point);
+    const size_t stage_capacity = detail::kPointsPerChunk * std::max<size_t>(info_.point_step, max_per_point);
     ensureScratchBuffer(buffer_, buffer_capacity_, stage_capacity);
     if (info_.compression_opt != CompressionOption::NONE && info_.use_threads) {
       ensureScratchBuffer(buffer_compressing_, buffer_compressing_capacity_, stage_capacity);
@@ -608,8 +607,8 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
     ConstBufferView remaining = cloud_data;
     while (!remaining.empty()) {
       BufferView stage_view(buffer_.get(), buffer_capacity_);
-      const size_t serialized_size = detail::EncodeV4Stage1Chunk(
-          info_, encoders_, remaining, detail::kPointsPerChunk, stage_view);
+      const size_t serialized_size =
+          detail::EncodeV4Stage1Chunk(info_, encoders_, remaining, detail::kPointsPerChunk, stage_view);
       write_stage1_chunk(serialized_size);
     }
   }
@@ -669,17 +668,20 @@ void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compres
 
 void PointcloudDecoder::decodeChunk(
     const EncodingInfo& info, ConstBufferView chunk_data, BufferView& output_buffer, size_t expected_points) {
+  const size_t points_in_chunk =
+      expected_points != 0 ? expected_points : static_cast<size_t>(info.width) * static_cast<size_t>(info.height);
   const size_t max_decompressed_size =
-      static_cast<size_t>(info.width) * static_cast<size_t>(info.height) * info.point_step;
-  ConstBufferView encoded_view = detail::DecompressChunk(
-      info.compression_opt, chunk_data, decompressed_buffer_, max_decompressed_size);
+      detail::UsesV5Codec(info)
+          ? detail::V5StageBufferSize(info, points_in_chunk)
+          : points_in_chunk * std::max<size_t>(info.point_step, detail::MaxSerializedPointSize(info));
+  ConstBufferView encoded_view =
+      detail::DecompressChunk(info.compression_opt, chunk_data, decompressed_buffer_, max_decompressed_size);
 
   if (detail::UsesV5Codec(info)) {
     detail::DecodeV5Stage1Chunk(info, decoders_, encoded_view, output_buffer, expected_points);
   } else {
     detail::DecodeV4Stage1Chunk(
-        decoders_, min_encoded_point_bytes_, encoded_view, output_buffer,
-        info.point_step, expected_points);
+        decoders_, min_encoded_point_bytes_, encoded_view, output_buffer, info.point_step, expected_points);
   }
 }
 
