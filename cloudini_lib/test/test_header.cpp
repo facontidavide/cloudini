@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "cloudini_lib/cloudini.hpp"
+#include "cloudini_lib/ros_message_definitions.hpp"  // second includer: see test_ros_msg.cpp
 
 namespace {
 

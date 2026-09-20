@@ -428,6 +428,13 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
 }
 
 PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
+  // The field encoders read SizeOf(type) bytes at field.offset inside every point:
+  // a field that does not fit in point_step would read past the end of the cloud.
+  for (const auto& field : info_.fields) {
+    if (static_cast<uint64_t>(field.offset) + static_cast<uint64_t>(SizeOf(field.type)) > info_.point_step) {
+      throw std::runtime_error("PointcloudEncoder: field '" + field.name + "' does not fit in point_step");
+    }
+  }
   EncodeHeader(info_, header_);
 
   if (!detail::UsesV5Codec(info_)) {
