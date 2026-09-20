@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 # NOTE: keep the default languages (C and CXX). The vendored zstd/lz4 fallback
 # compiles .c sources, so restricting to CXX only would break standalone builds.
-project(cloudini_lib VERSION 1.2.4)
+project(cloudini_lib VERSION 1.3.1)
 
 # When another project embeds this one (add_subdirectory / FetchContent), build
 # only the library: no forced build type, no ament packaging, no tests, tools,

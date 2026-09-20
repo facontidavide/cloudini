@@ -2,6 +2,10 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.3.1 (2026-09-20)
+------------------
+* No changes; released together with cloudini_lib 1.3.1
+
 1.3.0 (2026-09-20)
 ------------------
 * Fix license tags in package.xml
