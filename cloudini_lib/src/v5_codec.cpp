@@ -21,9 +21,9 @@
 #include <limits>
 #include <stdexcept>
 
-#include "codec_common.hpp"
 #include "cloudini_lib/encoding_utils.hpp"
 #include "cloudini_lib/field_encoder.hpp"
+#include "codec_common.hpp"
 
 namespace Cloudini::detail {
 namespace {
@@ -297,8 +297,7 @@ size_t encodedDeltaRleSectionSize(const std::vector<int64_t>& values, uint32_t& 
   return bytes;
 }
 
-size_t encodedRleSectionSize(
-    const std::vector<uint64_t>& raw_values, size_t bytes_per_value, uint32_t& run_count) {
+size_t encodedRleSectionSize(const std::vector<uint64_t>& raw_values, size_t bytes_per_value, uint32_t& run_count) {
   size_t bytes = 1 + sizeof(uint32_t);  // mode byte + run count
   run_count = 0;
   size_t i = 0;
@@ -762,16 +761,15 @@ std::vector<V5AdaptiveIntField> getV5AdaptiveFields(const EncodingInfo& info) {
 }
 
 void decodeV5AdaptiveIntSection(
-    const V5AdaptiveIntField& field, ConstBufferView& input, uint8_t* output_base,
-    size_t point_step, size_t expected_points) {
+    const V5AdaptiveIntField& field, ConstBufferView& input, uint8_t* output_base, size_t point_step,
+    size_t expected_points) {
   if (input.empty()) {
     throw std::runtime_error("V5 adaptive int: missing mode byte");
   }
   const uint8_t mode_byte = input.data()[0];
   input.trim_front(1);
   if (mode_byte > static_cast<uint8_t>(AdaptiveIntMode::DeltaRle)) {
-    throw std::runtime_error(
-        "V5 adaptive int: unknown mode byte " + std::to_string(static_cast<int>(mode_byte)));
+    throw std::runtime_error("V5 adaptive int: unknown mode byte " + std::to_string(static_cast<int>(mode_byte)));
   }
   const auto mode = static_cast<AdaptiveIntMode>(mode_byte);
 
@@ -785,8 +783,7 @@ void decodeV5AdaptiveIntSection(
         const int64_t value = prev + diff;
         prev = value;
         writeRawBitsToPoint(
-            static_cast<uint64_t>(value), field.bytes_per_value,
-            output_base + i * point_step + field.offset);
+            static_cast<uint64_t>(value), field.bytes_per_value, output_base + i * point_step + field.offset);
       }
     } break;
 
@@ -863,8 +860,7 @@ void decodeV5AdaptiveIntSection(
           const int64_t value = prev + diff;
           prev = value;
           writeRawBitsToPoint(
-              static_cast<uint64_t>(value), field.bytes_per_value,
-              output_base + out_index * point_step + field.offset);
+              static_cast<uint64_t>(value), field.bytes_per_value, output_base + out_index * point_step + field.offset);
           ++out_index;
         }
       }
@@ -886,20 +882,19 @@ bool UsesV5Codec(const EncodingInfo& info) {
   }
 
   const size_t start_index = LeadingLossyFloatFieldCount(info);
-  return std::any_of(
-      info.fields.begin() + start_index, info.fields.end(),
-      [](const auto& field) { return isV5AdaptiveIntType(field.type); });
+  return std::any_of(info.fields.begin() + start_index, info.fields.end(), [](const auto& field) {
+    return isV5AdaptiveIntType(field.type);
+  });
 }
 
 size_t V5StageBufferSize(const EncodingInfo& info, size_t points_per_chunk) {
   const size_t max_per_point = MaxSerializedPointSize(info);
-  return points_per_chunk * (std::max<size_t>(info.point_step, max_per_point) + 64u) +
-         info.fields.size() * 64u + 1024u;
+  return points_per_chunk * (std::max<size_t>(info.point_step, max_per_point) + 64u) + info.fields.size() * 64u + 1024u;
 }
 
 void EncodeV5Stage1(
-    const EncodingInfo& info, ConstBufferView cloud_data, size_t points_count,
-    size_t points_per_chunk, const std::function<BufferView()>& get_stage_buffer,
+    const EncodingInfo& info, ConstBufferView cloud_data, size_t points_count, size_t points_per_chunk,
+    const std::function<BufferView()>& get_stage_buffer,
     const std::function<void(size_t serialized_size)>& write_stage1_chunk) {
   V5EncoderPlan plan = buildV5Plan(info, points_per_chunk);
 
@@ -932,9 +927,7 @@ void EncodeV5Stage1(
     };
 
     const bool has_uncommitted_adaptive =
-        std::any_of(plan.adaptive.begin(), plan.adaptive.end(), [](const auto& field) {
-          return !field.committed;
-        });
+        std::any_of(plan.adaptive.begin(), plan.adaptive.end(), [](const auto& field) { return !field.committed; });
 
     if (has_uncommitted_adaptive && chunk_points > kAdaptiveModeProbePoints) {
       encode_point_range(0, kAdaptiveModeProbePoints);
@@ -963,8 +956,7 @@ void EncodeV5Stage1(
 }
 
 void BuildV5Decoders(
-    const EncodingInfo& info, std::vector<std::unique_ptr<FieldDecoder>>& decoders,
-    size_t& min_encoded_point_bytes) {
+    const EncodingInfo& info, std::vector<std::unique_ptr<FieldDecoder>>& decoders, size_t& min_encoded_point_bytes) {
   decoders.clear();
   min_encoded_point_bytes = 0;
 
@@ -982,8 +974,8 @@ void BuildV5Decoders(
 }
 
 void DecodeV5Stage1Chunk(
-    const EncodingInfo& info, std::vector<std::unique_ptr<FieldDecoder>>& decoders,
-    ConstBufferView& encoded_view, BufferView& output_buffer, size_t expected_points) {
+    const EncodingInfo& info, std::vector<std::unique_ptr<FieldDecoder>>& decoders, ConstBufferView& encoded_view,
+    BufferView& output_buffer, size_t expected_points) {
   if (expected_points == 0) {
     throw std::runtime_error("V5 chunks require an expected point count");
   }

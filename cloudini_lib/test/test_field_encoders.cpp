@@ -587,6 +587,61 @@ TEST(FieldEncoders, PointcloudLossless_Gorilla_MultiChunk) {
   }
 }
 
+// Regression: on incompressible data the stage-1 encoding (Gorilla FLOAT64, varint ints) is
+// larger than width*height*point_step. For a single-chunk cloud the decoder used to size its
+// decompression buffer from the raw cloud size, so LZ4/ZSTD rejected valid data.
+TEST(FieldEncoders, PointcloudLossless_ExpandingStage1_SingleChunk) {
+  using namespace Cloudini;
+
+  struct Point {
+    double t = 0;
+    uint32_t a = 0;
+    uint32_t b = 0;
+  };
+  static_assert(sizeof(Point) == 16);
+
+  const size_t kNumpoints = 1000;
+  std::mt19937_64 rng(139);
+  std::vector<Point> input(kNumpoints);
+  for (auto& p : input) {
+    const uint64_t bits = rng();
+    std::memcpy(&p.t, &bits, sizeof(bits));
+    p.a = static_cast<uint32_t>(rng());
+    p.b = static_cast<uint32_t>(rng());
+  }
+  const ConstBufferView in_view(reinterpret_cast<const uint8_t*>(input.data()), input.size() * sizeof(Point));
+
+  for (const auto compression : {CompressionOption::NONE, CompressionOption::LZ4, CompressionOption::ZSTD}) {
+    EncodingInfo info;
+    info.width = kNumpoints;
+    info.height = 1;
+    info.point_step = sizeof(Point);
+    info.encoding_opt = EncodingOptions::LOSSLESS;
+    info.compression_opt = compression;
+    info.fields.push_back({"t", 0, FieldType::FLOAT64, {}});
+    info.fields.push_back({"a", 8, FieldType::UINT32, {}});
+    info.fields.push_back({"b", 12, FieldType::UINT32, {}});
+
+    std::vector<uint8_t> compressed;
+    PointcloudEncoder encoder(info);
+    encoder.encode(in_view, compressed);
+
+    ConstBufferView comp_view(compressed.data(), compressed.size());
+    const auto decoded_info = DecodeHeader(comp_view);
+    if (compression == CompressionOption::NONE) {
+      // Precondition of the regression: stage-1 really is larger than the raw cloud.
+      ASSERT_GT(comp_view.size(), in_view.size());
+    }
+
+    std::vector<Point> output(kNumpoints);
+    PointcloudDecoder decoder;
+    BufferView out_view(reinterpret_cast<uint8_t*>(output.data()), output.size() * sizeof(Point));
+    ASSERT_NO_THROW(decoder.decode(decoded_info, comp_view, out_view))
+        << "compression " << static_cast<int>(compression);
+    ASSERT_EQ(0, std::memcmp(input.data(), output.data(), input.size() * sizeof(Point)));
+  }
+}
+
 TEST(FieldEncoders, PointcloudV5_AdaptiveIntModes_RoundTripAndModeSelection) {
   using namespace Cloudini;
 
@@ -597,37 +652,32 @@ TEST(FieldEncoders, PointcloudV5_AdaptiveIntModes_RoundTripAndModeSelection) {
 
   {
     const auto values = makeIntSequence<uint32_t>(kPoints, [](size_t i) { return 100000u + i * 3u; });
-    const std::vector<uint8_t> encoded_none =
-        encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::NONE);
+    const std::vector<uint8_t> encoded_none = encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::NONE);
     EXPECT_EQ(v5UncompressedChunkModes(encoded_none), std::vector<uint8_t>({kDeltaRleMode, kDeltaRleMode}));
     expectV5IntOnlyRoundTrip(values, FieldType::UINT32, encoded_none);
 
-    const std::vector<uint8_t> encoded_zstd =
-        encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::ZSTD);
+    const std::vector<uint8_t> encoded_zstd = encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::ZSTD);
     expectV5IntOnlyRoundTrip(values, FieldType::UINT32, encoded_zstd);
   }
 
   {
     const auto values = makeIntSequence<uint32_t>(kPoints, [](size_t i) { return static_cast<uint32_t>(i % 4); });
-    const std::vector<uint8_t> encoded_none =
-        encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::NONE);
+    const std::vector<uint8_t> encoded_none = encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::NONE);
     EXPECT_EQ(v5UncompressedChunkModes(encoded_none), std::vector<uint8_t>({kPaletteMode, kPaletteMode}));
     expectV5IntOnlyRoundTrip(values, FieldType::UINT32, encoded_none);
 
-    const std::vector<uint8_t> encoded_zstd =
-        encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::ZSTD);
+    const std::vector<uint8_t> encoded_zstd = encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::ZSTD);
     expectV5IntOnlyRoundTrip(values, FieldType::UINT32, encoded_zstd);
   }
 
   {
-    const auto values = makeIntSequence<uint16_t>(kPoints, [](size_t i) { return static_cast<uint16_t>((i / 256) % 8); });
-    const std::vector<uint8_t> encoded_none =
-        encodeV5IntOnly(values, FieldType::UINT16, CompressionOption::NONE);
+    const auto values =
+        makeIntSequence<uint16_t>(kPoints, [](size_t i) { return static_cast<uint16_t>((i / 256) % 8); });
+    const std::vector<uint8_t> encoded_none = encodeV5IntOnly(values, FieldType::UINT16, CompressionOption::NONE);
     EXPECT_EQ(v5UncompressedChunkModes(encoded_none), std::vector<uint8_t>({kRleMode, kRleMode}));
     expectV5IntOnlyRoundTrip(values, FieldType::UINT16, encoded_none);
 
-    const std::vector<uint8_t> encoded_zstd =
-        encodeV5IntOnly(values, FieldType::UINT16, CompressionOption::ZSTD);
+    const std::vector<uint8_t> encoded_zstd = encodeV5IntOnly(values, FieldType::UINT16, CompressionOption::ZSTD);
     expectV5IntOnlyRoundTrip(values, FieldType::UINT16, encoded_zstd);
   }
 
@@ -639,18 +689,15 @@ TEST(FieldEncoders, PointcloudV5_AdaptiveIntModes_RoundTripAndModeSelection) {
       value += diff;
       values[i] = value;
     }
-    const std::vector<uint8_t> encoded_none =
-        encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::NONE);
+    const std::vector<uint8_t> encoded_none = encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::NONE);
     EXPECT_EQ(v5UncompressedChunkModes(encoded_none), std::vector<uint8_t>({kDeltaRleMode, kDeltaRleMode}));
     expectV5IntOnlyRoundTrip(values, FieldType::UINT32, encoded_none);
   }
 
   {
-    const auto values = makeIntSequence<int32_t>(kPoints, [](size_t i) {
-      return 200000 - static_cast<int32_t>(i * 5);
-    });
-    const std::vector<uint8_t> encoded_none =
-        encodeV5IntOnly(values, FieldType::INT32, CompressionOption::NONE);
+    const auto values =
+        makeIntSequence<int32_t>(kPoints, [](size_t i) { return 200000 - static_cast<int32_t>(i * 5); });
+    const std::vector<uint8_t> encoded_none = encodeV5IntOnly(values, FieldType::INT32, CompressionOption::NONE);
     EXPECT_EQ(v5UncompressedChunkModes(encoded_none), std::vector<uint8_t>({kDeltaRleMode, kDeltaRleMode}));
     expectV5IntOnlyRoundTrip(values, FieldType::INT32, encoded_none);
   }
@@ -662,8 +709,7 @@ TEST(FieldEncoders, PointcloudV5_AdaptiveIntModes_RoundTripAndModeSelection) {
     for (uint32_t& value : values) {
       value = dist(rng);
     }
-    const std::vector<uint8_t> encoded_none =
-        encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::NONE);
+    const std::vector<uint8_t> encoded_none = encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::NONE);
     const std::vector<uint8_t> modes = v5UncompressedChunkModes(encoded_none);
     ASSERT_EQ(modes.size(), 2u);
     for (uint8_t mode : modes) {
@@ -681,8 +727,7 @@ TEST(FieldEncoders, PointcloudV5_AdaptiveProbeBoundaries_RoundTrip) {
 
   for (size_t points : point_counts) {
     const auto values = makeIntSequence<uint32_t>(points, [](size_t i) { return static_cast<uint32_t>(1000 + i * 3); });
-    const std::vector<uint8_t> encoded =
-        encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::NONE);
+    const std::vector<uint8_t> encoded = encodeV5IntOnly(values, FieldType::UINT32, CompressionOption::NONE);
     const std::vector<uint8_t> modes = v5UncompressedChunkModes(encoded);
     ASSERT_FALSE(modes.empty()) << "points=" << points;
     for (uint8_t mode : modes) {

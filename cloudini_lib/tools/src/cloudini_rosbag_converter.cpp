@@ -325,8 +325,8 @@ int main(int argc, char** argv) {
         }
       }
       if (viz_lossy) {
-        std::cout << "\nViz-lossy preprocessing: drop NaN, voxel-dedupe at "
-                  << resolution << " m, quantize FLOAT64 to 1us\n";
+        std::cout << "\nViz-lossy preprocessing: drop NaN, voxel-dedupe at " << resolution
+                  << " m, quantize FLOAT64 to 1us\n";
       }
       converter.encodePointClouds(output_filename, resolution, mcap_writer_compression, viz_lossy);
     }

@@ -112,7 +112,6 @@ inline uint64_t elapsedNs(Clock::time_point t0, Clock::time_point t1) {
   return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count());
 }
 
-
 void configureMode(Cloudini::EncodingInfo& info, Mode mode, bool with_zstd) {
   info.encoding_opt = Cloudini::EncodingOptions::LOSSY;
   // When --zstd is set, use cloudini's built-in stage-2 ZSTD on each chunk.
@@ -120,8 +119,7 @@ void configureMode(Cloudini::EncodingInfo& info, Mode mode, bool with_zstd) {
   // after the worker-thread ZSTD pass has caught up, so wall-clock encode
   // time includes both stages. Decoder mirrors. This matches the path
   // cloudini_rosbag_converter takes when MCAP chunk compression is off.
-  info.compression_opt =
-      with_zstd ? Cloudini::CompressionOption::ZSTD : Cloudini::CompressionOption::NONE;
+  info.compression_opt = with_zstd ? Cloudini::CompressionOption::ZSTD : Cloudini::CompressionOption::NONE;
   info.version = (mode == Mode::V5 || mode == Mode::V5_VIZ) ? 5 : 4;
   // Viz modes differ only in the per-message preprocessing step applied to
   // pc_info before this configureMode runs.
@@ -134,7 +132,9 @@ std::string fmtMiB(uint64_t bytes) {
 }
 
 std::string fmtRatio(uint64_t out_bytes, uint64_t in_bytes) {
-  if (in_bytes == 0) return "n/a";
+  if (in_bytes == 0) {
+    return "n/a";
+  }
   std::ostringstream s;
   s << std::fixed << std::setprecision(1) << (100.0 * static_cast<double>(out_bytes) / static_cast<double>(in_bytes))
     << "%";
@@ -142,10 +142,11 @@ std::string fmtRatio(uint64_t out_bytes, uint64_t in_bytes) {
 }
 
 std::string fmtMBps(uint64_t bytes, uint64_t ns) {
-  if (ns == 0) return "n/a";
+  if (ns == 0) {
+    return "n/a";
+  }
   std::ostringstream s;
-  s << std::fixed << std::setprecision(0)
-    << (static_cast<double>(bytes) * 1000.0 / static_cast<double>(ns));
+  s << std::fixed << std::setprecision(0) << (static_cast<double>(bytes) * 1000.0 / static_cast<double>(ns));
   return s.str();
 }
 
@@ -159,15 +160,16 @@ void printTable(const std::string& title, const TopicStats& st, bool show_zstd) 
   std::cout << "\n";
   std::cout << "  messages=" << st.messages << "  points=" << st.points << "  raw=" << fmtMiB(st.in_bytes) << " MiB\n";
   std::cout << "  " << std::string(60, '-') << "\n";
-  std::cout << "  " << std::left << std::setw(10) << "Mode" << std::right << std::setw(12) << "Out MiB"
-            << std::setw(10) << "Ratio" << std::setw(12) << "Enc MB/s" << std::setw(12) << "Dec MB/s" << "\n";
+  std::cout << "  " << std::left << std::setw(10) << "Mode" << std::right << std::setw(12) << "Out MiB" << std::setw(10)
+            << "Ratio" << std::setw(12) << "Enc MB/s" << std::setw(12) << "Dec MB/s"
+            << "\n";
   std::cout << "  " << std::string(60, '-') << "\n";
   for (int m = 0; m < kModeCount; ++m) {
     const auto& ms = st.per_mode[m];
     std::cout << "  " << std::left << std::setw(10) << kModeNames[m] << std::right << std::setw(12)
-              << fmtMiB(ms.out_bytes) << std::setw(10) << fmtRatio(ms.out_bytes, st.in_bytes)
-              << std::setw(12) << fmtMBps(ms.enc_input_bytes, ms.enc_ns) << std::setw(12)
-              << fmtMBps(ms.dec_input_bytes, ms.dec_ns) << "\n";
+              << fmtMiB(ms.out_bytes) << std::setw(10) << fmtRatio(ms.out_bytes, st.in_bytes) << std::setw(12)
+              << fmtMBps(ms.enc_input_bytes, ms.enc_ns) << std::setw(12) << fmtMBps(ms.dec_input_bytes, ms.dec_ns)
+              << "\n";
   }
 }
 
@@ -188,11 +190,9 @@ void explainOneMessage(
   std::cout << "\n  Fields:\n";
   for (size_t i = 0; i < base_info.fields.size(); ++i) {
     const auto& f = base_info.fields[i];
-    std::cout << "    [" << i << "] " << std::left << std::setw(18) << f.name
-              << " type=" << std::setw(8) << ToString(f.type) << " offset=" << std::setw(3)
-              << f.offset << " size=" << SizeOf(f.type)
-              << " resolution=" << (f.resolution ? std::to_string(f.resolution.value()) : "n/a")
-              << "\n";
+    std::cout << "    [" << i << "] " << std::left << std::setw(18) << f.name << " type=" << std::setw(8)
+              << ToString(f.type) << " offset=" << std::setw(3) << f.offset << " size=" << SizeOf(f.type)
+              << " resolution=" << (f.resolution ? std::to_string(f.resolution.value()) : "n/a") << "\n";
   }
 
   // Run viz preprocessing on a copy and report what changed.
@@ -200,8 +200,7 @@ void explainOneMessage(
   cloudini_ros::applyVizLossyPreprocessing(pc_copy);
   const size_t n_after = pc_copy.data.size() / std::max<uint32_t>(1u, pc_copy.point_step);
   std::cout << "\n  After --viz preprocessing:\n";
-  std::cout << "    points: " << n_in << " -> " << n_after << "  (removed " << (n_in - n_after)
-            << " = ";
+  std::cout << "    points: " << n_in << " -> " << n_after << "  (removed " << (n_in - n_after) << " = ";
   if (n_in > 0) {
     std::cout << std::fixed << std::setprecision(1) << (100.0 * (n_in - n_after) / n_in) << "%";
   } else {
@@ -216,7 +215,9 @@ void explainOneMessage(
       any = true;
     }
   }
-  if (!any) std::cout << "(none)";
+  if (!any) {
+    std::cout << "(none)";
+  }
   std::cout << "\n";
 }
 
@@ -227,25 +228,26 @@ int main(int argc, char** argv) {
       "mcap_codec_benchmark",
       "Compare V4/V5 and V4-viz/V5-viz lossy PointCloud2 compression in an MCAP file.\n"
       "Streams the file message-by-message; safe on bags larger than RAM.");
-  options.add_options()                                                                                    //
-      ("h,help", "Print usage")                                                                            //
-      ("f,filename", "Input MCAP file (positional also accepted)", cxxopts::value<std::string>())          //
-      ("r,resolution", "XYZ tick size in meters (default 0.001)", cxxopts::value<float>()->default_value(  //
-                                                                      "0.001"))                            //
-      ("max-messages", "Stop after N messages per topic (0 = unlimited)",                                  //
-       cxxopts::value<uint64_t>()->default_value("0"))                                                     //
-      ("sample-every", "Process only 1 of every N messages per topic (>=1)",                               //
-       cxxopts::value<uint64_t>()->default_value("1"))                                                     //
-      ("zstd", "Use Cloudini ZSTD chunk compression and report compressed sizes")                    //
-      ("mode", "Profile only one mode: V4, V5, V4-viz, or V5-viz", cxxopts::value<std::string>())           //
-      ("encode-only", "Skip decode timing; useful with --mode for perf profiling")                          //
+  options.add_options()                                                                            //
+      ("h,help", "Print usage")                                                                    //
+      ("f,filename", "Input MCAP file (positional also accepted)", cxxopts::value<std::string>())  //
+      ("r,resolution", "XYZ tick size in meters (default 0.001)",
+       cxxopts::value<float>()->default_value(                                                     //
+           "0.001"))                                                                               //
+      ("max-messages", "Stop after N messages per topic (0 = unlimited)",                          //
+       cxxopts::value<uint64_t>()->default_value("0"))                                             //
+      ("sample-every", "Process only 1 of every N messages per topic (>=1)",                       //
+       cxxopts::value<uint64_t>()->default_value("1"))                                             //
+      ("zstd", "Use Cloudini ZSTD chunk compression and report compressed sizes")                  //
+      ("mode", "Profile only one mode: V4, V5, V4-viz, or V5-viz", cxxopts::value<std::string>())  //
+      ("encode-only", "Skip decode timing; useful with --mode for perf profiling")                 //
       ("decode-replay",
-       "Store encoded pointclouds, then time decode after all MCAP messages are read/encoded")              //
-      ("decode-repeat", "Repeat decode replay N times (only with --decode-replay)",                         //
-       cxxopts::value<uint64_t>()->default_value("1"))                                                     //
-      ("profile-sleep-ms", "Sleep after preload and before decode replay so perf can attach",               //
-       cxxopts::value<uint64_t>()->default_value("0"))                                                     //
-      ("hash", "Print an FNV-1a fingerprint of decoded output per mode (correctness gate)")                 //
+       "Store encoded pointclouds, then time decode after all MCAP messages are read/encoded")  //
+      ("decode-repeat", "Repeat decode replay N times (only with --decode-replay)",             //
+       cxxopts::value<uint64_t>()->default_value("1"))                                          //
+      ("profile-sleep-ms", "Sleep after preload and before decode replay so perf can attach",   //
+       cxxopts::value<uint64_t>()->default_value("0"))                                          //
+      ("hash", "Print an FNV-1a fingerprint of decoded output per mode (correctness gate)")     //
       ("explain", "Print the field schema and viz-preprocessing effect for the first message of each topic and exit");
   options.parse_positional({"filename"});
   options.positional_help("<file.mcap>");
@@ -304,12 +306,15 @@ int main(int argc, char** argv) {
 
   std::cout << "File: " << input_file << "\n";
   std::cout << "Resolution: " << default_resolution << " m   max-messages/topic: ";
-  if (max_per_topic == 0)
+  if (max_per_topic == 0) {
     std::cout << "unlimited";
-  else
+  } else {
     std::cout << max_per_topic;
+  }
   std::cout << "   sample-every: " << sample_every;
-  if (show_zstd) std::cout << "   +zstd";
+  if (show_zstd) {
+    std::cout << "   +zstd";
+  }
   std::cout << "\n";
 
   std::ifstream input_stream(input_file);
@@ -339,7 +344,9 @@ int main(int argc, char** argv) {
     return 1;
   }
   std::cout << "PointCloud2 topics found: " << pc_channels.size() << "\n";
-  for (const auto& [_, topic] : pc_channels) std::cout << "  - " << topic << "\n";
+  for (const auto& [_, topic] : pc_channels) {
+    std::cout << "  - " << topic << "\n";
+  }
 
   // ----- explain mode -----
   if (explain_mode) {
@@ -348,9 +355,13 @@ int main(int argc, char** argv) {
     mcap::ProblemCallback prob = [](const mcap::Status&) {};
     for (const auto& msg : reader.readMessages(prob, ropts)) {
       auto chan_it = pc_channels.find(msg.channel->id);
-      if (chan_it == pc_channels.end()) continue;
+      if (chan_it == pc_channels.end()) {
+        continue;
+      }
       const std::string& topic = chan_it->second;
-      if (explained[topic]) continue;
+      if (explained[topic]) {
+        continue;
+      }
       explained[topic] = true;
 
       Cloudini::ConstBufferView raw_dds_msg(msg.message.data, msg.message.dataSize);
@@ -367,9 +378,14 @@ int main(int argc, char** argv) {
 
       bool all_done = true;
       for (const auto& [_, t] : pc_channels) {
-        if (!explained[t]) { all_done = false; break; }
+        if (!explained[t]) {
+          all_done = false;
+          break;
+        }
       }
-      if (all_done) break;
+      if (all_done) {
+        break;
+      }
     }
     return 0;
   }
@@ -387,19 +403,24 @@ int main(int argc, char** argv) {
 
   for (const auto& msg : reader.readMessages(problem, reader_options)) {
     auto chan_it = pc_channels.find(msg.channel->id);
-    if (chan_it == pc_channels.end()) continue;
+    if (chan_it == pc_channels.end()) {
+      continue;
+    }
     const std::string& topic = chan_it->second;
     const uint64_t this_seen = ++seen[topic];
-    if (max_per_topic != 0 && this_seen > max_per_topic) continue;
-    if ((this_seen - 1) % sample_every != 0) continue;
+    if (max_per_topic != 0 && this_seen > max_per_topic) {
+      continue;
+    }
+    if ((this_seen - 1) % sample_every != 0) {
+      continue;
+    }
 
     Cloudini::ConstBufferView raw_dds_msg(msg.message.data, msg.message.dataSize);
     cloudini_ros::RosPointCloud2 pc_info_orig;
     try {
       pc_info_orig = cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg);
     } catch (const std::exception& e) {
-      std::cerr << "  [warn] " << topic << " msg #" << this_seen << ": parse failed (" << e.what()
-                << "), skipping\n";
+      std::cerr << "  [warn] " << topic << " msg #" << this_seen << ": parse failed (" << e.what() << "), skipping\n";
       continue;
     }
     cloudini_ros::applyResolutionProfile({}, pc_info_orig.fields, default_resolution);
@@ -407,7 +428,9 @@ int main(int argc, char** argv) {
 
     Cloudini::ConstBufferView raw_points(pc_info_orig.data.data(), pc_info_orig.data.size());
     const uint64_t raw_size = static_cast<uint64_t>(raw_points.size());
-    if (raw_size == 0 || base.point_step == 0) continue;
+    if (raw_size == 0 || base.point_step == 0) {
+      continue;
+    }
     const uint64_t point_count = raw_size / base.point_step;
 
     auto& st = stats[topic];
@@ -435,8 +458,7 @@ int main(int argc, char** argv) {
         cloudini_ros::applyVizLossyPreprocessing(pc_info);
         info = cloudini_ros::toEncodingInfo(pc_info);
         info.encoding_opt = Cloudini::EncodingOptions::LOSSY;
-        info.compression_opt =
-            show_zstd ? Cloudini::CompressionOption::ZSTD : Cloudini::CompressionOption::NONE;
+        info.compression_opt = show_zstd ? Cloudini::CompressionOption::ZSTD : Cloudini::CompressionOption::NONE;
         info.version = (static_cast<Mode>(m) == Mode::V5_VIZ) ? 5 : 4;
       }
       const auto t_pre1 = Clock::now();
@@ -478,18 +500,19 @@ int main(int argc, char** argv) {
     }
 
     for (int m = 0; m < kModeCount; ++m) {
-      if (!encode_ok[m]) continue;
+      if (!encode_ok[m]) {
+        continue;
+      }
       Cloudini::ConstBufferView enc_view(enc_buf[m].data(), encoded_size[m]);
       Cloudini::EncodingInfo header_info;
       try {
         header_info = Cloudini::DecodeHeader(enc_view);
       } catch (const std::exception& e) {
-        std::cerr << "  [warn] " << topic << " msg #" << this_seen << " header parse "
-                  << kModeNames[m] << " failed: " << e.what() << "\n";
+        std::cerr << "  [warn] " << topic << " msg #" << this_seen << " header parse " << kModeNames[m]
+                  << " failed: " << e.what() << "\n";
         continue;
       }
-      const uint64_t out_points =
-          static_cast<uint64_t>(header_info.width) * static_cast<uint64_t>(header_info.height);
+      const uint64_t out_points = static_cast<uint64_t>(header_info.width) * static_cast<uint64_t>(header_info.height);
       const uint64_t out_bytes_needed = out_points * header_info.point_step;
       if (decode_replay) {
         DecodeSample sample;
@@ -502,7 +525,9 @@ int main(int argc, char** argv) {
         decode_samples.push_back(std::move(sample));
         continue;
       }
-      if (dec_buf[m].size() < out_bytes_needed) dec_buf[m].resize(out_bytes_needed);
+      if (dec_buf[m].size() < out_bytes_needed) {
+        dec_buf[m].resize(out_bytes_needed);
+      }
       Cloudini::BufferView out_view(dec_buf[m].data(), out_bytes_needed);
       try {
         Cloudini::PointcloudDecoder decoder;
@@ -530,9 +555,8 @@ int main(int argc, char** argv) {
 
   if (decode_replay) {
     const uint64_t replay_count = static_cast<uint64_t>(decode_samples.size()) * decode_repeat;
-    std::cout << "\nDecode replay: samples=" << decode_samples.size()
-              << "  repeat=" << decode_repeat << "  total-decodes=" << replay_count
-              << "  (MCAP read/decompression excluded)\n";
+    std::cout << "\nDecode replay: samples=" << decode_samples.size() << "  repeat=" << decode_repeat
+              << "  total-decodes=" << replay_count << "  (MCAP read/decompression excluded)\n";
     if (do_hash) {
       // Untimed correctness pass: decode each sample once and fingerprint the
       // decoded output bytes per mode. A pure performance refactor of the
@@ -547,18 +571,20 @@ int main(int argc, char** argv) {
         Cloudini::BufferView out_view(dec_buf[sample.mode].data(), sample.out_bytes_needed);
         Cloudini::PointcloudDecoder decoder;
         decoder.decode(sample.header_info, enc_view, out_view);
-        mode_hash[sample.mode] =
-            fnv1a(mode_hash[sample.mode], dec_buf[sample.mode].data(), sample.out_bytes_needed);
+        mode_hash[sample.mode] = fnv1a(mode_hash[sample.mode], dec_buf[sample.mode].data(), sample.out_bytes_needed);
       }
       std::cout << "Decoded-output fingerprint (FNV-1a):\n";
       for (int m = 0; m < kModeCount; ++m) {
-        if (only_mode >= 0 && m != only_mode) continue;
+        if (only_mode >= 0 && m != only_mode) {
+          continue;
+        }
         std::cout << "  " << kModeNames[m] << " : 0x" << std::hex << mode_hash[m] << std::dec << "\n";
       }
     }
     if (profile_sleep_ms > 0) {
       std::cout << "Sleeping " << profile_sleep_ms << " ms before decode replay"
-                << " so perf can attach...\n" << std::flush;
+                << " so perf can attach...\n"
+                << std::flush;
       std::this_thread::sleep_for(std::chrono::milliseconds(profile_sleep_ms));
     }
 
