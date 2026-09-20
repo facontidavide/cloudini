@@ -47,3 +47,24 @@ jobs:
       - name: Run tests
         working-directory: build
         run: ctest --output-on-failure
+
+      - name: Test installed static and shared packages
+        shell: bash
+        run: |
+          for shared in OFF ON; do
+            for vendored in OFF ON; do
+              build_dir="$RUNNER_TEMP/install-test-$shared-$vendored"
+              cmake -S cloudini_lib -B "$build_dir" \
+                -DBUILD_SHARED_LIBS="$shared" -DCLOUDINI_FORCE_VENDORED_DEPS="$vendored" \
+                -DCLOUDINI_BUILD_TOOLS=OFF -DCLOUDINI_BUILD_BENCHMARKS=OFF \
+                -DBUILD_TESTING=OFF -DCMAKE_DISABLE_FIND_PACKAGE_PCL=TRUE \
+                -DCMAKE_INSTALL_PREFIX="$build_dir/prefix"
+              cmake --build "$build_dir" --parallel 2
+              cmake --install "$build_dir"
+              mv "$build_dir/prefix" "$build_dir/relocated"
+              cmake -S cloudini_lib/test/install -B "$build_dir/consumer" \
+                -DCMAKE_PREFIX_PATH="$build_dir/relocated"
+              cmake --build "$build_dir/consumer"
+              ctest --test-dir "$build_dir/consumer" --output-on-failure
+            done
+          done

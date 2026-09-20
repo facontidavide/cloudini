@@ -1,0 +1,24 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# PCL only leaks into the interface when cloudini_lib was built with PCL support.
+if(@CLOUDINI_HAS_PCL@)
+  find_dependency(PCL COMPONENTS common io)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/cloudini_libTargets.cmake")
+
+# Only static builds using system compressors need consumer-side lookup.
+foreach(_dependency IN ITEMS @CLOUDINI_SYSTEM_LIBRARIES@)
+  find_library(cloudini_lib_${_dependency}_LIBRARY NAMES ${_dependency})
+  if(NOT cloudini_lib_${_dependency}_LIBRARY)
+    set(cloudini_lib_FOUND FALSE)
+    set(cloudini_lib_NOT_FOUND_MESSAGE "Required compression library ${_dependency} was not found")
+    return()
+  endif()
+  set_property(TARGET cloudini::cloudini_lib APPEND PROPERTY INTERFACE_LINK_LIBRARIES
+    "${cloudini_lib_${_dependency}_LIBRARY}")
+endforeach()
+
+check_required_components(cloudini_lib)

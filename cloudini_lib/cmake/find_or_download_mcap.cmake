@@ -1,5 +1,16 @@
 function(find_or_download_mcap)
 
+  # Offline / pre-fetched header path. mcap is header-only and not packaged for
+  # C++ on some channels (e.g. conda-forge), whose build sandboxes also have no
+  # network. Point -DMCAP_INCLUDE_DIR=<checkout>/cpp/mcap/include at a source
+  # fetched ahead of time and we skip the download entirely.
+  if(NOT TARGET mcap AND MCAP_INCLUDE_DIR)
+    add_library(mcap INTERFACE)
+    target_include_directories(mcap INTERFACE "${MCAP_INCLUDE_DIR}")
+    add_library(mcap::mcap ALIAS mcap)
+    return()
+  endif()
+
   # Try system mcap_vendor first (installed on ROS buildfarm via package.xml build_depend)
   if(NOT TARGET mcap AND NOT TARGET mcap_vendor::mcap)
     find_package(mcap_vendor QUIET)

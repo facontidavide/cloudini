@@ -1,0 +1,67 @@
+name: Pixi Package
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: prefix-dev/setup-pixi@v0.10.2
+        with:
+          pixi-version: v0.70.2
+          run-install: false
+
+      - name: Prepare recipe for the checkout
+        shell: bash
+        run: |
+          pixi exec --spec python=3.13 --spec pyyaml=6 -- python - <<'PY'
+          import os
+          import shutil
+          from pathlib import Path
+          import yaml
+
+          recipe = yaml.safe_load(Path("conda/recipe.yaml").read_text())
+          recipe["source"][0] = {"path": os.environ["GITHUB_WORKSPACE"]}
+          Path(os.environ["RUNNER_TEMP"], "recipe.yaml").write_text(
+              yaml.safe_dump(recipe, sort_keys=False)
+          )
+          shutil.copy("conda/conda_build_config.yaml", os.environ["RUNNER_TEMP"])
+          PY
+
+      - name: Build and test the conda package
+        run: |
+          pixi exec --spec rattler-build=0.66.2 -- rattler-build build \
+            --recipe "$RUNNER_TEMP/recipe.yaml" -c conda-forge \
+            --output-dir "$RUNNER_TEMP/conda-output"
+
+      - name: Test the artifact in a fresh Pixi environment
+        shell: bash
+        run: |
+          pixi init "$RUNNER_TEMP/pixi-consumer" -c conda-forge
+          cd "$RUNNER_TEMP/pixi-consumer"
+          pixi add "$RUNNER_TEMP"/conda-output/linux-64/cloudini-*.conda cmake ninja cxx-compiler
+          pixi run cloudini_rosbag_converter --help
+          pixi run bash -c 'cmake -S "$GITHUB_WORKSPACE/cloudini_lib/test/install" \
+            -B "$RUNNER_TEMP/consumer-build" -G Ninja -DCMAKE_PREFIX_PATH="$CONDA_PREFIX"'
+          pixi run cmake --build "$RUNNER_TEMP/consumer-build"
+          pixi run ctest --test-dir "$RUNNER_TEMP/consumer-build" --output-on-failure
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cloudini-linux-64
+          path: ${{ runner.temp }}/conda-output/linux-64/*.conda
+          if-no-files-found: error

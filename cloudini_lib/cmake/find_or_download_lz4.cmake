@@ -35,7 +35,7 @@ function(find_or_download_lz4 FORCE_VENDORED)
     # define a helper to build both static and shared variants
     add_library(lz4_static STATIC ${LZ4_SOURCES})
     set_property(TARGET lz4_static PROPERTY POSITION_INDEPENDENT_CODE ON)
-    target_include_directories(lz4_static PUBLIC ${lz4_SOURCE_DIR}/lib)
+    target_include_directories(lz4_static PUBLIC $<BUILD_INTERFACE:${lz4_SOURCE_DIR}/lib>)
 
     add_library(LZ4::lz4_static INTERFACE IMPORTED)
       set_target_properties(LZ4::lz4_static PROPERTIES
