@@ -1,9 +1,14 @@
 function(find_or_download_zstd FORCE_VENDORED)
 
   if(NOT FORCE_VENDORED)
-    find_package(zstd CONFIG QUIET)
-    if(NOT TARGET zstd::libzstd_static)
-      find_package(ZSTD QUIET)
+    # A parent project may have defined (some of) these targets already, e.g. from
+    # a Find module. Looking zstd up again would then fail with "some (but not all)
+    # targets in this export set were already defined": reuse what is there.
+    if(NOT TARGET zstd::libzstd_static AND NOT TARGET zstd::libzstd_shared AND NOT TARGET zstd::libzstd)
+      find_package(zstd CONFIG QUIET)
+      if(NOT TARGET zstd::libzstd_static)
+        find_package(ZSTD QUIET)
+      endif()
     endif()
 
     # Normalize target names. This project links zstd::libzstd_static, but some

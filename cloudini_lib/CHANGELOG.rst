@@ -2,6 +2,18 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.3.1 (2026-09-20)
+------------------
+* build: make cloudini_lib embeddable with add_subdirectory / FetchContent (`#142 <https://github.com/facontidavide/cloudini/issues/142>`_)
+  Reuses zstd/lz4 targets defined by a parent project, ignores an inherited ament_cmake,
+  and keeps the build type, tests, tools, benchmarks, PCL and install rules out of the
+  parent. New options CLOUDINI_WITH_PCL and CLOUDINI_INSTALL; cloudini::cloudini_lib is
+  always defined.
+* fix: link Threads::Threads (static consumers failed with undefined pthread_create)
+* fix: reject inconsistent point clouds; make ros_message_definitions.hpp includable twice (`#141 <https://github.com/facontidavide/cloudini/issues/141>`_)
+* The CMake project version now matches package.xml (it was left at 1.2.4 in 1.3.0)
+* Contributors: Davide Faconti
+
 1.3.0 (2026-09-20)
 ------------------
 * feat(packaging): conda/pixi package for prefix.dev + conda-forge (`#133 <https://github.com/facontidavide/cloudini/issues/133>`_)

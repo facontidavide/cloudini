@@ -48,6 +48,16 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure
 
+      - name: Test embedding as a subproject
+        run: |
+          cmake -S cloudini_lib/test/subproject -B "$RUNNER_TEMP/subproject"
+          cmake --build "$RUNNER_TEMP/subproject" -j$(nproc)
+          "$RUNNER_TEMP/subproject/consumer"
+          cmake --install "$RUNNER_TEMP/subproject" --prefix "$RUNNER_TEMP/subproject-prefix"
+          if find "$RUNNER_TEMP/subproject-prefix" -iname '*cloudini*' | grep -q .; then
+            echo "embedded Cloudini added install rules to the parent project"; exit 1
+          fi
+
       - name: Test installed static and shared packages
         shell: bash
         run: |
