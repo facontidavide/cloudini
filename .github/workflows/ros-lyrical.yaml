@@ -1,4 +1,4 @@
-name: ROS2 Kilted
+name: ROS2 Lyrical
 
 on:
   push:
@@ -15,27 +15,27 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: rostooling/setup-ros-docker:ubuntu-noble-ros-kilted-ros-base-latest
+      image: rostooling/setup-ros-docker:ubuntu-resolute-ros-lyrical-ros-base-latest
     steps:
       - uses: ros-tooling/setup-ros@v0.7
         with:
-          required-ros-distributions: kilted
+          required-ros-distributions: lyrical
 
       # The Docker image can ship stale packages. Upgrade ALL installed
-      # ros-kilted-* packages atomically to match the buildfarm and catch
+      # ros-lyrical-* packages atomically to match the buildfarm and catch
       # breakages from upstream dependency changes (e.g. pcl_conversions
       # switching cmake export style).
-      - name: Upgrade all ROS Kilted packages
+      - name: Upgrade all ROS Lyrical packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y --only-upgrade $(dpkg -l 'ros-kilted-*' | awk '/^ii/{print $2}' | tr '\n' ' ')
+          sudo apt-get install -y --only-upgrade $(dpkg -l 'ros-lyrical-*' | awk '/^ii/{print $2}' | tr '\n' ' ')
 
       - uses: ros-tooling/action-ros-ci@v0.4
         with:
           package-name: |
             cloudini_lib
             cloudini_ros
-          target-ros2-distro: kilted
+          target-ros2-distro: lyrical
           colcon-defaults: |
             {
               "build": {

@@ -11,6 +11,14 @@ The build is **hermetic**: it links conda's `zstd` / `lz4-c`, uses conda's
 build script). The same recipe is used for both the prefix.dev channel and the
 conda-forge submission.
 
+`conda_build_config.yaml` sets the Linux glibc baseline to 2.28 and the macOS
+deployment target to 11.0. Keep it alongside the recipe when building locally.
+
+The `Pixi Package` CI workflow builds the current checkout on Linux, runs the
+recipe tests, then installs the artifact in a fresh Pixi environment and tests
+the CLI and CMake consumer. Its artifacts are for validation, not release uploads;
+release builds must use the pinned source archive below.
+
 ## Prerequisites (one time)
 
 ```bash
@@ -88,7 +96,8 @@ pixi run cloudini_rosbag_converter --help
 ## Submit to conda-forge (broad reach: `pixi add cloudini` with no extra channel)
 
 1. Fork `conda-forge/staged-recipes`.
-2. Copy `conda/recipe.yaml` to `recipes/cloudini/recipe.yaml` in that fork
+2. Copy `conda/recipe.yaml` and `conda/conda_build_config.yaml` to
+   `recipes/cloudini/` in that fork,
    including any recipe test files or patches. Run the staged-recipes checks;
    a local prefix.dev build alone does not establish conda-forge acceptance.
 3. Open a PR and validate the selected platform builds. Once merged, a
@@ -103,9 +112,9 @@ Notes for the conda-forge review:
 
 ## Local dry-run without a tag
 
-Copy the recipe to a temporary directory. Replace only its first source entry
-(`url` and `sha256`) with an absolute checkout path, leaving the pinned MCAP
-source unchanged:
+Copy the recipe and `conda_build_config.yaml` to a temporary directory. Replace
+only its first source entry (`url` and `sha256`) with an absolute checkout path,
+leaving the pinned MCAP source unchanged:
 
 ```yaml
 source:
