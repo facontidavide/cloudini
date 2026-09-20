@@ -27,6 +27,7 @@ source:
 
 build:
   number: 0
+  skip: win
   script:
     # Locate the pre-fetched mcap headers regardless of the archive's top dir.
     - MCAP_INCLUDE_DIR="$(find "$PWD/mcap-src" -type d -path '*/cpp/mcap/include' | head -1)"
