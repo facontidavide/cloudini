@@ -2,6 +2,72 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Fix license tags in package.xml
+  According to ros_license_toolkit[^1] license tags should be in SPDX
+  list of licenses. In case of claudini_ros, the license version was
+  missing and in case of claudini_lib, the license name was not "exact".
+  This commit changes the license tags to use SPDX license identifiers.
+  Note that it doesn't fix the failures reported in claudini_lib in the
+  output below:
+  [cloudini_ros]
+  git hash of (/home/src/github.com/facontidavide/cloudini): d202e5255d12519ff1f3db1dac4df3ca0e550ee7
+  SchemaCheck
+  SUCCESS Detected package.xml version 3, validation of scheme successful.
+  LicenseTagExistsCheck
+  SUCCESS Found licenses ['Apache']
+  LicenseTagIsInSpdxListCheck
+  WARNING Licenses ['Apache'] are not in SPDX list of licenses. Make sure to exactly match one of https://spdx.org/licenses/.
+  LicenseTextExistsCheck
+  WARNING Since they are not in the SPDX list, we can not check if these tags have the correct license text:
+  'Apache': License text file '../LICENSE' is of license Apache-2.0 but tag is Apache.
+  LicensesInCodeCheck
+  WARNING For the following files, please change the License Tag in the package file to SPDX format:
+  'include/cloudini_plugin/cloudini_publisher_plugin.hpp' is of Apache-2.0 but its Tag is Apache.
+  'include/cloudini_plugin/cloudini_subscriber_plugin.hpp' is of Apache-2.0 but its Tag is Apache.
+  'include/cloudini_ros/cloudini_subscriber_pcl.hpp' is of Apache-2.0 but its Tag is Apache.
+  'include/cloudini_ros/conversion_utils.hpp' is of Apache-2.0 but its Tag is Apache.
+  'src/cloudini_publisher_plugin.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/cloudini_subscriber_pcl.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/cloudini_subscriber_plugin.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/conversion_utils.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/plugin_manifest.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/topic_converter.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/draco_helper.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/draco_helper.hpp' is of Apache-2.0 but its Tag is Apache.
+  'test/rosbag_benchmark.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/test_cloudini_subscriber.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/test_direct_publisher.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/test_plugin_publisher.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/test_plugin_subscriber.cpp' is of Apache-2.0 but its Tag is Apache.
+  LicenseFilesReferencedCheck
+  SUCCESS All license declaration are referenced by a tag.
+  --------------------
+  [cloudini_lib]
+  git hash of (/home/src/github.com/facontidavide/cloudini): d202e5255d12519ff1f3db1dac4df3ca0e550ee7
+  SchemaCheck
+  SUCCESS Detected package.xml version 3, validation of scheme successful.
+  LicenseTagExistsCheck
+  SUCCESS Found licenses ['Apache 2.0']
+  LicenseTagIsInSpdxListCheck
+  WARNING Licenses ['Apache 2.0'] are not in SPDX list of licenses. Make sure to exactly match one of https://spdx.org/licenses/.
+  LicenseTextExistsCheck
+  WARNING Since they are not in the SPDX list, we can not check if these tags have the correct license text:
+  'Apache 2.0': License text file '../LICENSE' is of license Apache-2.0 but tag is Apache 2.0.
+  LicensesInCodeCheck
+  FAILURE
+  The following files contain licenses that are not covered by any license tag:
+  'benchmarks/pcd_benchmark.cpp': ['MIT']
+  'cmake/CPM.cmake': ['MIT']
+  'include/cloudini_lib/ros_message_definitions.hpp': ['BSD-3-Clause']
+  'include/cloudini_lib/contrib/ankerl/stl.h': ['MIT']
+  'include/cloudini_lib/contrib/ankerl/unordered_dense.h': ['MIT']
+  LicenseFilesReferencedCheck
+  SUCCESS All license declaration are referenced by a tag.
+  [^1]: https://github.com/boschresearch/ros_license_toolkit
+* Contributors: Michal Sojka
+
 1.2.2 (2026-06-04)
 ------------------
 * build: synchronized version bump with cloudini_lib (MSVC support; no functional changes here)

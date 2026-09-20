@@ -2,6 +2,110 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* feat(packaging): conda/pixi package for prefix.dev + conda-forge (`#133 <https://github.com/facontidavide/cloudini/issues/133>`_)
+  * feat(packaging): add conda/pixi package (prefix.dev + conda-forge)
+  Ship cloudini as a conda package (shared library + headers + CMake package
+  config + cloudini_rosbag_converter CLI), buildable with rattler-build and
+  publishable to prefix.dev and conda-forge.
+  Library/CMake changes to make it installable outside ament:
+  - install(EXPORT) + generated cloudini_libConfig.cmake for standalone builds,
+  so downstream can find_package(cloudini_lib) and link cloudini::cloudini_lib
+  - $ORIGIN/../lib install RPATH so installed executables locate the lib
+  - prefer shared zstd/lz4 variants when the library itself is shared
+  - find_or_download_zstd.cmake: accept conda's zstd::libzstd_shared / zstd::libzstd
+  (conda-forge ships no static zstd) instead of vendoring a copy
+  - find_or_download_mcap.cmake: -DMCAP_INCLUDE_DIR offline hook (no-network builds)
+  - pin mcap_converter STATIC so the CLI stays self-contained under BUILD_SHARED_LIBS=ON
+  conda/recipe.yaml is hermetic (no network at build): links conda zstd/lz4-c,
+  uses conda cxxopts, and consumes a pre-fetched mcap source. Same recipe serves
+  prefix.dev and conda-forge/staged-recipes. conda/RELEASING.md documents the
+  release + publish workflow.
+  Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+  * release: pin cloudini 1.2.4 source sha256
+  Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+  * fix(cmake): export static compression dependencies and test installed consumers
+  * docs(conda): update release validation and publishing guidance
+  * ci: test Pixi packages and replace Kilted with Lyrical
+  ---------
+  Co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+* Regression test for decoder buffer sizing (`#139 <https://github.com/facontidavide/cloudini/issues/139>`_) + clang-format pass (`#140 <https://github.com/facontidavide/cloudini/issues/140>`_)
+  * test: regression for decoder buffer sizing with expanding stage-1 encoding
+  Single-chunk lossless cloud of incompressible FLOAT64/UINT32 data, whose
+  stage-1 encoding exceeds width*height*point_step. Fails with "LZ4
+  decompression failed" before 9765a54 (`#139 <https://github.com/facontidavide/cloudini/issues/139>`_).
+  Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+  * chore: apply clang-format repo-wide, skip vendored contrib in the hook
+  Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+  ---------
+  Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
+* fix(PointcloudDecoder): improve max decompressed size calculation for chunk decoding
+* Fix license tags in package.xml
+  According to ros_license_toolkit[^1] license tags should be in SPDX
+  list of licenses. In case of claudini_ros, the license version was
+  missing and in case of claudini_lib, the license name was not "exact".
+  This commit changes the license tags to use SPDX license identifiers.
+  Note that it doesn't fix the failures reported in claudini_lib in the
+  output below:
+  [cloudini_ros]
+  git hash of (/home/src/github.com/facontidavide/cloudini): d202e5255d12519ff1f3db1dac4df3ca0e550ee7
+  SchemaCheck
+  SUCCESS Detected package.xml version 3, validation of scheme successful.
+  LicenseTagExistsCheck
+  SUCCESS Found licenses ['Apache']
+  LicenseTagIsInSpdxListCheck
+  WARNING Licenses ['Apache'] are not in SPDX list of licenses. Make sure to exactly match one of https://spdx.org/licenses/.
+  LicenseTextExistsCheck
+  WARNING Since they are not in the SPDX list, we can not check if these tags have the correct license text:
+  'Apache': License text file '../LICENSE' is of license Apache-2.0 but tag is Apache.
+  LicensesInCodeCheck
+  WARNING For the following files, please change the License Tag in the package file to SPDX format:
+  'include/cloudini_plugin/cloudini_publisher_plugin.hpp' is of Apache-2.0 but its Tag is Apache.
+  'include/cloudini_plugin/cloudini_subscriber_plugin.hpp' is of Apache-2.0 but its Tag is Apache.
+  'include/cloudini_ros/cloudini_subscriber_pcl.hpp' is of Apache-2.0 but its Tag is Apache.
+  'include/cloudini_ros/conversion_utils.hpp' is of Apache-2.0 but its Tag is Apache.
+  'src/cloudini_publisher_plugin.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/cloudini_subscriber_pcl.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/cloudini_subscriber_plugin.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/conversion_utils.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/plugin_manifest.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/topic_converter.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/draco_helper.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/draco_helper.hpp' is of Apache-2.0 but its Tag is Apache.
+  'test/rosbag_benchmark.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/test_cloudini_subscriber.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/test_direct_publisher.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/test_plugin_publisher.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/test_plugin_subscriber.cpp' is of Apache-2.0 but its Tag is Apache.
+  LicenseFilesReferencedCheck
+  SUCCESS All license declaration are referenced by a tag.
+  --------------------
+  [cloudini_lib]
+  git hash of (/home/src/github.com/facontidavide/cloudini): d202e5255d12519ff1f3db1dac4df3ca0e550ee7
+  SchemaCheck
+  SUCCESS Detected package.xml version 3, validation of scheme successful.
+  LicenseTagExistsCheck
+  SUCCESS Found licenses ['Apache 2.0']
+  LicenseTagIsInSpdxListCheck
+  WARNING Licenses ['Apache 2.0'] are not in SPDX list of licenses. Make sure to exactly match one of https://spdx.org/licenses/.
+  LicenseTextExistsCheck
+  WARNING Since they are not in the SPDX list, we can not check if these tags have the correct license text:
+  'Apache 2.0': License text file '../LICENSE' is of license Apache-2.0 but tag is Apache 2.0.
+  LicensesInCodeCheck
+  FAILURE
+  The following files contain licenses that are not covered by any license tag:
+  'benchmarks/pcd_benchmark.cpp': ['MIT']
+  'cmake/CPM.cmake': ['MIT']
+  'include/cloudini_lib/ros_message_definitions.hpp': ['BSD-3-Clause']
+  'include/cloudini_lib/contrib/ankerl/stl.h': ['MIT']
+  'include/cloudini_lib/contrib/ankerl/unordered_dense.h': ['MIT']
+  LicenseFilesReferencedCheck
+  SUCCESS All license declaration are referenced by a tag.
+  [^1]: https://github.com/boschresearch/ros_license_toolkit
+* Preserve the channel metadata
+* Contributors: Davide Faconti, Guillaume Doisy, Michal Sojka, Tony Najjar
+
 1.2.2 (2026-06-04)
 ------------------
 * fix(field_encoder): use C++20 [[likely]]/[[unlikely]] instead of __builtin_expect (enables MSVC)
