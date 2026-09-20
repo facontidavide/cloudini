@@ -2,8 +2,8 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+1.3.0 (2026-09-20)
+------------------
 * Fix license tags in package.xml
   According to ros_license_toolkit[^1] license tags should be in SPDX
   list of licenses. In case of claudini_ros, the license version was

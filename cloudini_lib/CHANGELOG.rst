@@ -2,8 +2,8 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+1.3.0 (2026-09-20)
+------------------
 * feat(packaging): conda/pixi package for prefix.dev + conda-forge (`#133 <https://github.com/facontidavide/cloudini/issues/133>`_)
   * feat(packaging): add conda/pixi package (prefix.dev + conda-forge)
   Ship cloudini as a conda package (shared library + headers + CMake package
