@@ -48,7 +48,7 @@ function(find_or_download_zstd FORCE_VENDORED)
     # define a helper to build both static and shared variants
     add_library(libzstd_static STATIC ${CommonSources} ${CompressSources} ${DecompressSources})
     set_property(TARGET libzstd_static PROPERTY POSITION_INDEPENDENT_CODE ON)
-    target_include_directories(libzstd_static PUBLIC ${zstd_SOURCE_DIR}/lib)
+    target_include_directories(libzstd_static PUBLIC $<BUILD_INTERFACE:${zstd_SOURCE_DIR}/lib>)
 
     add_library(zstd::libzstd_static INTERFACE IMPORTED)
     set_target_properties(zstd::libzstd_static PROPERTIES

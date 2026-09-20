@@ -234,10 +234,27 @@ if(ament_cmake_FOUND)
 else()
   # Standalone (non-ament) install: generate a CMake package config so downstream
   # projects can do find_package(cloudini_lib) and link cloudini::cloudini_lib.
-  # This is what the conda / system packages ship. zstd/lz4 are linked PRIVATE +
-  # BUILD_INTERFACE, so they never leak into the exported interface; PCL does when
-  # enabled, hence the conditional find_dependency in the config template.
+  # Static archives retain compressor references: ship vendored archives or
+  # rediscover system libraries in the installed package config.
   include(CMakePackageConfigHelpers)
+
+  set(CLOUDINI_SYSTEM_LIBRARIES "")
+  if(_cloudini_lib_type STREQUAL "STATIC_LIBRARY")
+    foreach(_dependency IN ITEMS lz4 zstd)
+      set(_vendored_target "${_dependency}_static")
+      if(_dependency STREQUAL "zstd")
+        set(_vendored_target libzstd_static)
+      endif()
+      if(TARGET ${_vendored_target})
+        set_target_properties(${_vendored_target} PROPERTIES OUTPUT_NAME cloudini_${_dependency})
+        install(TARGETS ${_vendored_target} EXPORT cloudini_libTargets ARCHIVE DESTINATION lib)
+        target_link_libraries(cloudini_lib INTERFACE
+          $<INSTALL_INTERFACE:$<LINK_ONLY:cloudini::${_vendored_target}>>)
+      else()
+        list(APPEND CLOUDINI_SYSTEM_LIBRARIES ${_dependency})
+      endif()
+    endforeach()
+  endif()
 
   install(EXPORT cloudini_libTargets
     FILE cloudini_libTargets.cmake
