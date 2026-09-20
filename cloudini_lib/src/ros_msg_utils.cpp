@@ -50,7 +50,6 @@ inline uint64_t packVoxelKey21(int32_t qx, int32_t qy, int32_t qz) {
 
 }  // namespace
 
-
 void readPointCloud2MessageCommon(nanocdr::Decoder& cdr, RosPointCloud2& result) {
   //----- read the header -----
   result.cdr_header = cdr.header();
@@ -256,11 +255,9 @@ void applyVizLossyPreprocessing(RosPointCloud2& pc_info) {
   const auto& f2 = pc_info.fields[2];
   const bool has_triple =
       f0.type == Cloudini::FieldType::FLOAT32 && f1.type == Cloudini::FieldType::FLOAT32 &&
-      f2.type == Cloudini::FieldType::FLOAT32 && f0.resolution.has_value() &&
-      f1.resolution.has_value() && f2.resolution.has_value() &&
-      f0.resolution.value() == f1.resolution.value() &&
-      f0.resolution.value() == f2.resolution.value() &&
-      f1.offset == f0.offset + 4u && f2.offset == f0.offset + 8u;
+      f2.type == Cloudini::FieldType::FLOAT32 && f0.resolution.has_value() && f1.resolution.has_value() &&
+      f2.resolution.has_value() && f0.resolution.value() == f1.resolution.value() &&
+      f0.resolution.value() == f2.resolution.value() && f1.offset == f0.offset + 4u && f2.offset == f0.offset + 8u;
   if (!has_triple) {
     return;
   }
@@ -312,8 +309,7 @@ void applyVizLossyPreprocessing(RosPointCloud2& pc_info) {
       continue;  // drop NaN/inf
     }
     const uint64_t key = packVoxelKey21(
-        static_cast<int32_t>(std::lround(fx * inv_res)),
-        static_cast<int32_t>(std::lround(fy * inv_res)),
+        static_cast<int32_t>(std::lround(fx * inv_res)), static_cast<int32_t>(std::lround(fy * inv_res)),
         static_cast<int32_t>(std::lround(fz * inv_res)));
     if (!seen.insert(key).second) {
       continue;  // voxel duplicate
@@ -326,8 +322,7 @@ void applyVizLossyPreprocessing(RosPointCloud2& pc_info) {
 
   // Replace pc_info's data view with the new owned buffer.
   pc_info.owned_data = std::move(out);
-  pc_info.data =
-      Cloudini::ConstBufferView(pc_info.owned_data.data(), pc_info.owned_data.size());
+  pc_info.data = Cloudini::ConstBufferView(pc_info.owned_data.data(), pc_info.owned_data.size());
   pc_info.width = static_cast<uint32_t>(kept);
   pc_info.height = 1;
   pc_info.row_step = pc_info.point_step * pc_info.width;

@@ -32,10 +32,8 @@ size_t MaxSerializedPointSize(const EncodingInfo& info);
 
 size_t LeadingLossyFloatFieldCount(const EncodingInfo& info);
 
-size_t AppendLeadingLossyFloatEncoder(
-    const EncodingInfo& info, std::vector<std::unique_ptr<FieldEncoder>>& encoders);
-size_t AppendLeadingLossyFloatDecoder(
-    const EncodingInfo& info, std::vector<std::unique_ptr<FieldDecoder>>& decoders);
+size_t AppendLeadingLossyFloatEncoder(const EncodingInfo& info, std::vector<std::unique_ptr<FieldEncoder>>& encoders);
+size_t AppendLeadingLossyFloatDecoder(const EncodingInfo& info, std::vector<std::unique_ptr<FieldDecoder>>& decoders);
 
 std::unique_ptr<FieldEncoder> CreateCompatibleEncoder(const EncodingInfo& info, const PointField& field);
 std::unique_ptr<FieldDecoder> CreateCompatibleDecoder(const EncodingInfo& info, const PointField& field);
@@ -46,7 +44,7 @@ size_t FlushEncoders(std::vector<std::unique_ptr<FieldEncoder>>& encoders, Buffe
 
 uint32_t CompressChunk(CompressionOption compression, ConstBufferView input, BufferView& output);
 ConstBufferView DecompressChunk(
-    CompressionOption compression, ConstBufferView chunk_data,
-    std::vector<uint8_t>& decompressed_buffer, size_t max_decompressed_size);
+    CompressionOption compression, ConstBufferView chunk_data, std::vector<uint8_t>& decompressed_buffer,
+    size_t max_decompressed_size);
 
 }  // namespace Cloudini::detail

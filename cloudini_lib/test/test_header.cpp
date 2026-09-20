@@ -76,8 +76,7 @@ std::vector<uint8_t> encodeVersionedPoints(
 }
 
 void expectVersionedRoundTrip(
-    const Cloudini::EncodingInfo& expected_info,
-    const std::vector<VersionPoint>& input,
+    const Cloudini::EncodingInfo& expected_info, const std::vector<VersionPoint>& input,
     const std::vector<uint8_t>& encoded) {
   Cloudini::ConstBufferView encoded_view(encoded.data(), encoded.size());
   const Cloudini::EncodingInfo decoded_info = Cloudini::DecodeHeader(encoded_view);

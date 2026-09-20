@@ -28,4 +28,5 @@ repos:
     hooks:
       - id: clang-format
         types_or: [c++, c]
+        exclude: ^cloudini_lib/include/cloudini_lib/contrib/
         args: ['-fallback-style=none', '-i']

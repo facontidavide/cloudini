@@ -81,8 +81,7 @@ size_t LeadingLossyFloatFieldCount(const EncodingInfo& info) {
   return (floats_count == 3 || floats_count == 4) ? floats_count : 0;
 }
 
-size_t AppendLeadingLossyFloatEncoder(
-    const EncodingInfo& info, std::vector<std::unique_ptr<FieldEncoder>>& encoders) {
+size_t AppendLeadingLossyFloatEncoder(const EncodingInfo& info, std::vector<std::unique_ptr<FieldEncoder>>& encoders) {
   const size_t floats_count = LeadingLossyFloatFieldCount(info);
   if (floats_count == 0) {
     return 0;
@@ -97,8 +96,7 @@ size_t AppendLeadingLossyFloatEncoder(
   return floats_count;
 }
 
-size_t AppendLeadingLossyFloatDecoder(
-    const EncodingInfo& info, std::vector<std::unique_ptr<FieldDecoder>>& decoders) {
+size_t AppendLeadingLossyFloatDecoder(const EncodingInfo& info, std::vector<std::unique_ptr<FieldDecoder>>& decoders) {
   const size_t floats_count = LeadingLossyFloatFieldCount(info);
   if (floats_count == 0) {
     return 0;
@@ -258,8 +256,8 @@ uint32_t CompressChunk(CompressionOption compression, ConstBufferView input, Buf
 }
 
 ConstBufferView DecompressChunk(
-    CompressionOption compression, ConstBufferView chunk_data,
-    std::vector<uint8_t>& decompressed_buffer, size_t max_decompressed_size) {
+    CompressionOption compression, ConstBufferView chunk_data, std::vector<uint8_t>& decompressed_buffer,
+    size_t max_decompressed_size) {
   switch (compression) {
     case CompressionOption::NONE:
       return chunk_data;
@@ -273,9 +271,8 @@ ConstBufferView DecompressChunk(
         decompressed_buffer.resize(max_decompressed_size);
       }
       const int decompressed_size = LZ4_decompress_safe(
-          reinterpret_cast<const char*>(chunk_data.data()),
-          reinterpret_cast<char*>(decompressed_buffer.data()), static_cast<int>(chunk_data.size()),
-          static_cast<int>(max_decompressed_size));
+          reinterpret_cast<const char*>(chunk_data.data()), reinterpret_cast<char*>(decompressed_buffer.data()),
+          static_cast<int>(chunk_data.size()), static_cast<int>(max_decompressed_size));
       if (decompressed_size < 0) {
         throw std::runtime_error("LZ4 decompression failed");
       }
@@ -286,8 +283,8 @@ ConstBufferView DecompressChunk(
       if (decompressed_buffer.size() < max_decompressed_size) {
         decompressed_buffer.resize(max_decompressed_size);
       }
-      const size_t decompressed_size = ZSTD_decompress(
-          decompressed_buffer.data(), max_decompressed_size, chunk_data.data(), chunk_data.size());
+      const size_t decompressed_size =
+          ZSTD_decompress(decompressed_buffer.data(), max_decompressed_size, chunk_data.data(), chunk_data.size());
       if (ZSTD_isError(decompressed_size)) {
         throw std::runtime_error("ZSTD decompression failed: " + std::string(ZSTD_getErrorName(decompressed_size)));
       }

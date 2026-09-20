@@ -40,8 +40,7 @@ void BuildV4Encoders(const EncodingInfo& info, std::vector<std::unique_ptr<Field
 }
 
 void BuildV4Decoders(
-    const EncodingInfo& info, std::vector<std::unique_ptr<FieldDecoder>>& decoders,
-    size_t& min_encoded_point_bytes) {
+    const EncodingInfo& info, std::vector<std::unique_ptr<FieldDecoder>>& decoders, size_t& min_encoded_point_bytes) {
   decoders.clear();
   min_encoded_point_bytes = 0;
 
@@ -64,8 +63,8 @@ void BuildV4Decoders(
 }
 
 size_t EncodeV4Stage1Chunk(
-    const EncodingInfo& info, std::vector<std::unique_ptr<FieldEncoder>>& encoders,
-    ConstBufferView& cloud_data, size_t points_per_chunk, BufferView& output) {
+    const EncodingInfo& info, std::vector<std::unique_ptr<FieldEncoder>>& encoders, ConstBufferView& cloud_data,
+    size_t points_per_chunk, BufferView& output) {
   ResetEncoders(encoders);
 
   size_t points_in_current_chunk = 0;
@@ -83,9 +82,8 @@ size_t EncodeV4Stage1Chunk(
 }
 
 void DecodeV4Stage1Chunk(
-    std::vector<std::unique_ptr<FieldDecoder>>& decoders, size_t min_encoded_point_bytes,
-    ConstBufferView& encoded_view, BufferView& output_buffer, size_t point_step,
-    size_t expected_points) {
+    std::vector<std::unique_ptr<FieldDecoder>>& decoders, size_t min_encoded_point_bytes, ConstBufferView& encoded_view,
+    BufferView& output_buffer, size_t point_step, size_t expected_points) {
   ResetDecoders(decoders);
 
   auto decode_point = [&] {

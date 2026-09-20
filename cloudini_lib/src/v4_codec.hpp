@@ -27,16 +27,14 @@ namespace Cloudini::detail {
 
 void BuildV4Encoders(const EncodingInfo& info, std::vector<std::unique_ptr<FieldEncoder>>& encoders);
 void BuildV4Decoders(
-    const EncodingInfo& info, std::vector<std::unique_ptr<FieldDecoder>>& decoders,
-    size_t& min_encoded_point_bytes);
+    const EncodingInfo& info, std::vector<std::unique_ptr<FieldDecoder>>& decoders, size_t& min_encoded_point_bytes);
 
 size_t EncodeV4Stage1Chunk(
-    const EncodingInfo& info, std::vector<std::unique_ptr<FieldEncoder>>& encoders,
-    ConstBufferView& cloud_data, size_t points_per_chunk, BufferView& output);
+    const EncodingInfo& info, std::vector<std::unique_ptr<FieldEncoder>>& encoders, ConstBufferView& cloud_data,
+    size_t points_per_chunk, BufferView& output);
 
 void DecodeV4Stage1Chunk(
-    std::vector<std::unique_ptr<FieldDecoder>>& decoders, size_t min_encoded_point_bytes,
-    ConstBufferView& encoded_view, BufferView& output_buffer, size_t point_step,
-    size_t expected_points);
+    std::vector<std::unique_ptr<FieldDecoder>>& decoders, size_t min_encoded_point_bytes, ConstBufferView& encoded_view,
+    BufferView& output_buffer, size_t point_step, size_t expected_points);
 
 }  // namespace Cloudini::detail
