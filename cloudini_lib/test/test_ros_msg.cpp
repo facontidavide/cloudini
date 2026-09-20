@@ -18,9 +18,11 @@
 
 #include <fstream>
 #include <iostream>
+#include <iterator>
 
 #include "cloudini_lib/cloudini.hpp"
 #include "cloudini_lib/encoding_utils.hpp"
+#include "cloudini_lib/ros_message_definitions.hpp"  // also included by test_header.cpp: must not break the link
 #include "cloudini_lib/ros_msg_utils.hpp"
 #include "data_path.hpp"
 
@@ -153,4 +155,48 @@ TEST(Cloudini, RosPointCloud2CopyRebindsOwnedDataView) {
   ASSERT_EQ(copied.owned_data, original.owned_data);
   EXPECT_EQ(copied.data.data(), copied.owned_data.data());
   EXPECT_EQ(copied.data.size(), copied.owned_data.size());
+}
+
+namespace {
+std::vector<uint8_t> loadSampleDDSMessage() {
+  std::ifstream file(Cloudini::tests::DATA_PATH + "dds_message.bin", std::ios::binary);
+  EXPECT_TRUE(file.is_open());
+  return std::vector<uint8_t>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+}
+}  // namespace
+
+// A PointCloud2 can come from any DDS peer. Metadata that disagrees with the
+// payload must be rejected, not encoded: the field encoders read at
+// field.offset inside every point, and the header repeats width/height.
+TEST(Cloudini, InconsistentPointCloud2IsRejected) {
+  const auto dds_msg = loadSampleDDSMessage();
+  std::vector<uint8_t> output;
+
+  {
+    auto pc_info = cloudini_ros::getDeserializedPointCloudMessage(dds_msg);
+    pc_info.fields.back().offset = pc_info.point_step;  // field lies past the end of the point
+    const auto info = cloudini_ros::toEncodingInfo(pc_info);
+    EXPECT_THROW(cloudini_ros::convertPointCloud2ToCompressedCloud(pc_info, info, output), std::runtime_error);
+  }
+  {
+    auto pc_info = cloudini_ros::getDeserializedPointCloudMessage(dds_msg);
+    pc_info.width *= 2;  // header would promise twice the points that are encoded
+    const auto info = cloudini_ros::toEncodingInfo(pc_info);
+    EXPECT_THROW(cloudini_ros::convertPointCloud2ToCompressedCloud(pc_info, info, output), std::runtime_error);
+  }
+  {
+    auto pc_info = cloudini_ros::getDeserializedPointCloudMessage(dds_msg);
+    const auto info = cloudini_ros::toEncodingInfo(pc_info);
+    EXPECT_NO_THROW(cloudini_ros::convertPointCloud2ToCompressedCloud(pc_info, info, output));
+  }
+}
+
+// The encoder itself must refuse a field that does not fit in point_step,
+// whoever the caller is (PCL, Python, WASM bindings).
+TEST(Cloudini, EncoderRejectsFieldOutsidePointStep) {
+  Cloudini::EncodingInfo info;
+  info.fields = {{"x", 0, Cloudini::FieldType::FLOAT32, 0.001f}, {"y", 6, Cloudini::FieldType::FLOAT32, 0.001f}};
+  info.point_step = 8;  // y would span bytes 6..9
+  info.width = 10;
+  EXPECT_THROW(Cloudini::PointcloudEncoder encoder(info), std::runtime_error);
 }

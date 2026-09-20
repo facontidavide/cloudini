@@ -188,6 +188,14 @@ void convertPointCloud2ToCompressedCloud(
   if (encoding_info.point_step == 0) {
     throw std::runtime_error("convertPointCloud2ToCompressedCloud: point_step cannot be 0");
   }
+  // The header repeats width and height: if they disagree with the payload, the
+  // result cannot be decoded.
+  const uint64_t declared_size = uint64_t{pc_info.width} * pc_info.height * pc_info.point_step;
+  if (declared_size != pc_info.data.size()) {
+    throw std::runtime_error(
+        "convertPointCloud2ToCompressedCloud: width*height*point_step is " + std::to_string(declared_size) +
+        " but data has " + std::to_string(pc_info.data.size()) + " bytes");
+  }
   // Derive point count from actual data size rather than trusting metadata width*height,
   // which could be maliciously large and cause excessive allocation.
   const size_t points_count = pc_info.data.size() / encoding_info.point_step;
