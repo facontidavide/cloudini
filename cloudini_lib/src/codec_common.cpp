@@ -324,8 +324,35 @@ size_t compressZstdWithBlockStarts(ConstBufferView input, BufferView output, std
 
 }  // namespace
 
+namespace {
+
+// One ZSTD frame per segment between block starts, concatenated.
+size_t compressZstdFrames(ConstBufferView input, BufferView output, std::span<const size_t> block_starts) {
+  size_t written = 0;
+  size_t start = 0;
+  auto compress_segment = [&](size_t end) {
+    const size_t cs = ZSTD_compressCCtx(
+        threadCCtx(), output.data() + written, output.size() - written, input.data() + start, end - start, 1);
+    if (ZSTD_isError(cs)) {
+      throw std::runtime_error(std::string("ZSTD compression failed: ") + ZSTD_getErrorName(cs));
+    }
+    written += cs;
+    start = end;
+  };
+  for (const size_t block_start : block_starts) {
+    if (block_start > start && block_start < input.size()) {
+      compress_segment(block_start);
+    }
+  }
+  compress_segment(input.size());
+  return written;
+}
+
+}  // namespace
+
 uint32_t CompressChunk(
-    CompressionOption compression, ConstBufferView input, BufferView& output, std::span<const size_t> block_starts) {
+    CompressionOption compression, ConstBufferView input, BufferView& output, std::span<const size_t> block_starts,
+    bool separate_frames) {
   if (input.size() > std::numeric_limits<uint32_t>::max()) {
     throw std::runtime_error("Chunk too large");
   }
@@ -349,7 +376,8 @@ uint32_t CompressChunk(
     case CompressionOption::ZSTD: {
       const size_t cs =
           !block_starts.empty()
-              ? compressZstdWithBlockStarts(input, output, block_starts)
+              ? (separate_frames ? compressZstdFrames(input, output, block_starts)
+                                 : compressZstdWithBlockStarts(input, output, block_starts))
               : ZSTD_compressCCtx(threadCCtx(), output.data(), output.size(), input.data(), input.size(), 1);
       if (ZSTD_isError(cs)) {
         throw std::runtime_error("ZSTD compression failed");

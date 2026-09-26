@@ -49,9 +49,11 @@ size_t CompressBound(CompressionOption compression, size_t input_size);
 // `block_starts` (increasing offsets into `input`) are positions where stage 2 should begin a new
 // compressed block, e.g. where a V5 adaptive section starts. They are a hint: the compressed stream stays a
 // single standard LZ4/ZSTD payload, so decoding does not depend on them.
+// With `separate_frames`, ZSTD writes one frame per segment between block starts instead of one frame with
+// a block per segment (ZSTD decoders read concatenated frames).
 uint32_t CompressChunk(
-    CompressionOption compression, ConstBufferView input, BufferView& output,
-    std::span<const size_t> block_starts = {});
+    CompressionOption compression, ConstBufferView input, BufferView& output, std::span<const size_t> block_starts = {},
+    bool separate_frames = false);
 ConstBufferView DecompressChunk(
     CompressionOption compression, ConstBufferView chunk_data, std::vector<uint8_t>& decompressed_buffer,
     size_t max_decompressed_size);

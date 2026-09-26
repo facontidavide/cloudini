@@ -667,8 +667,9 @@ void PointcloudEncoder::compressionWorker() {
 
       ConstBufferView stage1_data(buffer_compressing_.get(), buffer_compressing_size_);
       BufferView compressed_output(output_view_.data(), output_view_.size());
-      const uint32_t chunk_size =
-          detail::CompressChunk(info_.compression_opt, stage1_data, compressed_output, block_starts_compressing_);
+      const uint32_t chunk_size = detail::CompressChunk(
+          info_.compression_opt, stage1_data, compressed_output, block_starts_compressing_,
+          detail::V6SeparateZstdFrames(info_));
       output_view_ = compressed_output;
       memcpy(compressed_chunk_size_ptr, &chunk_size, sizeof(uint32_t));
 
@@ -793,8 +794,11 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
       ensureScratchBuffer(buffer_compressing_, buffer_compressing_capacity_, stage_capacity);
     }
     auto get_stage_buffer = [this] { return BufferView(buffer_.get(), buffer_capacity_); };
+    if (!v6_state_) {
+      v6_state_ = std::make_unique<detail::V6EncoderState>();
+    }
     detail::EncodeV6Stage1(
-        info_, cloud_data, points_count, detail::kPointsPerChunk, get_stage_buffer, write_stage1_chunk);
+        info_, *v6_state_, cloud_data, points_count, detail::kPointsPerChunk, get_stage_buffer, write_stage1_chunk);
   } else if (detail::UsesV5Codec(info_)) {
     const size_t stage_capacity = detail::V5StageBufferSize(info_, detail::kPointsPerChunk);
     ensureScratchBuffer(buffer_, buffer_capacity_, stage_capacity);

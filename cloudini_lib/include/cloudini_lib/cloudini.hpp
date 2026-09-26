@@ -60,6 +60,10 @@ EncodingOptions EncodingOptionsFromString(std::string_view str);
 CompressionOption CompressionOptionFromString(std::string_view str);
 FieldType FieldTypeFromString(std::string_view str);
 
+namespace detail {
+struct V6EncoderState;
+}
+
 constexpr const uint8_t kEncodingVersion = 5;
 // Newest version the decoder reads. Version 6 is experimental: encoders write it only when asked to.
 constexpr const uint8_t kMaxEncodingVersion = 6;
@@ -215,6 +219,9 @@ class PointcloudEncoder {
   size_t buffer_compressing_size_ = 0;
   // offsets in buffer_compressing_ where stage 2 should start a new compressed block
   std::vector<size_t> block_starts_compressing_;
+
+  // V6 encoder state kept between encode() calls (detected lag, predictor per chunk, buffers)
+  std::unique_ptr<detail::V6EncoderState> v6_state_;
 
   // Thread synchronization
   std::mutex mutex_;

@@ -21,6 +21,7 @@
 #include <stdexcept>
 
 #include "codec_common.hpp"
+#include "v5_codec.hpp"
 
 namespace Cloudini::detail {
 
@@ -43,7 +44,8 @@ size_t WriteStage1Chunk(
   uint8_t* chunk_size_ptr = output.data();
   output.trim_front(sizeof(uint32_t));
 
-  const uint32_t chunk_size = CompressChunk(info.compression_opt, stage1_data, output, block_starts);
+  const uint32_t chunk_size =
+      CompressChunk(info.compression_opt, stage1_data, output, block_starts, V6SeparateZstdFrames(info));
   std::memcpy(chunk_size_ptr, &chunk_size, sizeof(uint32_t));
   return static_cast<size_t>(chunk_size) + sizeof(uint32_t);
 }
