@@ -466,7 +466,10 @@ size_t MaxCompressedSize(const EncodingInfo& info, size_t points_count, bool inc
     const size_t points_in_chunk = std::min(points_left, chunk_points);
     points_left -= points_in_chunk;
     size_t max_chunk_input_size = points_in_chunk * max_serialized_point_size;
-    if (detail::UsesV5Codec(info)) {
+    if (detail::UsesV6Codec(info)) {
+      // V6: section headers, the validity mask and the adaptive integer sections
+      max_chunk_input_size += info.fields.size() * 32u + 1024u + points_in_chunk / 8 + 64u;
+    } else if (detail::UsesV5Codec(info)) {
       // V5 adaptive integer sections add mode/header bytes. Adaptive sections
       // compete using their full encoded size, so any selected mode remains
       // bounded by the delta-varint section plus this fixed slack.
@@ -555,9 +558,9 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
   const uint8_t version = char_to_num(input.data()[0]) * 10 + char_to_num(input.data()[1]);
   input.trim_front(2);
 
-  if (version < 2 || version > kEncodingVersion) {
+  if (version < 2 || version > kMaxEncodingVersion) {
     throw std::runtime_error(
-        "Unsupported encoding version. Current is:" + std::to_string(kEncodingVersion) +
+        "Unsupported encoding version. Current is:" + std::to_string(kMaxEncodingVersion) +
         ", got: " + std::to_string(version));
   }
   // Note: version 4 adds Gorilla bit-packing for lossless FLOAT32/FLOAT64 XOR residuals.
@@ -626,7 +629,7 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
   }
   EncodeHeader(info_, header_);
 
-  if (!detail::UsesV5Codec(info_)) {
+  if (!detail::UsesV6Codec(info_) && !detail::UsesV5Codec(info_)) {
     detail::BuildV4Encoders(info_, encoders_);
   }
 
@@ -783,7 +786,16 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
     cv_ready_to_compress_.notify_one();
   };
 
-  if (detail::UsesV5Codec(info_)) {
+  if (detail::UsesV6Codec(info_)) {
+    const size_t stage_capacity = detail::V6StageBufferSize(info_, detail::kPointsPerChunk);
+    ensureScratchBuffer(buffer_, buffer_capacity_, stage_capacity);
+    if (info_.compression_opt != CompressionOption::NONE && info_.use_threads) {
+      ensureScratchBuffer(buffer_compressing_, buffer_compressing_capacity_, stage_capacity);
+    }
+    auto get_stage_buffer = [this] { return BufferView(buffer_.get(), buffer_capacity_); };
+    detail::EncodeV6Stage1(
+        info_, cloud_data, points_count, detail::kPointsPerChunk, get_stage_buffer, write_stage1_chunk);
+  } else if (detail::UsesV5Codec(info_)) {
     const size_t stage_capacity = detail::V5StageBufferSize(info_, detail::kPointsPerChunk);
     ensureScratchBuffer(buffer_, buffer_capacity_, stage_capacity);
     if (info_.compression_opt != CompressionOption::NONE && info_.use_threads) {
@@ -820,7 +832,9 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
 //------------------------------------------------------------------------------------------
 
 void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
-  if (detail::UsesV5Codec(info)) {
+  if (detail::UsesV6Codec(info)) {
+    detail::BuildV6Decoders(info, decoders_, min_encoded_point_bytes_);
+  } else if (detail::UsesV5Codec(info)) {
     detail::BuildV5Decoders(info, decoders_, min_encoded_point_bytes_);
   } else {
     detail::BuildV4Decoders(info, decoders_, min_encoded_point_bytes_);
@@ -867,13 +881,16 @@ void PointcloudDecoder::decodeChunk(
   const size_t points_in_chunk =
       expected_points != 0 ? expected_points : static_cast<size_t>(info.width) * static_cast<size_t>(info.height);
   const size_t max_decompressed_size =
-      detail::UsesV5Codec(info)
+      detail::UsesV6Codec(info) ? detail::V6StageBufferSize(info, points_in_chunk)
+      : detail::UsesV5Codec(info)
           ? detail::V5StageBufferSize(info, points_in_chunk)
           : points_in_chunk * std::max<size_t>(info.point_step, detail::MaxSerializedPointSize(info));
   ConstBufferView encoded_view =
       detail::DecompressChunk(info.compression_opt, chunk_data, decompressed_buffer_, max_decompressed_size);
 
-  if (detail::UsesV5Codec(info)) {
+  if (detail::UsesV6Codec(info)) {
+    detail::DecodeV6Stage1Chunk(info, decoders_, encoded_view, output_buffer, expected_points);
+  } else if (detail::UsesV5Codec(info)) {
     detail::DecodeV5Stage1Chunk(info, decoders_, encoded_view, output_buffer, expected_points);
   } else {
     detail::DecodeV4Stage1Chunk(

@@ -61,6 +61,8 @@ CompressionOption CompressionOptionFromString(std::string_view str);
 FieldType FieldTypeFromString(std::string_view str);
 
 constexpr const uint8_t kEncodingVersion = 5;
+// Newest version the decoder reads. Version 6 is experimental: encoders write it only when asked to.
+constexpr const uint8_t kMaxEncodingVersion = 6;
 
 struct EncodingInfo {
   // Fields in the point cloud
