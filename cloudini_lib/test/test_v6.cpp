@@ -367,7 +367,7 @@ TEST(V6, KnobsAndEncoderReuse) {
   for (size_t i = 0; i < firing.size(); i += 13) {
     firing[i].x = firing[i].y = firing[i].z = std::numeric_limits<float>::quiet_NaN();
   }
-  for (const char* config : {"", "v6_recon=double", "v6_zstd=frames", "v6_cache=off", "v6_blocks=none"}) {
+  for (const char* config : {"", "v6_zstd=frames", "v6_cache=off", "v6_blocks=none"}) {
     // one encoder reused for several clouds: same size (cached lag and predictors), then another content
     auto info = makeInfo(fields, 512, 32, sizeof(OusterPoint), 6, CompressionOption::ZSTD);
     info.encoding_config = config;
