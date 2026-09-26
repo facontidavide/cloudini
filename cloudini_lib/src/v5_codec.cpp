@@ -476,10 +476,8 @@ void appendRleSection(const std::vector<uint64_t>& raw_values, size_t bytes_per_
   std::memcpy(run_count_ptr, &run_count, sizeof(run_count));
 }
 
-size_t serializeAdaptiveIntSection(
-    V5AdaptiveIntField& field, AdaptiveIntMode mode, size_t section_bytes, std::vector<uint8_t>& section) {
-  section.resize(section_bytes);
-  BufferView out(section.data(), section.size());
+// Palette mode needs the indexes from buildPaletteIndexes().
+void appendAdaptiveIntSection(const V5AdaptiveIntField& field, AdaptiveIntMode mode, BufferView& out) {
   switch (mode) {
     case AdaptiveIntMode::DeltaVarint:
       appendDeltaVarintSection(field.values, out);
@@ -494,6 +492,13 @@ size_t serializeAdaptiveIntSection(
       appendDeltaRleSection(field.values, out);
       break;
   }
+}
+
+size_t serializeAdaptiveIntSection(
+    const V5AdaptiveIntField& field, AdaptiveIntMode mode, size_t section_bytes, std::vector<uint8_t>& section) {
+  section.resize(section_bytes);
+  BufferView out(section.data(), section.size());
+  appendAdaptiveIntSection(field, mode, out);
   return section.size() - out.size();
 }
 
@@ -532,8 +537,7 @@ AdaptiveIntMode selectAdaptiveIntMode(
   std::vector<uint8_t> compressed;
   auto compressed_size = [&](AdaptiveIntMode mode) {
     const size_t section_bytes = serializeAdaptiveIntSection(field, mode, sectionBytes(stats, mode), section);
-    // generous bound for both LZ4_compressBound and ZSTD_compressBound
-    compressed.resize(section_bytes + section_bytes / 8 + 1024);
+    compressed.resize(CompressBound(compression, section_bytes));
     BufferView compressed_view(compressed.data(), compressed.size());
     return static_cast<size_t>(
         CompressChunk(compression, ConstBufferView(section.data(), section_bytes), compressed_view));
@@ -761,20 +765,7 @@ void appendCommittedAdaptiveIntSection(V5AdaptiveIntField& field, CompressionOpt
     buildPaletteIndexes(field);
   }
 
-  switch (field.committed_mode) {
-    case AdaptiveIntMode::DeltaVarint:
-      appendDeltaVarintSection(field.values, out);
-      break;
-    case AdaptiveIntMode::DeltaRle:
-      appendDeltaRleSection(field.values, out);
-      break;
-    case AdaptiveIntMode::Palette:
-      appendPaletteSection(field, out);
-      break;
-    case AdaptiveIntMode::Rle:
-      appendRleSection(field.raw_values, field.bytes_per_value, out);
-      break;
-  }
+  appendAdaptiveIntSection(field, field.committed_mode, out);
 }
 
 V5EncoderPlan buildV5Plan(const EncodingInfo& info, size_t points_in_chunk) {
@@ -988,7 +979,7 @@ size_t V5StageBufferSize(const EncodingInfo& info, size_t points_per_chunk) {
 void EncodeV5Stage1(
     const EncodingInfo& info, ConstBufferView cloud_data, size_t points_count, size_t points_per_chunk,
     const std::function<BufferView()>& get_stage_buffer,
-    const std::function<void(size_t serialized_size, const std::vector<size_t>& section_starts)>& write_stage1_chunk) {
+    const std::function<void(size_t serialized_size, std::span<const size_t> section_starts)>& write_stage1_chunk) {
   V5EncoderPlan plan = buildV5Plan(info, points_per_chunk);
   std::vector<size_t> section_starts;
   section_starts.reserve(plan.adaptive.size());

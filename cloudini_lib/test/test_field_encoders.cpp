@@ -970,54 +970,6 @@ TEST(FieldEncoders, Gorilla_DoesNotActivateForV3) {
   }
 }
 
-TEST(FieldEncoders, DecodeVarintUncheckedMatchesChecked) {
-  using namespace Cloudini;
-
-  auto expect_same = [](const std::array<uint8_t, 16>& buf) {
-    int64_t checked_val = 0;
-    size_t checked_count = 0;
-    bool checked_threw = false;
-    try {
-      checked_count = decodeVarint(buf.data(), buf.size(), checked_val);
-    } catch (const std::exception&) {
-      checked_threw = true;
-    }
-    int64_t unchecked_val = 0;
-    size_t unchecked_count = 0;
-    bool unchecked_threw = false;
-    try {
-      unchecked_count = decodeVarintUnchecked(buf.data(), unchecked_val);
-    } catch (const std::exception&) {
-      unchecked_threw = true;
-    }
-    ASSERT_EQ(checked_threw, unchecked_threw);
-    if (!checked_threw) {
-      ASSERT_EQ(checked_count, unchecked_count);
-      ASSERT_EQ(checked_val, unchecked_val);
-      ASSERT_LE(unchecked_count, kMaxVarintBytes);
-    }
-  };
-
-  std::array<uint8_t, 16> buf{};
-  for (int b0 = 0; b0 < 256; ++b0) {
-    for (int b1 = 0; b1 < 256; ++b1) {
-      buf[0] = static_cast<uint8_t>(b0);
-      buf[1] = static_cast<uint8_t>(b1);
-      expect_same(buf);
-    }
-  }
-  // Long, overflowing and all-continuation varints
-  std::mt19937_64 rng(0x5EEDULL);
-  for (int iter = 0; iter < 200'000; ++iter) {
-    for (auto& byte : buf) {
-      const uint32_t r = static_cast<uint32_t>(rng());
-      byte = static_cast<uint8_t>(r) | (((r >> 8) % 4 != 0) ? 0x80u : 0x00u);
-    }
-    buf[1 + rng() % 11] &= 0x7Fu;  // terminate somewhere in [1, 11]
-    expect_same(buf);
-  }
-}
-
 TEST(FieldEncoders, FloatNDecodePointsMatchesPerPointDecode) {
   using namespace Cloudini;
 

@@ -17,6 +17,7 @@
 #pragma once
 
 #include <memory>
+#include <span>
 #include <vector>
 
 #include "cloudini_lib/cloudini.hpp"
@@ -42,12 +43,15 @@ void ResetEncoders(std::vector<std::unique_ptr<FieldEncoder>>& encoders);
 void ResetDecoders(std::vector<std::unique_ptr<FieldDecoder>>& decoders);
 size_t FlushEncoders(std::vector<std::unique_ptr<FieldEncoder>>& encoders, BufferView& output);
 
-// `block_starts` (optional, increasing offsets into `input`) are positions where stage 2 should begin a new
+// Worst-case size of CompressChunk() output for `input_size` bytes of input.
+size_t CompressBound(CompressionOption compression, size_t input_size);
+
+// `block_starts` (increasing offsets into `input`) are positions where stage 2 should begin a new
 // compressed block, e.g. where a V5 adaptive section starts. They are a hint: the compressed stream stays a
 // single standard LZ4/ZSTD payload, so decoding does not depend on them.
 uint32_t CompressChunk(
     CompressionOption compression, ConstBufferView input, BufferView& output,
-    const std::vector<size_t>* block_starts = nullptr);
+    std::span<const size_t> block_starts = {});
 ConstBufferView DecompressChunk(
     CompressionOption compression, ConstBufferView chunk_data, std::vector<uint8_t>& decompressed_buffer,
     size_t max_decompressed_size);

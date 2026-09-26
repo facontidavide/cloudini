@@ -23,6 +23,7 @@
 #include <limits>
 #include <locale>
 #include <numeric>
+#include <span>
 #include <sstream>
 #include <stdexcept>
 
@@ -30,10 +31,8 @@
 #include "cloudini_lib/encoding_utils.hpp"
 #include "cloudini_lib/yaml_parser.hpp"
 #include "codec_common.hpp"
-#include "lz4.h"
 #include "v4_codec.hpp"
 #include "v5_codec.hpp"
-#include "zstd.h"
 
 namespace Cloudini {
 
@@ -314,7 +313,7 @@ float refinedResolution(const PointField& field, float resolution, ConstBufferVi
   };
 
   // Integer values: stored exactly with resolution 1.
-  size_t first_fraction = points;
+  bool all_integers = true;
   bool any_value = false;
   for (size_t i = 0; i < points; ++i) {
     const double value = value_at(i);
@@ -326,15 +325,15 @@ float refinedResolution(const PointField& field, float resolution, ConstBufferVi
     }
     any_value = true;
     if (value != std::nearbyint(value)) {
-      first_fraction = i;
+      all_integers = false;
       break;
     }
   }
   if (!any_value) {
     return resolution;
   }
-  if (first_fraction == points) {
-    return resolution < 1.0F ? 1.0F : resolution;
+  if (all_integers) {
+    return std::max(resolution, 1.0F);
   }
 
   // Otherwise: greatest common divisor g of the quantized values. With round(v / r) = k * g, v is within
@@ -409,22 +408,7 @@ size_t MaxCompressedSize(const EncodingInfo& info, size_t points_count, bool inc
     }
 
     total_size += sizeof(uint32_t);  // chunk size prefix
-    switch (info.compression_opt) {
-      case CompressionOption::NONE:
-        total_size += max_chunk_input_size;
-        break;
-      case CompressionOption::LZ4:
-        if (max_chunk_input_size > static_cast<size_t>(std::numeric_limits<int>::max())) {
-          throw std::runtime_error("Chunk size too large for LZ4");
-        }
-        total_size += static_cast<size_t>(LZ4_compressBound(static_cast<int>(max_chunk_input_size)));
-        break;
-      case CompressionOption::ZSTD:
-        total_size += ZSTD_compressBound(max_chunk_input_size);
-        break;
-      default:
-        throw std::runtime_error("Unsupported compression option in MaxCompressedSize");
-    }
+    total_size += detail::CompressBound(info.compression_opt, max_chunk_input_size);
   }
 
   return total_size;
@@ -615,7 +599,7 @@ void PointcloudEncoder::compressionWorker() {
       ConstBufferView stage1_data(buffer_compressing_.get(), buffer_compressing_size_);
       BufferView compressed_output(output_view_.data(), output_view_.size());
       const uint32_t chunk_size =
-          detail::CompressChunk(info_.compression_opt, stage1_data, compressed_output, &block_starts_compressing_);
+          detail::CompressChunk(info_.compression_opt, stage1_data, compressed_output, block_starts_compressing_);
       output_view_ = compressed_output;
       memcpy(compressed_chunk_size_ptr, &chunk_size, sizeof(uint32_t));
 
@@ -714,17 +698,17 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
     output_view_.trim_front(header_.size());
   }
 
-  auto write_stage1_chunk = [&](size_t serialized_size, const std::vector<size_t>& block_starts) {
+  auto write_stage1_chunk = [&](size_t serialized_size, std::span<const size_t> block_starts) {
     ConstBufferView stage1_data(buffer_.get(), serialized_size);
     if (info_.compression_opt == CompressionOption::NONE || !info_.use_threads) {
-      compressed_size_ += detail::WriteStage1Chunk(info_, stage1_data, output_view_, &block_starts);
+      compressed_size_ += detail::WriteStage1Chunk(info_, stage1_data, output_view_, block_starts);
       return;
     }
     waitForCompressionComplete();
     {
       std::unique_lock<std::mutex> lock(mutex_);
       buffer_compressing_size_ = serialized_size;
-      block_starts_compressing_ = block_starts;
+      block_starts_compressing_.assign(block_starts.begin(), block_starts.end());
       std::swap(buffer_, buffer_compressing_);
       std::swap(buffer_capacity_, buffer_compressing_capacity_);
       has_data_to_compress_ = true;

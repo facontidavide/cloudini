@@ -25,8 +25,7 @@
 namespace Cloudini::detail {
 
 size_t WriteStage1Chunk(
-    const EncodingInfo& info, ConstBufferView stage1_data, BufferView& output,
-    const std::vector<size_t>* block_starts) {
+    const EncodingInfo& info, ConstBufferView stage1_data, BufferView& output, std::span<const size_t> block_starts) {
   if (stage1_data.size() > std::numeric_limits<uint32_t>::max()) {
     throw std::runtime_error("Chunk too large");
   }

@@ -265,12 +265,28 @@ size_t FlushEncoders(std::vector<std::unique_ptr<FieldEncoder>>& encoders, Buffe
   return serialized_size;
 }
 
+size_t CompressBound(CompressionOption compression, size_t input_size) {
+  switch (compression) {
+    case CompressionOption::NONE:
+      return input_size;
+    case CompressionOption::LZ4:
+      if (input_size > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        throw std::runtime_error("Chunk size too large for LZ4");
+      }
+      return static_cast<size_t>(LZ4_compressBound(static_cast<int>(input_size)));
+    case CompressionOption::ZSTD:
+      return ZSTD_compressBound(input_size);
+    default:
+      throw std::runtime_error("Unsupported compression option in CompressBound");
+  }
+}
+
 namespace {
 
 // One ZSTD frame, ending a block at every offset in `block_starts`. ZSTD entropy-codes literals with one
 // set of statistics per block: starting a block where the data changes nature (e.g. a V5 adaptive
 // section after the per-point stream) keeps the statistics of the two regions apart.
-size_t compressZstdWithBlockStarts(ConstBufferView input, BufferView output, const std::vector<size_t>& block_starts) {
+size_t compressZstdWithBlockStarts(ConstBufferView input, BufferView output, std::span<const size_t> block_starts) {
   ZSTD_CCtx* cctx = threadCCtx();
   auto check = [](size_t ret) {
     if (ZSTD_isError(ret)) {
@@ -309,7 +325,7 @@ size_t compressZstdWithBlockStarts(ConstBufferView input, BufferView output, con
 }  // namespace
 
 uint32_t CompressChunk(
-    CompressionOption compression, ConstBufferView input, BufferView& output, const std::vector<size_t>* block_starts) {
+    CompressionOption compression, ConstBufferView input, BufferView& output, std::span<const size_t> block_starts) {
   if (input.size() > std::numeric_limits<uint32_t>::max()) {
     throw std::runtime_error("Chunk too large");
   }
@@ -332,8 +348,8 @@ uint32_t CompressChunk(
 
     case CompressionOption::ZSTD: {
       const size_t cs =
-          (block_starts && !block_starts->empty())
-              ? compressZstdWithBlockStarts(input, output, *block_starts)
+          !block_starts.empty()
+              ? compressZstdWithBlockStarts(input, output, block_starts)
               : ZSTD_compressCCtx(threadCCtx(), output.data(), output.size(), input.data(), input.size(), 1);
       if (ZSTD_isError(cs)) {
         throw std::runtime_error("ZSTD compression failed");

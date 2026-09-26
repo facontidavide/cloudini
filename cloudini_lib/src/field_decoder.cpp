@@ -145,12 +145,8 @@ void FieldDecoderFloatN_Lossy::decodePointsImpl(
   }
   input.trim_front(static_cast<size_t>(ptr - input.data()));
 
-  for (; i < count; ++i) {
-    if (input.size() < min_input_bytes_) {
-      throw std::runtime_error("Truncated encoded data: not enough bytes for a complete point");
-    }
-    decode(input, BufferView(output + i * point_step, point_step));
-  }
+  // the last few points, through the checked per-point decode()
+  FieldDecoder::decodePoints(input, output + i * point_step, point_step, count - i);
 }
 
 }  // namespace Cloudini
