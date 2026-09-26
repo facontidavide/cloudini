@@ -70,6 +70,14 @@ for quantization and delta generation, and it has a fast no-NaN path.
 NaN is represented with the reserved varint marker `0`. Real encoded deltas are
 shifted by one so the marker remains available.
 
+Fields are often stored as floats but hold integers (`intensity`, `ring`) or
+values on a coarse grid (a reflectance in 0.01 steps). Quantized at 1 mm, such a
+field wastes about 10 bits per point. `RefineResolutionsToData()` (opt-in, per
+cloud) replaces the resolution of these fields with the grid their values lie on:
+1 for integers, which are then stored exactly, or `k * resolution` otherwise. The
+error bound is unchanged and readers need nothing new, since the resolution is in
+the header.
+
 ## Adaptive Integer Encoding
 
 V5 adaptive integer encoding applies to these lossy-mode field types:

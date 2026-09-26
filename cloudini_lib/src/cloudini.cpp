@@ -17,10 +17,12 @@
 #include "cloudini_lib/cloudini.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <iomanip>
 #include <limits>
 #include <locale>
+#include <numeric>
 #include <sstream>
 #include <stdexcept>
 
@@ -289,6 +291,98 @@ size_t ComputeHeaderSize(const std::vector<PointField>& fields) {
     header_size += sizeof(float);                         // resolution
   }
   return header_size;
+}
+
+namespace {
+
+double readFloatField(const uint8_t* ptr, FieldType type) {
+  if (type == FieldType::FLOAT32) {
+    float value;
+    memcpy(&value, ptr, sizeof(value));
+    return value;
+  }
+  double value;
+  memcpy(&value, ptr, sizeof(value));
+  return value;
+}
+
+// Coarsest resolution (a multiple of `resolution`) whose grid contains every value of the field.
+float refinedResolution(const PointField& field, float resolution, ConstBufferView cloud_data, size_t point_step) {
+  const size_t points = cloud_data.size() / point_step;
+  auto value_at = [&](size_t i) {
+    return readFloatField(cloud_data.data() + i * point_step + field.offset, field.type);
+  };
+
+  // Integer values: stored exactly with resolution 1.
+  size_t first_fraction = points;
+  bool any_value = false;
+  for (size_t i = 0; i < points; ++i) {
+    const double value = value_at(i);
+    if (std::isnan(value)) {
+      continue;
+    }
+    if (!std::isfinite(value)) {
+      return resolution;
+    }
+    any_value = true;
+    if (value != std::nearbyint(value)) {
+      first_fraction = i;
+      break;
+    }
+  }
+  if (!any_value) {
+    return resolution;
+  }
+  if (first_fraction == points) {
+    return resolution < 1.0F ? 1.0F : resolution;
+  }
+
+  // Otherwise: greatest common divisor g of the quantized values. With round(v / r) = k * g, v is within
+  // r / 2 of k * (g * r), so the coarser resolution g * r keeps the original error bound.
+  const double inv_resolution = 1.0 / static_cast<double>(resolution);
+  uint64_t gcd = 0;
+  double gcd_value = 0.0;
+  double inv_gcd = 0.0;
+  for (size_t i = 0; i < points; ++i) {
+    const double value = value_at(i);
+    if (std::isnan(value)) {
+      continue;
+    }
+    if (!std::isfinite(value)) {
+      return resolution;
+    }
+    const double quantized = std::fabs(std::nearbyint(value * inv_resolution));
+    if (quantized >= 9.0e15) {  // beyond the exact integers of a double
+      return resolution;
+    }
+    // cheap divisibility test first; a real gcd only when it fails
+    if (gcd != 0 && std::nearbyint(quantized * inv_gcd) * gcd_value == quantized) {
+      continue;
+    }
+    gcd = std::gcd(gcd, static_cast<uint64_t>(quantized));
+    if (gcd == 1) {
+      return resolution;
+    }
+    gcd_value = static_cast<double>(gcd);
+    inv_gcd = 1.0 / gcd_value;
+  }
+  return gcd > 1 ? static_cast<float>(static_cast<double>(resolution) * static_cast<double>(gcd)) : resolution;
+}
+
+}  // namespace
+
+void RefineResolutionsToData(EncodingInfo& info, ConstBufferView cloud_data) {
+  if (info.encoding_opt != EncodingOptions::LOSSY || info.point_step == 0) {
+    return;
+  }
+  for (auto& field : info.fields) {
+    const bool is_float = field.type == FieldType::FLOAT32 || field.type == FieldType::FLOAT64;
+    if (!is_float || !field.resolution || *field.resolution <= 0.0F ||
+        static_cast<uint64_t>(field.offset) + SizeOf(field.type) > info.point_step) {
+      continue;
+    }
+    field.resolution = refinedResolution(field, *field.resolution, cloud_data, info.point_step);
+  }
 }
 
 size_t MaxCompressedSize(const EncodingInfo& info, size_t points_count, bool include_header) {

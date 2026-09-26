@@ -1247,3 +1247,89 @@ TEST(FieldEncoders, PointcloudV5_MixedFieldsRoundTripWithStage2) {
     ASSERT_NEAR(decoded_points[i].x, input[i].x, 0.0006f);
   }
 }
+
+TEST(FieldEncoders, RefineResolutionsToData) {
+  using namespace Cloudini;
+
+  struct Point {
+    float x, y, z;
+    float intensity;    // integer values
+    float reflectance;  // 0.01 steps
+    float noise;        // no grid
+  };
+  constexpr size_t kPoints = 5000;
+  std::mt19937 rng(11);
+  std::uniform_real_distribution<float> uniform(-1.0f, 1.0f);
+  std::vector<Point> input(kPoints);
+  float walk = 0.0f;
+  for (auto& p : input) {
+    walk += 0.01f * uniform(rng);
+    p.x = 10.0f + walk;
+    p.y = -3.0f + 2.0f * walk;
+    p.z = 0.5f * walk;
+    p.intensity = static_cast<float>(rng() % 256);
+    p.reflectance = static_cast<float>(rng() % 100) * 0.01f;
+    p.noise = uniform(rng);
+  }
+  input[17].intensity = std::numeric_limits<float>::quiet_NaN();  // NaN does not prevent the refinement
+
+  EncodingInfo info;
+  info.width = kPoints;
+  info.point_step = sizeof(Point);
+  const char* names[] = {"x", "y", "z", "intensity", "reflectance", "noise"};
+  for (uint32_t k = 0; k < 6; ++k) {
+    info.fields.push_back({names[k], k * 4, FieldType::FLOAT32, 0.001f});
+  }
+  const ConstBufferView in(reinterpret_cast<const uint8_t*>(input.data()), input.size() * sizeof(Point));
+
+  EncodingInfo refined = info;
+  RefineResolutionsToData(refined, in);
+  for (size_t k : {0, 1, 2, 5}) {
+    EXPECT_EQ(refined.fields[k].resolution, 0.001f) << names[k];
+  }
+  EXPECT_EQ(refined.fields[3].resolution, 1.0f);
+  ASSERT_TRUE(refined.fields[4].resolution.has_value());
+  EXPECT_NEAR(*refined.fields[4].resolution, 0.01f, 1e-7f);
+
+  auto encode = [&](const EncodingInfo& encoding) {
+    PointcloudEncoder encoder(encoding);
+    std::vector<uint8_t> out;
+    encoder.encode(in, out);
+    return out;
+  };
+  const std::vector<uint8_t> plain = encode(info);
+  const std::vector<uint8_t> compact = encode(refined);
+  EXPECT_LT(compact.size(), plain.size());
+
+  ConstBufferView view(compact.data(), compact.size());
+  const EncodingInfo header = DecodeHeader(view);
+  EXPECT_EQ(header.fields[3].resolution, 1.0f);
+  std::vector<Point> output(kPoints);
+  PointcloudDecoder decoder;
+  decoder.decode(header, view, BufferView(reinterpret_cast<uint8_t*>(output.data()), output.size() * sizeof(Point)));
+  for (size_t i = 0; i < kPoints; ++i) {
+    if (i == 17) {
+      EXPECT_TRUE(std::isnan(output[i].intensity));
+    } else {
+      ASSERT_EQ(output[i].intensity, input[i].intensity) << i;  // lossless
+    }
+    // half the requested resolution, plus float rounding
+    ASSERT_NEAR(output[i].reflectance, input[i].reflectance, 0.0006f) << i;
+    ASSERT_NEAR(output[i].noise, input[i].noise, 0.0006f) << i;
+    ASSERT_NEAR(output[i].x, input[i].x, 0.0006f) << i;
+  }
+
+  // A half-integer value: the values still lie on a 0.5 grid
+  input[123].intensity = 3.5f;
+  EncodingInfo halves = info;
+  RefineResolutionsToData(halves, in);
+  EXPECT_EQ(halves.fields[3].resolution, 0.5f);
+
+  // Values on no coarser grid keep the requested resolution
+  input[123].intensity = 3.1234f;
+  input[456].reflectance = 0.123f;
+  EncodingInfo unchanged = info;
+  RefineResolutionsToData(unchanged, in);
+  EXPECT_EQ(unchanged.fields[3].resolution, 0.001f);
+  EXPECT_EQ(unchanged.fields[4].resolution, 0.001f);
+}
