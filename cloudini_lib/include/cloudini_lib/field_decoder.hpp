@@ -76,7 +76,11 @@ class FieldDecoderCopy : public FieldDecoder {
   }
 
   void decode(ConstBufferView& input, BufferView dest_point_view) override {
-    // Bounds validated by PointcloudDecoder's per-point check + trim_front's own check
+    // The per-point check only guarantees the sum of the minimum sizes: the fields decoded before this
+    // one may have used more, so check before reading.
+    if (input.size() < field_size_) {
+      throw std::runtime_error("FieldDecoderCopy::decode: truncated input");
+    }
     if (offset_ != kDecodeButSkipStore) {
       memcpy(dest_point_view.data() + offset_, input.data(), field_size_);
     }
@@ -350,7 +354,10 @@ class FieldDecoderFloatN_Lossy : public FieldDecoder {
 //------------------------------------------------------------------------------------------
 template <typename FloatType>
 inline void FieldDecoderFloat_Lossy<FloatType>::decode(ConstBufferView& input, BufferView dest_point_view) {
-  // Bounds validated by PointcloudDecoder's per-point min_encoded_point_bytes_ check
+  // checked here: the per-point check only guarantees the sum of the minimum sizes
+  if (input.empty()) {
+    throw std::runtime_error("FieldDecoderFloat_Lossy::decode: truncated input");
+  }
   if (input.data()[0] == 0) {
     constexpr auto nan_value = std::numeric_limits<FloatType>::quiet_NaN();
     if (offset_ != kDecodeButSkipStore) {
@@ -375,7 +382,10 @@ inline void FieldDecoderFloat_Lossy<FloatType>::decode(ConstBufferView& input, B
 
 template <typename FloatType>
 inline void FieldDecoderFloat_XOR<FloatType>::decode(ConstBufferView& input, BufferView dest_point_view) {
-  // Bounds validated by PointcloudDecoder's per-point check + trim_front's own check
+  // checked here: the per-point check only guarantees the sum of the minimum sizes
+  if (input.size() < sizeof(IntType)) {
+    throw std::runtime_error("FieldDecoderFloat_XOR::decode: truncated input");
+  }
   IntType residual = 0;
   memcpy(&residual, input.data(), sizeof(IntType));
   input.trim_front(sizeof(IntType));

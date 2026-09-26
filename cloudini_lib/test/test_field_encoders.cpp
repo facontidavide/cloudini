@@ -27,6 +27,11 @@
 #include <random>
 #include <stdexcept>
 
+#if defined(__unix__) || defined(__APPLE__)
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
+
 #include "cloudini_lib/cloudini.hpp"
 #include "cloudini_lib/field_decoder.hpp"
 #include "cloudini_lib/field_encoder.hpp"
@@ -1285,4 +1290,130 @@ TEST(FieldEncoders, RefineResolutionsToData) {
   RefineResolutionsToData(unchanged, in);
   EXPECT_EQ(unchanged.fields[3].resolution, 0.001f);
   EXPECT_EQ(unchanged.fields[4].resolution, 0.001f);
+}
+
+namespace {
+
+// Copy of `data` placed so that it ends exactly where an unreadable page starts (on POSIX systems), so
+// that reading even one byte past its end crashes the test instead of going unnoticed.
+class GuardedBuffer {
+ public:
+  explicit GuardedBuffer(const std::vector<uint8_t>& data) {
+#if defined(__unix__) || defined(__APPLE__)
+    const size_t page = static_cast<size_t>(sysconf(_SC_PAGESIZE));
+    const size_t data_pages = (data.size() + page - 1) / page;
+    size_ = (data_pages + 1) * page;
+    void* mem = mmap(nullptr, size_, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (mem == MAP_FAILED) {
+      throw std::runtime_error("mmap failed");
+    }
+    base_ = static_cast<uint8_t*>(mem);
+    mprotect(base_ + data_pages * page, page, PROT_NONE);
+    data_ = base_ + data_pages * page - data.size();
+    size_data_ = data.size();
+    memcpy(data_, data.data(), data.size());
+#else
+    fallback_ = data;
+    data_ = fallback_.data();
+    size_data_ = fallback_.size();
+#endif
+  }
+  ~GuardedBuffer() {
+#if defined(__unix__) || defined(__APPLE__)
+    munmap(base_, size_);
+#endif
+  }
+  GuardedBuffer(const GuardedBuffer&) = delete;
+  GuardedBuffer& operator=(const GuardedBuffer&) = delete;
+
+  Cloudini::ConstBufferView view() const {
+    return {data_, size_data_};
+  }
+
+ private:
+  uint8_t* base_ = nullptr;
+  size_t size_ = 0;
+  uint8_t* data_ = nullptr;
+  size_t size_data_ = 0;
+  std::vector<uint8_t> fallback_;
+};
+
+}  // namespace
+
+// A corrupted or malicious message must make the decoder throw, never read past the payload. The
+// per-point size check counts the minimum size of every field (1 byte per varint), so a chunk whose
+// last point has a 2-byte varint and is one byte short passes it. Before the fix, the decoder of the
+// next field (copy, XOR or single lossy float) then read past the end of the chunk. With NONE
+// compression the chunk is read in place, i.e. past the end of the caller's buffer.
+TEST(FieldEncoders, CorruptedPayloadNeverReadsPastTheEnd) {
+  using namespace Cloudini;
+
+  struct Case {
+    const char* name;
+    std::vector<PointField> fields;
+    uint32_t point_step;
+    EncodingOptions encoding;
+    std::vector<uint8_t> good_point;  // stage-1 bytes of one well-formed point
+    std::vector<uint8_t> last_point;  // stage-1 bytes of the damaged last point
+    std::vector<uint8_t> versions;
+  };
+  const std::vector<Case> cases = {
+      // x, y, z, intensity as one vector of four varints, then a uint8 label stored as is
+      {"copy",
+       {{"x", 0, FieldType::FLOAT32, 0.001f},
+        {"y", 4, FieldType::FLOAT32, 0.001f},
+        {"z", 8, FieldType::FLOAT32, 0.001f},
+        {"intensity", 12, FieldType::FLOAT32, 0.001f},
+        {"label", 16, FieldType::UINT8, std::nullopt}},
+       17,
+       EncodingOptions::LOSSY,
+       {0x81, 0x01, 0x81, 0x01, 0x81, 0x01, 0x81, 0x01, 0x07},
+       {0x81, 0x01, 0x81, 0x01, 0x81, 0x01, 0x81, 0x01},
+       {4, 5}},
+      // lossless: an int32 varint, then a float stored as a 4-byte XOR residual
+      {"xor",
+       {{"t", 0, FieldType::INT32, std::nullopt}, {"intensity", 4, FieldType::FLOAT32, std::nullopt}},
+       8,
+       EncodingOptions::LOSSLESS,
+       {0x81, 0x01, 0x00, 0x00, 0x20, 0x41},
+       {0x81, 0x01, 0x00, 0x00, 0x20},
+       {4, 5}},
+      // lossy: an int32 varint, then a float that is not part of the leading xyz vector
+      {"lossy float",
+       {{"t", 0, FieldType::INT32, std::nullopt}, {"intensity", 4, FieldType::FLOAT32, 0.01f}},
+       8,
+       EncodingOptions::LOSSY,
+       {0x81, 0x01, 0x03},
+       {0x81, 0x01},
+       {4}},  // in V5 the int32 field is an adaptive section, not a per-point varint
+  };
+
+  constexpr size_t kGoodPoints = 50;
+  for (const auto& c : cases) {
+    std::vector<uint8_t> payload(sizeof(uint32_t));
+    for (size_t i = 0; i < kGoodPoints; ++i) {
+      payload.insert(payload.end(), c.good_point.begin(), c.good_point.end());
+    }
+    payload.insert(payload.end(), c.last_point.begin(), c.last_point.end());
+    const uint32_t chunk_size = static_cast<uint32_t>(payload.size() - sizeof(uint32_t));
+    memcpy(payload.data(), &chunk_size, sizeof(chunk_size));
+    // the payload ends where an unreadable page begins: a read past its end crashes
+    GuardedBuffer guarded(payload);
+
+    for (uint8_t version : c.versions) {
+      EncodingInfo info;
+      info.width = kGoodPoints + 1;
+      info.height = 1;
+      info.point_step = c.point_step;
+      info.fields = c.fields;
+      info.encoding_opt = c.encoding;
+      info.compression_opt = CompressionOption::NONE;
+      info.version = version;
+
+      std::vector<uint8_t> output(info.width * info.point_step);
+      PointcloudDecoder decoder;
+      EXPECT_THROW(decoder.decode(info, guarded.view(), BufferView(output.data(), output.size())), std::runtime_error)
+          << c.name << ", version " << int(version);
+    }
+  }
 }
