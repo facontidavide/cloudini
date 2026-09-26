@@ -676,15 +676,6 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
 //------------------------------------------------------------------------------------------
 
 void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
-  // The header comes from the message: the field decoders write SizeOf(type) bytes at field.offset
-  // inside every point, so a field that does not fit in point_step would write past the point (and
-  // past the output buffer for the last one). kDecodeButSkipStore fields are decoded but not written.
-  for (const auto& field : info.fields) {
-    if (field.offset != kDecodeButSkipStore &&
-        static_cast<uint64_t>(field.offset) + static_cast<uint64_t>(SizeOf(field.type)) > info.point_step) {
-      throw std::runtime_error("PointcloudDecoder: field '" + field.name + "' does not fit in point_step");
-    }
-  }
   if (detail::UsesV5Codec(info)) {
     detail::BuildV5Decoders(info, decoders_, min_encoded_point_bytes_);
   } else {
@@ -692,7 +683,28 @@ void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
   }
 }
 
-void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compressed_data, BufferView output) {
+void PointcloudDecoder::decode(const EncodingInfo& header_info, ConstBufferView compressed_data, BufferView output) {
+  // The header comes from the message: the field decoders write SizeOf(type) bytes at field.offset inside
+  // every point, so a field that does not fit in point_step (a corrupted or crafted header) would be written
+  // past the point, and past the output buffer for the last one. Such a field is decoded but not stored,
+  // so that the rest of the message still decodes as before.
+  const EncodingInfo* effective_info = &header_info;
+  EncodingInfo in_bounds_info;
+  auto fits = [&header_info](const PointField& field) {
+    return field.offset == kDecodeButSkipStore ||
+           static_cast<uint64_t>(field.offset) + static_cast<uint64_t>(SizeOf(field.type)) <= header_info.point_step;
+  };
+  if (!std::all_of(header_info.fields.begin(), header_info.fields.end(), fits)) {
+    in_bounds_info = header_info;
+    for (auto& field : in_bounds_info.fields) {
+      if (!fits(field)) {
+        field.offset = kDecodeButSkipStore;
+      }
+    }
+    effective_info = &in_bounds_info;
+  }
+  const EncodingInfo& info = *effective_info;
+
   // read the header
   updateDecoders(info);
 

@@ -421,9 +421,10 @@ class GuardedOutput {
 }  // namespace
 
 // The header of a message comes from outside: a corrupted or crafted one may declare a field that does
-// not fit in point_step. The decoder must reject it, not write the field past the end of each point
-// (and, for the last point, past the end of the caller's buffer).
-TEST(Cloudini, DecoderRejectsFieldOutsidePointStep) {
+// not fit in point_step. For backward compatibility the message still decodes: that field is decoded but
+// not stored, and every other field is decoded as usual. Before the fix the decoder wrote the field past
+// the end of each point (and, for the last point, past the end of the caller's buffer).
+TEST(Cloudini, DecoderSkipsFieldOutsidePointStep) {
   using namespace Cloudini;
 
   struct Point {
@@ -458,7 +459,11 @@ TEST(Cloudini, DecoderRejectsFieldOutsidePointStep) {
     PointcloudEncoder encoder(info);
     encoder.encode(ConstBufferView(reinterpret_cast<const uint8_t*>(points.data()), kPoints * sizeof(Point)), encoded);
     ConstBufferView payload(encoded.data(), encoded.size());
-    DecodeHeader(payload);  // skip the valid header
+    const EncodingInfo valid = DecodeHeader(payload);
+
+    std::vector<uint8_t> reference;
+    PointcloudDecoder().decode(valid, payload, reference);
+    ASSERT_EQ(reference.size(), kPoints * sizeof(Point));
 
     // tampered headers: one field moved past the end of the point, or straddling it
     struct Tamper {
@@ -466,7 +471,7 @@ TEST(Cloudini, DecoderRejectsFieldOutsidePointStep) {
       uint32_t offset;
     };
     for (const Tamper& tamper : {Tamper{0, 64}, Tamper{3, 21}, Tamper{4, 23}, Tamper{5, 22}}) {
-      EncodingInfo bad = info;
+      EncodingInfo bad = valid;
       bad.fields[tamper.field].offset = tamper.offset;
       std::vector<uint8_t> header;
       EncodeHeader(bad, header);
@@ -475,10 +480,79 @@ TEST(Cloudini, DecoderRejectsFieldOutsidePointStep) {
       ASSERT_EQ(parsed.fields[tamper.field].offset, tamper.offset);
 
       GuardedOutput output(kPoints * sizeof(Point));
-      PointcloudDecoder decoder;
-      EXPECT_THROW(decoder.decode(parsed, payload, output.view()), std::runtime_error)
-          << "version " << int(version) << ", field " << parsed.fields[tamper.field].name << " at offset "
-          << tamper.offset;
+      BufferView out = output.view();
+      memset(out.data(), 0, out.size());
+      ASSERT_NO_THROW(PointcloudDecoder().decode(parsed, payload, out))
+          << "version " << int(version) << ", field " << parsed.fields[tamper.field].name;
+
+      // every other field is decoded as with the valid header; the skipped one is left untouched
+      const size_t skipped_offset = valid.fields[tamper.field].offset;
+      const size_t skipped_size = static_cast<size_t>(SizeOf(valid.fields[tamper.field].type));
+      for (size_t p = 0; p < kPoints; ++p) {
+        for (const auto& field : valid.fields) {
+          const size_t at = p * sizeof(Point) + field.offset;
+          const size_t size = static_cast<size_t>(SizeOf(field.type));
+          if (field.offset == skipped_offset) {
+            for (size_t b = 0; b < skipped_size; ++b) {
+              ASSERT_EQ(out.data()[at + b], 0) << "skipped field " << field.name << " was written";
+            }
+          } else {
+            ASSERT_EQ(memcmp(out.data() + at, reference.data() + at, size), 0)
+                << "version " << int(version) << ", point " << p << ", field " << field.name;
+          }
+        }
+      }
+    }
+  }
+}
+
+// A field whose offset is kDecodeButSkipStore is decoded but not stored: the PCL conversion uses it for
+// fields the destination cloud does not have. V5 adaptive integer sections used to ignore it and wrote
+// the values ~4 GB past the output buffer.
+TEST(Cloudini, DecodeButSkipStoreIntegerFieldV5) {
+  using namespace Cloudini;
+
+  struct Point {
+    float x, y, z;
+    uint16_t ring;
+    uint16_t padding;
+    uint32_t t;
+  };
+  constexpr size_t kPoints = 1000;
+  std::vector<Point> points(kPoints);
+  for (size_t i = 0; i < kPoints; ++i) {
+    points[i] = {0.01f * float(i), 2.0f, -1.0f, uint16_t(i % 16), 0, uint32_t(i * 50)};
+  }
+  EncodingInfo info;
+  info.width = kPoints;
+  info.height = 1;
+  info.point_step = sizeof(Point);
+  info.fields = {
+      {"x", offsetof(Point, x), FieldType::FLOAT32, 0.001f},
+      {"y", offsetof(Point, y), FieldType::FLOAT32, 0.001f},
+      {"z", offsetof(Point, z), FieldType::FLOAT32, 0.001f},
+      {"ring", offsetof(Point, ring), FieldType::UINT16, std::nullopt},
+      {"t", offsetof(Point, t), FieldType::UINT32, std::nullopt}};
+  std::vector<uint8_t> encoded;
+  PointcloudEncoder(info).encode(
+      ConstBufferView(reinterpret_cast<const uint8_t*>(points.data()), kPoints * sizeof(Point)), encoded);
+  ConstBufferView payload(encoded.data(), encoded.size());
+  EncodingInfo decode_info = DecodeHeader(payload);
+  ASSERT_EQ(decode_info.version, 5);
+
+  for (size_t skipped : {size_t(3), size_t(4)}) {  // ring, t: both adaptive integer sections in V5
+    EncodingInfo partial = decode_info;
+    partial.fields[skipped].offset = kDecodeButSkipStore;
+    GuardedOutput output(kPoints * sizeof(Point));
+    BufferView out = output.view();
+    memset(out.data(), 0, out.size());
+    ASSERT_NO_THROW(PointcloudDecoder().decode(partial, payload, out)) << partial.fields[skipped].name;
+    for (size_t i = 0; i < kPoints; ++i) {
+      Point decoded;
+      memcpy(&decoded, out.data() + i * sizeof(Point), sizeof(Point));
+      EXPECT_EQ(decoded.ring, skipped == 3 ? 0 : points[i].ring);
+      EXPECT_EQ(decoded.t, skipped == 4 ? 0u : points[i].t);
+      EXPECT_NEAR(decoded.x, points[i].x, 0.001f);
     }
   }
 }

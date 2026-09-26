@@ -772,6 +772,13 @@ void decodeV5AdaptiveIntSection(
     throw std::runtime_error("V5 adaptive int: unknown mode byte " + std::to_string(static_cast<int>(mode_byte)));
   }
   const auto mode = static_cast<AdaptiveIntMode>(mode_byte);
+  // kDecodeButSkipStore: the section is decoded (to consume its bytes) but its values are not stored
+  const bool store = field.offset != kDecodeButSkipStore;
+  auto store_value = [&](size_t index, uint64_t value) {
+    if (store) {
+      writeRawBitsToPoint(value, field.bytes_per_value, output_base + index * point_step + field.offset);
+    }
+  };
 
   switch (mode) {
     case AdaptiveIntMode::DeltaVarint: {
@@ -782,8 +789,7 @@ void decodeV5AdaptiveIntSection(
         input.trim_front(consumed);
         const int64_t value = prev + diff;
         prev = value;
-        writeRawBitsToPoint(
-            static_cast<uint64_t>(value), field.bytes_per_value, output_base + i * point_step + field.offset);
+        store_value(i, static_cast<uint64_t>(value));
       }
     } break;
 
@@ -814,7 +820,7 @@ void decodeV5AdaptiveIntSection(
         if (idx >= palette.size()) {
           throw std::runtime_error("V5 adaptive int: palette index out of range");
         }
-        writeRawBitsToPoint(palette[idx], field.bytes_per_value, output_base + i * point_step + field.offset);
+        store_value(i, palette[idx]);
       }
       input.trim_front(index_bytes);
     } break;
@@ -834,7 +840,7 @@ void decodeV5AdaptiveIntSection(
           throw std::runtime_error("V5 adaptive int: RLE run exceeds point count");
         }
         for (uint64_t k = 0; k < run_len; ++k) {
-          writeRawBitsToPoint(value, field.bytes_per_value, output_base + out_index * point_step + field.offset);
+          store_value(out_index, value);
           ++out_index;
         }
       }
@@ -859,8 +865,7 @@ void decodeV5AdaptiveIntSection(
         for (uint64_t k = 0; k < run_len; ++k) {
           const int64_t value = prev + diff;
           prev = value;
-          writeRawBitsToPoint(
-              static_cast<uint64_t>(value), field.bytes_per_value, output_base + out_index * point_step + field.offset);
+          store_value(out_index, static_cast<uint64_t>(value));
           ++out_index;
         }
       }
