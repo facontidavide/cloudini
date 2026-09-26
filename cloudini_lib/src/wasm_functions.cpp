@@ -63,8 +63,8 @@ uint32_t cldn_ComputeCompressedSize(uintptr_t dds_msg_ptr, uint32_t dds_msg_size
     Cloudini::EncodingInfo encoding_info = cloudini_ros::toEncodingInfo(pc_info);
 
     for (auto& field : encoding_info.fields) {
-      if (field.type == Cloudini::FieldType::FLOAT32) {
-        field.resolution = resolution;
+      if (auto res = Cloudini::defaultFieldResolution(field, resolution)) {
+        field.resolution = res;
       }
     }
 
@@ -177,8 +177,8 @@ uint32_t cldn_EncodePointcloudMessage(
     Cloudini::EncodingInfo encoding_info = cloudini_ros::toEncodingInfo(pc_info);
 
     for (auto& field : encoding_info.fields) {
-      if (field.type == Cloudini::FieldType::FLOAT32) {
-        field.resolution = resolution;
+      if (auto res = Cloudini::defaultFieldResolution(field, resolution)) {
+        field.resolution = res;
       }
     }
 

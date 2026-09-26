@@ -20,6 +20,7 @@
 #include <cstring>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Cloudini {
@@ -65,6 +66,40 @@ struct PointField {
     return !(*this == other);
   }
 };
+
+// Returns true if the field name denotes a color packed as integer bits (e.g. "rgb", "rgba").
+// Many ROS drivers store packed RGB(A) as uint32 bits reinterpreted into a FLOAT32 field;
+// such fields must never be quantized (lossy), otherwise the colors are destroyed.
+// The match is case-insensitive.
+inline bool isPackedColorField(std::string_view name) {
+  constexpr std::string_view kNames[] = {"rgb", "rgba", "bgr", "bgra", "argb", "abgr"};
+  for (const auto& candidate : kNames) {
+    if (name.size() != candidate.size()) {
+      continue;
+    }
+    bool equal = true;
+    for (size_t i = 0; i < name.size() && equal; ++i) {
+      char c = name[i];
+      if (c >= 'A' && c <= 'Z') {
+        c = static_cast<char>(c - 'A' + 'a');
+      }
+      equal = (c == candidate[i]);
+    }
+    if (equal) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Default resolution to use for a field when the user did not explicitly specify one:
+// FLOAT32 fields get `default_resolution`, except packed colors, which stay lossless.
+inline std::optional<float> defaultFieldResolution(const PointField& field, std::optional<float> default_resolution) {
+  if (field.type == FieldType::FLOAT32 && !isPackedColorField(field.name)) {
+    return default_resolution;
+  }
+  return std::nullopt;
+}
 
 // If the value of PointField::offset is equal to this one, it means that the field was encoded, but we don't want to
 // save it when doing the decoding

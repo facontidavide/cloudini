@@ -36,7 +36,7 @@ EncodingInfo ConvertToEncodingInfo(const sensor_msgs::msg::PointCloud2& msg, flo
     field.name = msg_field.name;
     field.offset = msg_field.offset;
     field.type = static_cast<FieldType>(msg_field.datatype);
-    field.resolution = (field.type == FieldType::FLOAT32) ? std::optional<float>(resolution) : std::nullopt;
+    field.resolution = defaultFieldResolution(field, resolution);
     info.fields.push_back(field);
   }
   return info;

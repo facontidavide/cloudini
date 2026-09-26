@@ -16,6 +16,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -199,4 +200,104 @@ TEST(Cloudini, EncoderRejectsFieldOutsidePointStep) {
   info.point_step = 8;  // y would span bytes 6..9
   info.width = 10;
   EXPECT_THROW(Cloudini::PointcloudEncoder encoder(info), std::runtime_error);
+}
+
+// Issue #135: many ROS drivers store packed RGB(A) as uint32 bits reinterpreted into a
+// FLOAT32 field named "rgb" / "rgba". Such fields must never be quantized by default.
+TEST(Cloudini, PackedColorFieldName) {
+  EXPECT_TRUE(Cloudini::isPackedColorField("rgb"));
+  EXPECT_TRUE(Cloudini::isPackedColorField("rgba"));
+  EXPECT_TRUE(Cloudini::isPackedColorField("RGB"));
+  EXPECT_TRUE(Cloudini::isPackedColorField("Rgba"));
+  EXPECT_TRUE(Cloudini::isPackedColorField("bgra"));
+  EXPECT_TRUE(Cloudini::isPackedColorField("argb"));
+  EXPECT_FALSE(Cloudini::isPackedColorField("x"));
+  EXPECT_FALSE(Cloudini::isPackedColorField("intensity"));
+  EXPECT_FALSE(Cloudini::isPackedColorField("rgb_x"));
+  EXPECT_FALSE(Cloudini::isPackedColorField(""));
+}
+
+TEST(Cloudini, ResolutionProfileKeepsPackedColorLossless) {
+  std::vector<Cloudini::PointField> fields = {
+      {"x", 0, FieldType::FLOAT32, std::nullopt},     {"y", 4, FieldType::FLOAT32, std::nullopt},
+      {"z", 8, FieldType::FLOAT32, std::nullopt},     {"rgb", 12, FieldType::FLOAT32, std::nullopt},
+      {"RGBA", 16, FieldType::FLOAT32, std::nullopt}, {"intensity", 20, FieldType::FLOAT32, std::nullopt},
+  };
+  cloudini_ros::applyResolutionProfile({}, fields, 0.001f);
+  EXPECT_EQ(fields[0].resolution, std::optional<float>(0.001f));
+  EXPECT_EQ(fields[1].resolution, std::optional<float>(0.001f));
+  EXPECT_EQ(fields[2].resolution, std::optional<float>(0.001f));
+  EXPECT_FALSE(fields[3].resolution.has_value());
+  EXPECT_FALSE(fields[4].resolution.has_value());
+  EXPECT_EQ(fields[5].resolution, std::optional<float>(0.001f));
+
+  // An explicit profile entry still wins.
+  std::vector<Cloudini::PointField> fields2 = {{"rgb", 0, FieldType::FLOAT32, std::nullopt}};
+  cloudini_ros::applyResolutionProfile({{"rgb", 0.5f}}, fields2, 0.001f);
+  EXPECT_EQ(fields2[0].resolution, std::optional<float>(0.5f));
+}
+
+// x,y,z,rgb (all FLOAT32) encoded with a default resolution: xyz is quantized, rgb must be
+// bit-exact (and must not be swallowed into the 4-float SIMD lossy group).
+TEST(Cloudini, PackedRgbRoundtripIsBitExact) {
+  constexpr size_t kNumPoints = 1000;
+  constexpr float kResolution = 0.001f;
+
+  EncodingInfo info;
+  info.width = kNumPoints;
+  info.height = 1;
+  info.point_step = 16;
+  info.encoding_opt = EncodingOptions::LOSSY;
+  info.compression_opt = CompressionOption::ZSTD;
+  info.fields = {
+      {"x", 0, FieldType::FLOAT32, std::nullopt},
+      {"y", 4, FieldType::FLOAT32, std::nullopt},
+      {"z", 8, FieldType::FLOAT32, std::nullopt},
+      {"rgb", 12, FieldType::FLOAT32, std::nullopt},
+  };
+  cloudini_ros::applyResolutionProfile({}, info.fields, kResolution);
+
+  // Includes patterns that are NaN when viewed as float (alpha = 0xFF).
+  const uint32_t colors[] = {0x00FF8040, 0x00000001, 0x0012AB34, 0xFFFF8040, 0xFF0000FF, 0x7F7F7F7F, 0x00000000};
+  constexpr size_t kNumColors = sizeof(colors) / sizeof(colors[0]);
+
+  std::vector<uint8_t> data(kNumPoints * info.point_step);
+  for (size_t i = 0; i < kNumPoints; ++i) {
+    uint8_t* pt = data.data() + i * info.point_step;
+    const float xyz[3] = {0.01f * i, -0.02f * i + 3.0f, 0.5f + 0.003f * (i % 17)};
+    std::memcpy(pt, xyz, sizeof(xyz));
+    const uint32_t color = colors[i % kNumColors];
+    std::memcpy(pt + 12, &color, sizeof(color));
+  }
+
+  std::vector<uint8_t> compressed;
+  PointcloudEncoder encoder(info);
+  encoder.encode(ConstBufferView(data.data(), data.size()), compressed);
+
+  ConstBufferView compressed_view(compressed.data(), compressed.size());
+  const auto header = DecodeHeader(compressed_view);
+  ASSERT_EQ(header.fields.size(), 4u);
+  EXPECT_FALSE(header.fields[3].resolution.has_value());
+
+  std::vector<uint8_t> decoded;
+  PointcloudDecoder decoder;
+  decoder.decode(header, compressed_view, decoded);
+  ASSERT_EQ(decoded.size(), data.size());
+
+  for (size_t i = 0; i < kNumPoints; ++i) {
+    const uint8_t* orig = data.data() + i * info.point_step;
+    const uint8_t* dec = decoded.data() + i * info.point_step;
+    for (int k = 0; k < 3; ++k) {
+      float a = 0;
+      float b = 0;
+      std::memcpy(&a, orig + 4 * k, 4);
+      std::memcpy(&b, dec + 4 * k, 4);
+      ASSERT_NEAR(a, b, kResolution) << "point " << i << " axis " << k;
+    }
+    uint32_t color_orig = 0;
+    uint32_t color_dec = 0;
+    std::memcpy(&color_orig, orig + 12, 4);
+    std::memcpy(&color_dec, dec + 12, 4);
+    ASSERT_EQ(color_orig, color_dec) << "point " << i;
+  }
 }

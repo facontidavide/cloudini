@@ -171,6 +171,8 @@ using ResolutionProfile = std::map<std::string, float>;
  * @param profile The resolution profile to apply.
  * @param field The fields to apply the profile to.
  * @param default_resolution Optional default resolution to apply to FLOAT32 fields not in the profile.
+ *        Packed color fields ("rgb", "rgba", ...; see Cloudini::isPackedColorField) are skipped
+ *        and stay lossless, unless the profile names them explicitly.
  */
 void applyResolutionProfile(
     const ResolutionProfile& profile, std::vector<Cloudini::PointField>& field,
