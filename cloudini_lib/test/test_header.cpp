@@ -16,9 +16,15 @@
 
 #include <gtest/gtest.h>
 
+#if defined(__unix__) || defined(__APPLE__)
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
+
 #include <clocale>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <locale>
 #include <stdexcept>
 #include <string>
@@ -367,4 +373,112 @@ TEST(Cloudini, HeaderLocaleIndependent_CppGlobalLocale) {
   }
   ASSERT_STREQ(std::localeconv()->decimal_point, ",") << locale_guard.name();
   expectHeaderRoundTripUnderCurrentLocale();
+}
+
+namespace {
+
+// Writable buffer that ends exactly where an inaccessible page starts (on POSIX systems): writing even one
+// byte past its end crashes the test instead of silently corrupting the heap.
+class GuardedOutput {
+ public:
+  explicit GuardedOutput(size_t size) : size_(size) {
+#if defined(__unix__) || defined(__APPLE__)
+    const size_t page = static_cast<size_t>(sysconf(_SC_PAGESIZE));
+    const size_t pages = (size + page - 1) / page;
+    mapped_size_ = (pages + 1) * page;
+    void* mem = mmap(nullptr, mapped_size_, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (mem == MAP_FAILED) {
+      throw std::runtime_error("mmap failed");
+    }
+    base_ = static_cast<uint8_t*>(mem);
+    mprotect(base_ + pages * page, page, PROT_NONE);
+    data_ = base_ + pages * page - size;
+#else
+    fallback_.resize(size);
+    data_ = fallback_.data();
+#endif
+  }
+  ~GuardedOutput() {
+#if defined(__unix__) || defined(__APPLE__)
+    munmap(base_, mapped_size_);
+#endif
+  }
+  GuardedOutput(const GuardedOutput&) = delete;
+  GuardedOutput& operator=(const GuardedOutput&) = delete;
+
+  Cloudini::BufferView view() {
+    return {data_, size_};
+  }
+
+ private:
+  size_t size_ = 0;
+  size_t mapped_size_ = 0;
+  uint8_t* base_ = nullptr;
+  uint8_t* data_ = nullptr;
+  std::vector<uint8_t> fallback_;
+};
+
+}  // namespace
+
+// The header of a message comes from outside: a corrupted or crafted one may declare a field that does
+// not fit in point_step. The decoder must reject it, not write the field past the end of each point
+// (and, for the last point, past the end of the caller's buffer).
+TEST(Cloudini, DecoderRejectsFieldOutsidePointStep) {
+  using namespace Cloudini;
+
+  struct Point {
+    float x, y, z;
+    float intensity;
+    uint16_t ring;
+    uint16_t padding;
+    uint32_t t;
+  };
+  static_assert(sizeof(Point) == 24);
+  constexpr size_t kPoints = 100;
+  std::vector<Point> points(kPoints);
+  for (size_t i = 0; i < kPoints; ++i) {
+    points[i] = {0.01f * float(i), -0.02f * float(i), 1.0f, float(i % 200), uint16_t(i % 32), 0, uint32_t(i * 1000)};
+  }
+
+  for (uint8_t version : {uint8_t(4), uint8_t(5)}) {
+    EncodingInfo info;
+    info.width = kPoints;
+    info.height = 1;
+    info.point_step = sizeof(Point);
+    info.version = version;
+    info.fields = {
+        {"x", offsetof(Point, x), FieldType::FLOAT32, 0.001f},
+        {"y", offsetof(Point, y), FieldType::FLOAT32, 0.001f},
+        {"z", offsetof(Point, z), FieldType::FLOAT32, 0.001f},
+        {"intensity", offsetof(Point, intensity), FieldType::FLOAT32, 0.01f},
+        {"ring", offsetof(Point, ring), FieldType::UINT16, std::nullopt},
+        {"t", offsetof(Point, t), FieldType::UINT32, std::nullopt}};
+
+    std::vector<uint8_t> encoded;
+    PointcloudEncoder encoder(info);
+    encoder.encode(ConstBufferView(reinterpret_cast<const uint8_t*>(points.data()), kPoints * sizeof(Point)), encoded);
+    ConstBufferView payload(encoded.data(), encoded.size());
+    DecodeHeader(payload);  // skip the valid header
+
+    // tampered headers: one field moved past the end of the point, or straddling it
+    struct Tamper {
+      size_t field;
+      uint32_t offset;
+    };
+    for (const Tamper& tamper : {Tamper{0, 64}, Tamper{3, 21}, Tamper{4, 23}, Tamper{5, 22}}) {
+      EncodingInfo bad = info;
+      bad.fields[tamper.field].offset = tamper.offset;
+      std::vector<uint8_t> header;
+      EncodeHeader(bad, header);
+      ConstBufferView header_view(header.data(), header.size());
+      const EncodingInfo parsed = DecodeHeader(header_view);
+      ASSERT_EQ(parsed.fields[tamper.field].offset, tamper.offset);
+
+      GuardedOutput output(kPoints * sizeof(Point));
+      PointcloudDecoder decoder;
+      EXPECT_THROW(decoder.decode(parsed, payload, output.view()), std::runtime_error)
+          << "version " << int(version) << ", field " << parsed.fields[tamper.field].name << " at offset "
+          << tamper.offset;
+    }
+  }
 }

@@ -676,6 +676,15 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
 //------------------------------------------------------------------------------------------
 
 void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
+  // The header comes from the message: the field decoders write SizeOf(type) bytes at field.offset
+  // inside every point, so a field that does not fit in point_step would write past the point (and
+  // past the output buffer for the last one). kDecodeButSkipStore fields are decoded but not written.
+  for (const auto& field : info.fields) {
+    if (field.offset != kDecodeButSkipStore &&
+        static_cast<uint64_t>(field.offset) + static_cast<uint64_t>(SizeOf(field.type)) > info.point_step) {
+      throw std::runtime_error("PointcloudDecoder: field '" + field.name + "' does not fit in point_step");
+    }
+  }
   if (detail::UsesV5Codec(info)) {
     detail::BuildV5Decoders(info, decoders_, min_encoded_point_bytes_);
   } else {
