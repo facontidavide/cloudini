@@ -233,6 +233,8 @@ class PointcloudDecoder {
   }
 
  private:
+  void decodeImpl(const EncodingInfo& info, ConstBufferView compressed_data, BufferView output);
+
   void updateDecoders(const EncodingInfo& info);
 
   void decodeChunk(

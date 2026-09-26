@@ -21,6 +21,7 @@
 #include <unistd.h>
 #endif
 
+#include <algorithm>
 #include <clocale>
 #include <cstddef>
 #include <cstdint>
@@ -420,11 +421,71 @@ class GuardedOutput {
 
 }  // namespace
 
-// The header of a message comes from outside: a corrupted or crafted one may declare a field that does
-// not fit in point_step. For backward compatibility the message still decodes: that field is decoded but
-// not stored, and every other field is decoded as usual. Before the fix the decoder wrote the field past
-// the end of each point (and, for the last point, past the end of the caller's buffer).
-TEST(Cloudini, DecoderSkipsFieldOutsidePointStep) {
+// Encoders before 1.3.1 accepted a field that does not fit in point_step, like this 14-byte point whose
+// FLOAT32 `intensity` at offset 12 overhangs it by 2 bytes: the encoder read the 2 bytes of the next point
+// (past its input for the last one). Older decoders wrote the field back the same way, so the bytes inside
+// each point came back exactly, but the last point was written past the output buffer. Such messages must
+// keep decoding to the same bytes, without the overflow.
+TEST(Cloudini, MessageWithFieldOverhangingPointStepDecodesAsBefore) {
+  using namespace Cloudini;
+
+  constexpr uint32_t kStep = 14;
+  constexpr size_t kPoints = 5000;
+  std::vector<uint8_t> cloud(kPoints * kStep);
+  for (size_t i = 0; i < kPoints; ++i) {
+    const float values[3] = {0.01f * float(i % 400), -0.02f * float(i % 300), 0.5f + 0.001f * float(i % 50)};
+    memcpy(cloud.data() + i * kStep, values, sizeof(values));
+    const uint16_t intensity_low_bytes = static_cast<uint16_t>(i * 37);
+    memcpy(cloud.data() + i * kStep + 12, &intensity_low_bytes, sizeof(intensity_low_bytes));
+  }
+
+  for (uint8_t version : {uint8_t(4), uint8_t(5)}) {
+    for (auto compression : {CompressionOption::NONE, CompressionOption::ZSTD}) {
+      // The message an old encoder wrote: its payload is the one of a 16-byte point whose intensity holds the
+      // 4 bytes found at offset 12 (the last 2 of them from the next point), with the 14-byte header.
+      constexpr uint32_t kWideStep = 16;
+      std::vector<uint8_t> wide(kPoints * kWideStep, 0);
+      for (size_t i = 0; i < kPoints; ++i) {
+        const size_t available = std::min<size_t>(16, cloud.size() - i * kStep);
+        memcpy(wide.data() + i * kWideStep, cloud.data() + i * kStep, available);
+      }
+      EncodingInfo info;
+      info.width = kPoints;
+      info.height = 1;
+      info.point_step = kWideStep;
+      info.encoding_opt = EncodingOptions::LOSSLESS;
+      info.compression_opt = compression;
+      info.version = version;
+      info.fields = {
+          {"x", 0, FieldType::FLOAT32, std::nullopt},
+          {"y", 4, FieldType::FLOAT32, std::nullopt},
+          {"z", 8, FieldType::FLOAT32, std::nullopt},
+          {"intensity", 12, FieldType::FLOAT32, std::nullopt}};
+      std::vector<uint8_t> encoded;
+      PointcloudEncoder(info).encode(ConstBufferView(wide.data(), wide.size()), encoded);
+      ConstBufferView payload(encoded.data(), encoded.size());
+      DecodeHeader(payload);
+
+      info.point_step = kStep;
+      std::vector<uint8_t> header;
+      EncodeHeader(info, header);
+      ConstBufferView header_view(header.data(), header.size());
+      const EncodingInfo old_header = DecodeHeader(header_view);
+      ASSERT_EQ(old_header.point_step, kStep);
+
+      GuardedOutput output(cloud.size());
+      BufferView out = output.view();
+      ASSERT_NO_THROW(PointcloudDecoder().decode(old_header, payload, out));
+      EXPECT_EQ(memcmp(out.data(), cloud.data(), cloud.size()), 0)
+          << "version " << int(version) << ", " << ToString(compression);
+    }
+  }
+}
+
+// A corrupted or crafted header may also move a field past point_step: decoding must never write outside
+// the caller's buffer. A small overhang is decoded as older decoders did (above); a field far outside the
+// point is decoded but not stored, and every other field decodes as usual.
+TEST(Cloudini, DecoderNeverWritesOutsideTheOutputForFieldsBeyondPointStep) {
   using namespace Cloudini;
 
   struct Point {
@@ -465,12 +526,13 @@ TEST(Cloudini, DecoderSkipsFieldOutsidePointStep) {
     PointcloudDecoder().decode(valid, payload, reference);
     ASSERT_EQ(reference.size(), kPoints * sizeof(Point));
 
-    // tampered headers: one field moved past the end of the point, or straddling it
     struct Tamper {
       size_t field;
       uint32_t offset;
     };
-    for (const Tamper& tamper : {Tamper{0, 64}, Tamper{3, 21}, Tamper{4, 23}, Tamper{5, 22}}) {
+    // straddling the end of the point, a few points past it, and far outside it
+    for (const Tamper& tamper :
+         {Tamper{3, 21}, Tamper{4, 23}, Tamper{5, 22}, Tamper{0, 64}, Tamper{0, 100000}, Tamper{5, 0xFFFFFF00}}) {
       EncodingInfo bad = valid;
       bad.fields[tamper.field].offset = tamper.offset;
       std::vector<uint8_t> header;
@@ -479,21 +541,24 @@ TEST(Cloudini, DecoderSkipsFieldOutsidePointStep) {
       const EncodingInfo parsed = DecodeHeader(header_view);
       ASSERT_EQ(parsed.fields[tamper.field].offset, tamper.offset);
 
+      // the output ends at an inaccessible page: a write past it crashes the test
       GuardedOutput output(kPoints * sizeof(Point));
       BufferView out = output.view();
       memset(out.data(), 0, out.size());
       ASSERT_NO_THROW(PointcloudDecoder().decode(parsed, payload, out))
-          << "version " << int(version) << ", field " << parsed.fields[tamper.field].name;
+          << "version " << int(version) << ", field " << parsed.fields[tamper.field].name << " at " << tamper.offset;
 
-      // every other field is decoded as with the valid header; the skipped one is left untouched
-      const size_t skipped_offset = valid.fields[tamper.field].offset;
-      const size_t skipped_size = static_cast<size_t>(SizeOf(valid.fields[tamper.field].type));
+      if (tamper.offset < 100000) {
+        continue;
+      }
+      // far outside the point: not stored; every other field as with the valid header
       for (size_t p = 0; p < kPoints; ++p) {
-        for (const auto& field : valid.fields) {
+        for (size_t f = 0; f < valid.fields.size(); ++f) {
+          const auto& field = valid.fields[f];
           const size_t at = p * sizeof(Point) + field.offset;
           const size_t size = static_cast<size_t>(SizeOf(field.type));
-          if (field.offset == skipped_offset) {
-            for (size_t b = 0; b < skipped_size; ++b) {
+          if (f == tamper.field) {
+            for (size_t b = 0; b < size; ++b) {
               ASSERT_EQ(out.data()[at + b], 0) << "skipped field " << field.name << " was written";
             }
           } else {
