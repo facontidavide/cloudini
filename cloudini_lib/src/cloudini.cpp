@@ -342,6 +342,8 @@ float refinedResolution(const PointField& field, float resolution, ConstBufferVi
   // Otherwise: greatest common divisor g of the quantized values. With round(v / r) = k * g, v is within
   // r / 2 of k * (g * r), so the coarser resolution g * r keeps the original error bound.
   const double inv_resolution = 1.0 / static_cast<double>(resolution);
+  double max_abs_value = 0.0;
+  double max_quantized = 0.0;
   uint64_t gcd = 0;
   double gcd_value = 0.0;
   double inv_gcd = 0.0;
@@ -357,6 +359,8 @@ float refinedResolution(const PointField& field, float resolution, ConstBufferVi
     if (quantized >= 9.0e15) {  // beyond the exact integers of a double
       return resolution;
     }
+    max_abs_value = std::max(max_abs_value, std::fabs(value));
+    max_quantized = std::max(max_quantized, quantized);
     // cheap divisibility test first; a real gcd only when it fails
     if (gcd != 0 && std::nearbyint(quantized * inv_gcd) * gcd_value == quantized) {
       continue;
@@ -376,7 +380,25 @@ float refinedResolution(const PointField& field, float resolution, ConstBufferVi
   // multiplies in the precision of the field: for large values k * R can land further from v than
   // the original q * r. Decode every value both ways, as the decoder does, and keep R only if no
   // value gets worse by more than kRefinementTolerance * r (beyond the original bound r / 2).
-  const float refined = static_cast<float>(static_cast<double>(resolution) * static_cast<double>(gcd));
+  const double exact = static_cast<double>(resolution) * static_cast<double>(gcd);
+  const float refined = static_cast<float>(exact);
+  const double tolerance = kRefinementTolerance * static_cast<double>(resolution);
+
+  // Cheap sufficient condition first, typical of small values (a reflectance in [0, 1]): while the steps
+  // k = q / g stay small, the encoders compute exactly k (v / R is within 1 / (2g) + float rounding of it),
+  // and k * R differs from q * r by at most k * |R - g * r| plus the rounding of the product at |v|.
+  const bool is_float = field.type == FieldType::FLOAT32;
+  const double max_steps = max_quantized / static_cast<double>(gcd);
+  const double drift = max_steps * std::fabs(static_cast<double>(refined) - exact);
+  const double product_rounding =
+      is_float ? static_cast<double>(
+                     std::nextafter(static_cast<float>(max_abs_value), INFINITY) - static_cast<float>(max_abs_value))
+               : std::nextafter(max_abs_value, INFINITY) - max_abs_value;
+  if (max_steps < (is_float ? 0x1p20 : 0x1p50) && drift + product_rounding <= tolerance) {
+    return refined;
+  }
+
+  // Otherwise check every value:
   // Worst decoding error of `value` with resolution `res`, computed as the encoders and decoders do.
   auto decode_error = [&field](double value, float res) {
     if (field.type == FieldType::FLOAT64) {
@@ -397,7 +419,6 @@ float refinedResolution(const PointField& field, float resolution, ConstBufferVi
     }
     return worst;
   };
-  const double tolerance = kRefinementTolerance * static_cast<double>(resolution);
   const double half_resolution = 0.5 * static_cast<double>(resolution);
   for (size_t i = 0; i < points; ++i) {
     const double value = value_at(i);
