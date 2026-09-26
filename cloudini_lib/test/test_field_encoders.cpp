@@ -1142,8 +1142,9 @@ TEST(FieldEncoders, PointcloudV5_ModeSelectionAccountsForStage2) {
   constexpr uint8_t kPaletteMode = 1;
 
   // Per-column timestamps of an organized scan (like Ouster's `t`): every row repeats the same 1024 values.
-  // Before stage 2, palette indexes (10 bits) beat delta-varint (3 bytes); after it, the repeated delta-varint
-  // rows compress far better than bit-packed indexes, so V5 must not end up larger than plain V4 deltas.
+  // Before stage 2, the palette (10-bit indexes plus a table of the 1024 raw values) beats delta-varint
+  // (3 bytes per value); after it, the raw table barely compresses while the repeated deltas do, so V5
+  // must not end up larger than plain V4 deltas.
   std::vector<uint32_t> column_time(1024);
   std::mt19937 rng(7);
   for (size_t col = 0; col < column_time.size(); ++col) {

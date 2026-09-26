@@ -515,10 +515,11 @@ size_t sectionBytes(const V5AdaptiveIntStats& stats, AdaptiveIntMode mode) {
 constexpr size_t kTrialCompressionMinBytes = 64;
 
 // Adaptive sections are compressed by stage 2 together with the rest of the chunk, and the mode that is
-// smallest before compression is not always the smallest after it: bit-packed palette indexes, for
-// instance, hide the row-to-row repetition that delta-varint exposes to LZ matching. So, when stage 2 is
-// enabled and the stage-1 winner is not DeltaVarint, both are serialized for the probe values and the
-// one that compresses better is kept.
+// smallest before compression is not always the smallest after it. A palette stores every distinct value
+// raw: for per-column timestamps (1024 distinct values per row) that table barely compresses, while
+// delta-varint stores small deltas that repeat row after row. So, when stage 2 is enabled and the
+// stage-1 winner is not DeltaVarint, both are serialized for the probe values and the one that
+// compresses better is kept.
 AdaptiveIntMode selectAdaptiveIntMode(
     V5AdaptiveIntField& field, const V5AdaptiveIntStats& stats, CompressionOption compression) {
   const AdaptiveIntMode stage1_best = selectBestAdaptiveIntMode(stats);

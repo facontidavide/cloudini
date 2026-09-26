@@ -105,9 +105,10 @@ For each adaptive integer field, V5 estimates the Stage 1 size of all adaptive
 modes and picks the smallest one.
 
 When Stage 2 compression is enabled, the smallest mode before compression is not
-always the smallest after it: bit-packed palette indexes, for example, hide the
-row-to-row repetition that delta-varint exposes to LZ matching (e.g. per-column
-timestamps of an organized scan). So, if the Stage 1 winner is not `DeltaVarint`,
+always the smallest after it. A palette stores every distinct value raw: for the
+per-column timestamps of an organized scan (1024 distinct values per row) that
+table barely compresses, while delta-varint turns the same data into small deltas
+that repeat row after row. So, if the Stage 1 winner is not `DeltaVarint`,
 the probe values are serialized in both modes and compressed with the configured
 compressor, and the mode with the smaller compressed size is committed. This only
 changes which (already supported) mode is written; decoders are unaffected.
