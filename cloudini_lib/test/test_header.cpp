@@ -16,8 +16,12 @@
 
 #include <gtest/gtest.h>
 
+#include <clocale>
 #include <cstddef>
 #include <cstdint>
+#include <locale>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "cloudini_lib/cloudini.hpp"
@@ -101,6 +105,51 @@ void expectVersionedRoundTrip(
     ASSERT_EQ(input[i].time, output[i].time) << "time @" << i;
   }
 }
+
+// Switches the C locale (and optionally the global C++ locale) to one that uses ','
+// as decimal separator (and '.' as thousands separator), restoring both on destruction.
+class CommaDecimalLocaleGuard {
+ public:
+  explicit CommaDecimalLocaleGuard(bool set_cpp_global_locale) : previous_cpp_locale_(std::locale()) {
+    const char* current = std::setlocale(LC_ALL, nullptr);
+    previous_c_locale_ = current ? current : "C";
+    for (const char* name : {"de_DE.UTF-8", "de_DE.utf8", "de_DE", "fr_FR.UTF-8", "fr_FR.utf8", "it_IT.UTF-8"}) {
+      try {
+        std::locale cpp_locale(name);
+        if (std::setlocale(LC_ALL, name) == nullptr) {
+          continue;
+        }
+        if (set_cpp_global_locale) {
+          std::locale::global(cpp_locale);
+        }
+        active_name_ = name;
+        return;
+      } catch (const std::runtime_error&) {
+        // locale not installed, try the next one
+      }
+    }
+  }
+
+  ~CommaDecimalLocaleGuard() {
+    std::locale::global(previous_cpp_locale_);
+    std::setlocale(LC_ALL, previous_c_locale_.c_str());
+  }
+
+  CommaDecimalLocaleGuard(const CommaDecimalLocaleGuard&) = delete;
+  CommaDecimalLocaleGuard& operator=(const CommaDecimalLocaleGuard&) = delete;
+
+  bool active() const {
+    return !active_name_.empty();
+  }
+  const std::string& name() const {
+    return active_name_;
+  }
+
+ private:
+  std::locale previous_cpp_locale_;
+  std::string previous_c_locale_;
+  std::string active_name_;
+};
 
 }  // namespace
 
@@ -259,4 +308,63 @@ TEST(Cloudini, HeaderMissingYamlTerminator) {
 
   ConstBufferView input(buffer.data(), buffer.size());
   EXPECT_THROW(DecodeHeader(input), std::runtime_error);
+}
+
+// Regression tests for issue #123: the YAML header must be written and parsed
+// independently of the process locale (C locale and global C++ locale).
+static void expectHeaderRoundTripUnderCurrentLocale() {
+  using namespace Cloudini;
+
+  EncodingInfo header;
+  header.width = 1234567;  // large enough to trigger thousands grouping in de_DE
+  header.height = 1;
+  header.point_step = sizeof(float) * 4;
+  header.encoding_opt = EncodingOptions::LOSSY;
+  header.compression_opt = CompressionOption::ZSTD;
+  header.fields.push_back({"x", 0, FieldType::FLOAT32, 0.001F});
+  header.fields.push_back({"y", 4, FieldType::FLOAT32, 0.001F});
+  header.fields.push_back({"z", 8, FieldType::FLOAT32, 0.001F});
+  header.fields.push_back({"intensity", 12, FieldType::FLOAT32, 0.1234567F});
+
+  const std::string yaml = EncodingInfoToYAML(header);
+  EXPECT_NE(yaml.find("resolution: 0.001\n"), std::string::npos) << yaml;
+  EXPECT_NE(yaml.find("width: 1234567\n"), std::string::npos) << yaml;
+
+  std::vector<uint8_t> buffer;
+  EncodeHeader(header, buffer);
+  ConstBufferView input(buffer.data(), buffer.size());
+  const auto decoded_header = DecodeHeader(input);
+
+  ASSERT_EQ(decoded_header.width, header.width);
+  ASSERT_EQ(decoded_header.height, header.height);
+  ASSERT_EQ(decoded_header.point_step, header.point_step);
+  ASSERT_EQ(decoded_header.fields, header.fields);  // bit-exact resolution round-trip
+
+  // Full encode/decode of a small cloud (this is where issue #123 threw).
+  const size_t kPoints = 1000;
+  const std::vector<VersionPoint> points = makeVersionedPoints(kPoints);
+  const EncodingInfo info = makeVersionedLossyInfo(kPoints);
+  const std::vector<uint8_t> encoded = encodeVersionedPoints(info, points);
+  expectVersionedRoundTrip(info, points, encoded);
+}
+
+// Only the C locale is changed (e.g. setlocale(LC_ALL, "") in an application):
+// this is the exact scenario of issue #123, where std::stof read "0.001" as 0.
+TEST(Cloudini, HeaderLocaleIndependent_CLocale) {
+  CommaDecimalLocaleGuard locale_guard(false);
+  if (!locale_guard.active()) {
+    GTEST_SKIP() << "No locale with ',' decimal separator is installed (e.g. de_DE.UTF-8)";
+  }
+  ASSERT_STREQ(std::localeconv()->decimal_point, ",") << locale_guard.name();
+  expectHeaderRoundTripUnderCurrentLocale();
+}
+
+// Both the C locale and the global C++ locale (std::locale::global) are changed.
+TEST(Cloudini, HeaderLocaleIndependent_CppGlobalLocale) {
+  CommaDecimalLocaleGuard locale_guard(true);
+  if (!locale_guard.active()) {
+    GTEST_SKIP() << "No locale with ',' decimal separator is installed (e.g. de_DE.UTF-8)";
+  }
+  ASSERT_STREQ(std::localeconv()->decimal_point, ",") << locale_guard.name();
+  expectHeaderRoundTripUnderCurrentLocale();
 }

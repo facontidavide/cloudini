@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cctype>
+#include <locale>
 #include <map>
 #include <memory>
 #include <sstream>
@@ -100,6 +101,7 @@ class Node {
   template <typename T>
   static T parseScalar(const std::string& str) {
     std::istringstream iss(str);
+    iss.imbue(std::locale::classic());  // locale-independent parsing of numbers
     T value;
     iss >> value;
     if (iss.fail()) {

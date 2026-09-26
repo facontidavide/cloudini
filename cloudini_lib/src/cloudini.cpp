@@ -18,7 +18,9 @@
 
 #include <algorithm>
 #include <cstring>
+#include <iomanip>
 #include <limits>
+#include <locale>
 #include <sstream>
 #include <stdexcept>
 
@@ -41,6 +43,48 @@ void ensureScratchBuffer(std::unique_ptr<uint8_t[]>& buffer, size_t& capacity, s
   }
   buffer.reset(new uint8_t[required_capacity]);
   capacity = required_capacity;
+}
+
+// The YAML header is part of the wire format: numbers must always be written and
+// parsed with '.' as decimal separator and without thousands grouping, whatever
+// the C locale (setlocale) or the global C++ locale (std::locale::global) is.
+// We use streams imbued with the classic locale rather than std::to_chars /
+// std::from_chars for floats, because those are not available on every
+// standard library we support (e.g. older libc++ used by Emscripten / macOS).
+
+// Shortest representation that parses back to exactly the same float.
+std::string FloatToString(float value) {
+  std::string out;
+  for (int precision = 6; precision <= std::numeric_limits<float>::max_digits10; ++precision) {
+    std::ostringstream oss;
+    oss.imbue(std::locale::classic());
+    oss << std::setprecision(precision) << value;
+    out = oss.str();
+
+    std::istringstream iss(out);
+    iss.imbue(std::locale::classic());
+    float parsed = 0.0F;
+    if ((iss >> parsed) && parsed == value) {
+      break;
+    }
+  }
+  return out;
+}
+
+float FloatFromString(const std::string& str) {
+  std::istringstream iss(str);
+  iss.imbue(std::locale::classic());
+  float value = 0.0F;
+  iss >> value;
+  if (iss.fail()) {
+    throw std::runtime_error("Failed to parse float value: " + str);
+  }
+  // allow trailing whitespace only
+  iss >> std::ws;
+  if (!iss.eof()) {
+    throw std::runtime_error("Failed to parse float value: " + str);
+  }
+  return value;
 }
 
 }  // namespace
@@ -164,6 +208,7 @@ CompressionOption CompressionOptionFromString(std::string_view str) {
 
 std::string EncodingInfoToYAML(const EncodingInfo& info) {
   std::ostringstream yaml;
+  yaml.imbue(std::locale::classic());  // no thousands grouping in integers
   yaml << "version: " << static_cast<int>(info.version) << "\n";
   yaml << "width: " << info.width << "\n";
   yaml << "height: " << info.height << "\n";
@@ -181,7 +226,7 @@ std::string EncodingInfoToYAML(const EncodingInfo& info) {
     yaml << "    offset: " << field.offset << "\n";
     yaml << "    type: " << ToString(field.type) << "\n";
     if (field.resolution.has_value()) {
-      yaml << "    resolution: " << field.resolution.value() << "\n";
+      yaml << "    resolution: " << FloatToString(field.resolution.value()) << "\n";
     } else {
       yaml << "    resolution: null\n";
     }
@@ -220,7 +265,7 @@ EncodingInfo EncodingInfoFromYAML(std::string_view yaml) {
 
       std::string res_str = field_node["resolution"].as<std::string>();
       if (res_str != "null") {
-        field.resolution = std::stof(res_str);
+        field.resolution = FloatFromString(res_str);
       }
       info.fields.push_back(field);
     }
