@@ -65,7 +65,8 @@ The algorithm contains two steps:
 2. Compression using either [LZ4](https://github.com/lz4/lz4) or [ZSTD](https://github.com/facebook/zstd).
 
 The encoding is lossy for floating point channels (typically the X, Y, Z channels)
-and lossless for RGBA and integer channels.
+and lossless for RGBA and integer channels (packed colors stored in a FLOAT32 field
+named `rgb`/`rgba` are detected by name and never quantized).
 
 Now, I know that when you read the word "lossy" you may think about grainy JPEGS images. **Don't**.
 

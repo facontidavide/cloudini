@@ -167,11 +167,10 @@ EncodingInfo ConvertToEncodingInfo(const pcl::PCLPointCloud2& cloud, double reso
         break;
     }
 
-    // If the field is a FLOAT32 and has a resolution, set it
-    if (point_field.type == FieldType::FLOAT32 && resolution_XYZ > 0.0) {
-      point_field.resolution = resolution_XYZ;
-    } else {
-      point_field.resolution = std::nullopt;
+    // If the field is a FLOAT32 (but not a packed color like "rgb") and has a resolution, set it
+    point_field.resolution = std::nullopt;
+    if (resolution_XYZ > 0.0) {
+      point_field.resolution = defaultFieldResolution(point_field, static_cast<float>(resolution_XYZ));
     }
 
     info.fields.push_back(point_field);
