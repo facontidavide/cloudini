@@ -85,4 +85,72 @@ void FieldDecoderFloatN_Lossy::decode(ConstBufferView& input, BufferView dest_po
   input.trim_front(consumed);
 }
 
+void FieldDecoderFloatN_Lossy::decodePoints(ConstBufferView& input, uint8_t* output, size_t point_step, size_t count) {
+  switch (fields_count_) {
+    case 2:
+      decodePointsImpl<2>(input, output, point_step, count);
+      break;
+    case 3:
+      decodePointsImpl<3>(input, output, point_step, count);
+      break;
+    default:
+      decodePointsImpl<4>(input, output, point_step, count);
+      break;
+  }
+}
+
+template <size_t N>
+void FieldDecoderFloatN_Lossy::decodePointsImpl(
+    ConstBufferView& input, uint8_t* output, size_t point_step, size_t count) {
+  // A point takes at most N * kMaxVarintBytes bytes: while that many are left, its varints are read
+  // without per-byte bounds checks. The last few points go through the checked decode().
+  constexpr size_t kMaxPointBytes = N * kMaxVarintBytes;
+  const uint8_t* ptr = input.data();
+  const uint8_t* const end = input.data() + input.size();
+
+  int32_t prev[N];
+  float multiplier[N];
+  size_t offset[N];
+  for (size_t k = 0; k < N; ++k) {
+    prev[k] = prev_vect_[k];
+    multiplier[k] = multiplier_[k];
+    offset[k] = offset_[k];
+  }
+
+  size_t i = 0;
+  for (; i < count && static_cast<size_t>(end - ptr) >= kMaxPointBytes; ++i) {
+    uint8_t* point = output + i * point_step;
+    for (size_t k = 0; k < N; ++k) {
+      float value;
+      if (*ptr == 0) {
+        // NaN marker
+        ++ptr;
+        prev[k] = 0;
+        value = std::numeric_limits<float>::quiet_NaN();
+      } else {
+        int64_t diff = 0;
+        ptr += decodeVarintUnchecked(ptr, diff);
+        // same wrap-around as decode(): int32 addition of the truncated delta
+        prev[k] = static_cast<int32_t>(static_cast<uint32_t>(prev[k]) + static_cast<uint32_t>(diff));
+        value = static_cast<float>(prev[k]) * multiplier[k];
+      }
+      if (offset[k] != kDecodeButSkipStore) {
+        memcpy(point + offset[k], &value, sizeof(float));
+      }
+    }
+  }
+
+  for (size_t k = 0; k < N; ++k) {
+    prev_vect_[k] = prev[k];
+  }
+  input.trim_front(static_cast<size_t>(ptr - input.data()));
+
+  for (; i < count; ++i) {
+    if (input.size() < min_input_bytes_) {
+      throw std::runtime_error("Truncated encoded data: not enough bytes for a complete point");
+    }
+    decode(input, BufferView(output + i * point_step, point_step));
+  }
+}
+
 }  // namespace Cloudini

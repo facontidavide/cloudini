@@ -39,6 +39,22 @@ class FieldDecoder {
    */
   virtual void decode(ConstBufferView& input, BufferView dest_point_view) = 0;
 
+  /**
+   * @brief Decode `count` consecutive points, when this is the only per-point decoder of the chunk.
+   * Same result as calling decode() once per point; derived classes may override it with a faster loop.
+   *
+   * @param input The encoded data. Advanced past the decoded points.
+   * @param output The first point to write. Must have room for `count * point_step` bytes.
+   */
+  virtual void decodePoints(ConstBufferView& input, uint8_t* output, size_t point_step, size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+      if (input.size() < min_input_bytes_) {
+        throw std::runtime_error("Truncated encoded data: not enough bytes for a complete point");
+      }
+      decode(input, BufferView(output + i * point_step, point_step));
+    }
+  }
+
   virtual void reset() = 0;
 
   /// Minimum number of input bytes this decoder needs per call.
@@ -314,11 +330,16 @@ class FieldDecoderFloatN_Lossy : public FieldDecoder {
 
   void decode(ConstBufferView& input, BufferView dest_point_view) override;
 
+  void decodePoints(ConstBufferView& input, uint8_t* output, size_t point_step, size_t count) override;
+
   void reset() override {
     prev_vect_ = Vector4i(0, 0, 0, 0);
   }
 
  private:
+  template <size_t N>
+  void decodePointsImpl(ConstBufferView& input, uint8_t* output, size_t point_step, size_t count);
+
   std::array<size_t, 4> offset_ = {0, 0, 0, 0};
   size_t fields_count_ = 0;
 

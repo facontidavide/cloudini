@@ -119,10 +119,6 @@ uint64_t readRawBits(const uint8_t* ptr, size_t bytes) {
   return out;
 }
 
-void writeRawBitsToPoint(uint64_t value, size_t bytes, uint8_t* dst) {
-  std::memcpy(dst, &value, bytes);
-}
-
 void appendByte(BufferView& out, uint8_t value) {
   if (out.empty()) {
     throw std::runtime_error("V5 adaptive int: output buffer full");
@@ -760,30 +756,35 @@ std::vector<V5AdaptiveIntField> getV5AdaptiveFields(const EncodingInfo& info) {
   return fields;
 }
 
-void decodeV5AdaptiveIntSection(
-    const V5AdaptiveIntField& field, ConstBufferView& input, uint8_t* output_base, size_t point_step,
-    size_t expected_points) {
-  if (input.empty()) {
-    throw std::runtime_error("V5 adaptive int: missing mode byte");
-  }
-  const uint8_t mode_byte = input.data()[0];
-  input.trim_front(1);
-  if (mode_byte > static_cast<uint8_t>(AdaptiveIntMode::DeltaRle)) {
-    throw std::runtime_error("V5 adaptive int: unknown mode byte " + std::to_string(static_cast<int>(mode_byte)));
-  }
-  const auto mode = static_cast<AdaptiveIntMode>(mode_byte);
+template <size_t Bytes>
+void writeValueToPoint(uint64_t value, uint8_t* dst) {
+  std::memcpy(dst, &value, Bytes);
+}
 
+template <size_t Bytes>
+void decodeV5AdaptiveIntValues(
+    const V5AdaptiveIntField& field, AdaptiveIntMode mode, ConstBufferView& input, uint8_t* output_base,
+    size_t point_step, size_t expected_points) {
   switch (mode) {
     case AdaptiveIntMode::DeltaVarint: {
-      int64_t prev = 0;
-      for (size_t i = 0; i < expected_points; ++i) {
+      uint64_t prev = 0;
+      size_t i = 0;
+      // While a longest-possible varint is readable, skip the per-byte bounds checks.
+      const uint8_t* ptr = input.data();
+      const uint8_t* const end = input.data() + input.size();
+      for (; i < expected_points && static_cast<size_t>(end - ptr) >= kMaxVarintBytes; ++i) {
+        int64_t diff = 0;
+        ptr += decodeVarintUnchecked(ptr, diff);
+        prev += static_cast<uint64_t>(diff);
+        writeValueToPoint<Bytes>(prev, output_base + i * point_step + field.offset);
+      }
+      input.trim_front(static_cast<size_t>(ptr - input.data()));
+      for (; i < expected_points; ++i) {
         int64_t diff = 0;
         const auto consumed = decodeVarint(input.data(), input.size(), diff);
         input.trim_front(consumed);
-        const int64_t value = prev + diff;
-        prev = value;
-        writeRawBitsToPoint(
-            static_cast<uint64_t>(value), field.bytes_per_value, output_base + i * point_step + field.offset);
+        prev += static_cast<uint64_t>(diff);
+        writeValueToPoint<Bytes>(prev, output_base + i * point_step + field.offset);
       }
     } break;
 
@@ -814,7 +815,7 @@ void decodeV5AdaptiveIntSection(
         if (idx >= palette.size()) {
           throw std::runtime_error("V5 adaptive int: palette index out of range");
         }
-        writeRawBitsToPoint(palette[idx], field.bytes_per_value, output_base + i * point_step + field.offset);
+        writeValueToPoint<Bytes>(palette[idx], output_base + i * point_step + field.offset);
       }
       input.trim_front(index_bytes);
     } break;
@@ -834,7 +835,7 @@ void decodeV5AdaptiveIntSection(
           throw std::runtime_error("V5 adaptive int: RLE run exceeds point count");
         }
         for (uint64_t k = 0; k < run_len; ++k) {
-          writeRawBitsToPoint(value, field.bytes_per_value, output_base + out_index * point_step + field.offset);
+          writeValueToPoint<Bytes>(value, output_base + out_index * point_step + field.offset);
           ++out_index;
         }
       }
@@ -846,7 +847,7 @@ void decodeV5AdaptiveIntSection(
     case AdaptiveIntMode::DeltaRle: {
       uint32_t run_count = 0;
       decode(input, run_count);
-      int64_t prev = 0;
+      uint64_t prev = 0;
       size_t out_index = 0;
       for (uint32_t r = 0; r < run_count; ++r) {
         int64_t diff = 0;
@@ -857,10 +858,8 @@ void decodeV5AdaptiveIntSection(
           throw std::runtime_error("V5 adaptive int: Delta-RLE run exceeds point count");
         }
         for (uint64_t k = 0; k < run_len; ++k) {
-          const int64_t value = prev + diff;
-          prev = value;
-          writeRawBitsToPoint(
-              static_cast<uint64_t>(value), field.bytes_per_value, output_base + out_index * point_step + field.offset);
+          prev += static_cast<uint64_t>(diff);
+          writeValueToPoint<Bytes>(prev, output_base + out_index * point_step + field.offset);
           ++out_index;
         }
       }
@@ -871,6 +870,34 @@ void decodeV5AdaptiveIntSection(
 
     default:
       throw std::runtime_error("V5 adaptive int: unknown mode");
+  }
+}
+
+void decodeV5AdaptiveIntSection(
+    const V5AdaptiveIntField& field, ConstBufferView& input, uint8_t* output_base, size_t point_step,
+    size_t expected_points) {
+  if (input.empty()) {
+    throw std::runtime_error("V5 adaptive int: missing mode byte");
+  }
+  const uint8_t mode_byte = input.data()[0];
+  input.trim_front(1);
+  if (mode_byte > static_cast<uint8_t>(AdaptiveIntMode::DeltaRle)) {
+    throw std::runtime_error("V5 adaptive int: unknown mode byte " + std::to_string(static_cast<int>(mode_byte)));
+  }
+  const auto mode = static_cast<AdaptiveIntMode>(mode_byte);
+
+  switch (field.bytes_per_value) {
+    case 2:
+      decodeV5AdaptiveIntValues<2>(field, mode, input, output_base, point_step, expected_points);
+      break;
+    case 4:
+      decodeV5AdaptiveIntValues<4>(field, mode, input, output_base, point_step, expected_points);
+      break;
+    case 8:
+      decodeV5AdaptiveIntValues<8>(field, mode, input, output_base, point_step, expected_points);
+      break;
+    default:
+      throw std::runtime_error("V5 adaptive int: unsupported value size");
   }
 }
 
@@ -986,10 +1013,15 @@ void DecodeV5Stage1Chunk(
 
   ResetDecoders(decoders);
   uint8_t* chunk_output = output_buffer.data();
-  for (size_t p = 0; p < expected_points; ++p) {
-    BufferView point_view(chunk_output + p * info.point_step, info.point_step);
-    for (auto& decoder : decoders) {
-      decoder->decode(encoded_view, point_view);
+  if (decoders.size() == 1) {
+    // Typically the xyz(i) vector, when every other field is an adaptive section.
+    decoders.front()->decodePoints(encoded_view, chunk_output, info.point_step, expected_points);
+  } else {
+    for (size_t p = 0; p < expected_points; ++p) {
+      BufferView point_view(chunk_output + p * info.point_step, info.point_step);
+      for (auto& decoder : decoders) {
+        decoder->decode(encoded_view, point_view);
+      }
     }
   }
 

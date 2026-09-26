@@ -188,6 +188,10 @@ class PointcloudEncoder {
   size_t buffer_capacity_ = 0;
   std::vector<uint8_t> header_;
 
+  // Worst-case sized output of encode(cloud, std::vector&), kept between calls (never zero-filled)
+  std::unique_ptr<uint8_t[]> output_scratch_;
+  size_t output_scratch_capacity_ = 0;
+
   // Double buffering and threading
   std::unique_ptr<uint8_t[]> buffer_compressing_;
   size_t buffer_compressing_capacity_ = 0;

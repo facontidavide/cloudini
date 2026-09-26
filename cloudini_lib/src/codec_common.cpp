@@ -19,12 +19,62 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 
 #include "lz4.h"
 #include "zstd.h"
 
 namespace Cloudini::detail {
+
+namespace {
+
+// ZSTD_compress / ZSTD_decompress allocate and initialize a fresh context on every call, which
+// costs more than compressing a small input. Contexts are reused per thread instead: the output
+// is identical, and no context is ever shared between threads.
+struct ZstdContexts {
+  struct CCtxDeleter {
+    void operator()(ZSTD_CCtx* ctx) const {
+      ZSTD_freeCCtx(ctx);
+    }
+  };
+  struct DCtxDeleter {
+    void operator()(ZSTD_DCtx* ctx) const {
+      ZSTD_freeDCtx(ctx);
+    }
+  };
+  std::unique_ptr<ZSTD_CCtx, CCtxDeleter> cctx;
+  std::unique_ptr<ZSTD_DCtx, DCtxDeleter> dctx;
+};
+
+ZstdContexts& threadZstdContexts() {
+  thread_local ZstdContexts contexts;
+  return contexts;
+}
+
+ZSTD_CCtx* threadCCtx() {
+  auto& contexts = threadZstdContexts();
+  if (!contexts.cctx) {
+    contexts.cctx.reset(ZSTD_createCCtx());
+    if (!contexts.cctx) {
+      throw std::runtime_error("ZSTD_createCCtx failed");
+    }
+  }
+  return contexts.cctx.get();
+}
+
+ZSTD_DCtx* threadDCtx() {
+  auto& contexts = threadZstdContexts();
+  if (!contexts.dctx) {
+    contexts.dctx.reset(ZSTD_createDCtx());
+    if (!contexts.dctx) {
+      throw std::runtime_error("ZSTD_createDCtx failed");
+    }
+  }
+  return contexts.dctx.get();
+}
+
+}  // namespace
 
 size_t MaxSerializedFieldSize(const PointField& field, EncodingOptions encoding_opt) {
   switch (field.type) {
@@ -237,7 +287,7 @@ uint32_t CompressChunk(CompressionOption compression, ConstBufferView input, Buf
     } break;
 
     case CompressionOption::ZSTD: {
-      const size_t cs = ZSTD_compress(output.data(), output.size(), input.data(), input.size(), 1);
+      const size_t cs = ZSTD_compressCCtx(threadCCtx(), output.data(), output.size(), input.data(), input.size(), 1);
       if (ZSTD_isError(cs)) {
         throw std::runtime_error("ZSTD compression failed");
       }
@@ -283,8 +333,8 @@ ConstBufferView DecompressChunk(
       if (decompressed_buffer.size() < max_decompressed_size) {
         decompressed_buffer.resize(max_decompressed_size);
       }
-      const size_t decompressed_size =
-          ZSTD_decompress(decompressed_buffer.data(), max_decompressed_size, chunk_data.data(), chunk_data.size());
+      const size_t decompressed_size = ZSTD_decompressDCtx(
+          threadDCtx(), decompressed_buffer.data(), max_decompressed_size, chunk_data.data(), chunk_data.size());
       if (ZSTD_isError(decompressed_size)) {
         throw std::runtime_error("ZSTD decompression failed: " + std::string(ZSTD_getErrorName(decompressed_size)));
       }

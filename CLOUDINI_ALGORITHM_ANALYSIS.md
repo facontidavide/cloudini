@@ -130,6 +130,9 @@ The current benchmark default uses ZSTD level 1. The encoder can use a worker
 thread and double buffering so one chunk can be compressed while the next chunk
 is being encoded.
 
+ZSTD contexts are reused per thread (`ZSTD_compressCCtx` / `ZSTD_decompressDCtx`)
+instead of being created by every `ZSTD_compress` / `ZSTD_decompress` call.
+
 Scratch buffers are retained by capacity and are not zero-filled before each
 chunk. Only the serialized byte range is passed to Stage 2.
 
@@ -145,6 +148,14 @@ Decoding reverses the chunk pipeline:
 The decompression buffer keeps its capacity between chunks. The decoder returns
 views sized to the actual decompressed chunk instead of shrinking the backing
 storage after every chunk.
+
+When a chunk has a single per-point decoder (the xyz / xyzi vector of float-only
+clouds, or of V5 clouds whose other fields are all adaptive sections), the whole
+chunk is decoded by one `FieldDecoder::decodePoints()` call. The float vector
+decoder then reads varints without per-byte bounds checks while a longest-possible
+point (`fields * kMaxVarintBytes` bytes) is still available, and falls back to the
+checked path for the last points. Adaptive sections are decoded with a store of
+fixed size (2, 4 or 8 bytes) and the same unchecked varint fast path.
 
 ## Benchmarking
 

@@ -969,3 +969,148 @@ TEST(FieldEncoders, Gorilla_DoesNotActivateForV3) {
     }
   }
 }
+
+TEST(FieldEncoders, DecodeVarintUncheckedMatchesChecked) {
+  using namespace Cloudini;
+
+  auto expect_same = [](const std::array<uint8_t, 16>& buf) {
+    int64_t checked_val = 0;
+    size_t checked_count = 0;
+    bool checked_threw = false;
+    try {
+      checked_count = decodeVarint(buf.data(), buf.size(), checked_val);
+    } catch (const std::exception&) {
+      checked_threw = true;
+    }
+    int64_t unchecked_val = 0;
+    size_t unchecked_count = 0;
+    bool unchecked_threw = false;
+    try {
+      unchecked_count = decodeVarintUnchecked(buf.data(), unchecked_val);
+    } catch (const std::exception&) {
+      unchecked_threw = true;
+    }
+    ASSERT_EQ(checked_threw, unchecked_threw);
+    if (!checked_threw) {
+      ASSERT_EQ(checked_count, unchecked_count);
+      ASSERT_EQ(checked_val, unchecked_val);
+      ASSERT_LE(unchecked_count, kMaxVarintBytes);
+    }
+  };
+
+  std::array<uint8_t, 16> buf{};
+  for (int b0 = 0; b0 < 256; ++b0) {
+    for (int b1 = 0; b1 < 256; ++b1) {
+      buf[0] = static_cast<uint8_t>(b0);
+      buf[1] = static_cast<uint8_t>(b1);
+      expect_same(buf);
+    }
+  }
+  // Long, overflowing and all-continuation varints
+  std::mt19937_64 rng(0x5EEDULL);
+  for (int iter = 0; iter < 200'000; ++iter) {
+    for (auto& byte : buf) {
+      const uint32_t r = static_cast<uint32_t>(rng());
+      byte = static_cast<uint8_t>(r) | (((r >> 8) % 4 != 0) ? 0x80u : 0x00u);
+    }
+    buf[1 + rng() % 11] &= 0x7Fu;  // terminate somewhere in [1, 11]
+    expect_same(buf);
+  }
+}
+
+TEST(FieldEncoders, FloatNDecodePointsMatchesPerPointDecode) {
+  using namespace Cloudini;
+
+  struct Point {
+    float v[4];
+    uint32_t pad = 0xDEADBEEF;
+  };
+  constexpr size_t kPoints = 3000;
+  std::mt19937 rng(42);
+  std::uniform_real_distribution<float> step(-0.05f, 0.05f);
+  std::uniform_real_distribution<float> jump(-300.0f, 300.0f);
+  std::vector<Point> input(kPoints);
+  float walk[4] = {1.0f, -2.0f, 3.0f, 10.0f};
+  for (size_t i = 0; i < kPoints; ++i) {
+    for (int k = 0; k < 4; ++k) {
+      walk[k] += (rng() % 50 == 0) ? jump(rng) : step(rng);  // mostly 1-2 byte varints, some long ones
+      input[i].v[k] = (rng() % 40 == 0) ? std::numeric_limits<float>::quiet_NaN() : walk[k];
+    }
+  }
+
+  for (size_t fields = 2; fields <= 4; ++fields) {
+    for (bool skip_one : {false, true}) {
+      std::vector<FieldEncoderFloatN_Lossy::FieldData> enc_fields;
+      std::vector<FieldDecoderFloatN_Lossy::FieldData> dec_fields;
+      for (size_t k = 0; k < fields; ++k) {
+        enc_fields.emplace_back(k * sizeof(float), 0.001f);
+        const size_t dec_offset = (skip_one && k == 1) ? kDecodeButSkipStore : k * sizeof(float);
+        dec_fields.emplace_back(dec_offset, 0.001f);
+      }
+      FieldEncoderFloatN_Lossy encoder(enc_fields);
+      std::vector<uint8_t> encoded(kPoints * fields * kMaxVarintBytes);
+      BufferView enc_view(encoded.data(), encoded.size());
+      size_t encoded_size = 0;
+      for (const auto& p : input) {
+        encoded_size += encoder.encode(ConstBufferView(reinterpret_cast<const uint8_t*>(&p), sizeof(Point)), enc_view);
+      }
+
+      std::vector<Point> per_point(kPoints), batch(kPoints);
+      FieldDecoderFloatN_Lossy decoder_a(dec_fields);
+      ConstBufferView in_a(encoded.data(), encoded_size);
+      for (size_t i = 0; i < kPoints; ++i) {
+        decoder_a.decode(in_a, BufferView(reinterpret_cast<uint8_t*>(&per_point[i]), sizeof(Point)));
+      }
+      FieldDecoderFloatN_Lossy decoder_b(dec_fields);
+      ConstBufferView in_b(encoded.data(), encoded_size);
+      decoder_b.decodePoints(in_b, reinterpret_cast<uint8_t*>(batch.data()), sizeof(Point), kPoints);
+
+      EXPECT_TRUE(in_a.empty());
+      EXPECT_TRUE(in_b.empty());
+      ASSERT_EQ(0, std::memcmp(per_point.data(), batch.data(), kPoints * sizeof(Point)))
+          << "fields=" << fields << " skip_one=" << skip_one;
+
+      // Truncated input must throw, not read past the end
+      FieldDecoderFloatN_Lossy decoder_c(dec_fields);
+      ConstBufferView truncated(encoded.data(), encoded_size - 1);
+      EXPECT_THROW(
+          decoder_c.decodePoints(truncated, reinterpret_cast<uint8_t*>(batch.data()), sizeof(Point), kPoints),
+          std::runtime_error);
+    }
+  }
+}
+
+TEST(FieldEncoders, EncodeToVectorMatchesPreallocatedBuffer) {
+  using namespace Cloudini;
+
+  constexpr size_t kPoints = 3 * 32 * 1024 + 11;  // several chunks
+  std::vector<float> cloud(kPoints * 4);
+  for (size_t i = 0; i < kPoints; ++i) {
+    cloud[4 * i + 0] = std::sin(0.001f * i) * 10.0f;
+    cloud[4 * i + 1] = std::cos(0.001f * i) * 10.0f;
+    cloud[4 * i + 2] = 0.0001f * i;
+    cloud[4 * i + 3] = static_cast<float>(i % 256);
+  }
+  EncodingInfo info;
+  info.width = kPoints;
+  info.point_step = 4 * sizeof(float);
+  for (int k = 0; k < 4; ++k) {
+    info.fields.push_back({std::string(1, "xyzi"[k]), static_cast<uint32_t>(4 * k), FieldType::FLOAT32, 0.001f});
+  }
+  const ConstBufferView in(reinterpret_cast<const uint8_t*>(cloud.data()), cloud.size() * sizeof(float));
+  for (auto compression : {CompressionOption::NONE, CompressionOption::LZ4, CompressionOption::ZSTD}) {
+    info.compression_opt = compression;
+    PointcloudEncoder encoder(info);
+    std::vector<uint8_t> as_vector;
+    // twice: the second call reuses the scratch buffer
+    encoder.encode(in, as_vector);
+    const size_t size = encoder.encode(in, as_vector);
+    ASSERT_EQ(size, as_vector.size());
+
+    std::vector<uint8_t> prealloc(MaxCompressedSize(info, kPoints, true));
+    BufferView view(prealloc.data(), prealloc.size());
+    const size_t prealloc_size = encoder.encode(in, view, true);
+    ASSERT_EQ(prealloc_size, size);
+    ASSERT_EQ(0, std::memcmp(prealloc.data(), as_vector.data(), size));
+  }
+}

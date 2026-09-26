@@ -148,4 +148,47 @@ inline size_t decodeVarint(const uint8_t* buf, size_t max_size, int64_t& val) {
   return count;
 }
 
+// Longest varint accepted by decodeVarint(): 10 bytes of 7 bits cover 64 bits.
+constexpr size_t kMaxVarintBytes = 10;
+
+/// Same result and same errors as decodeVarint(), without bounds checks: the caller guarantees that at
+/// least kMaxVarintBytes bytes are readable at `buf`.
+inline size_t decodeVarintUnchecked(const uint8_t* buf, int64_t& val) {
+  uint64_t uval;
+  size_t count;
+  const uint8_t b0 = buf[0];
+  if ((b0 & 0x80) == 0) {
+    uval = b0;
+    count = 1;
+  } else if ((buf[1] & 0x80) == 0) {
+    uval = static_cast<uint64_t>(b0 & 0x7f) | (static_cast<uint64_t>(buf[1]) << 7);
+    count = 2;
+  } else {
+    uval = 0;
+    uint8_t shift = 0;
+    count = 0;
+    while (true) {
+      const uint8_t byte = buf[count++];
+      const uint8_t payload = byte & 0x7f;
+      if (shift == 63 && payload > 1) {
+        throw std::runtime_error("decodeVarint: value overflow");
+      }
+      uval |= (static_cast<uint64_t>(payload) << shift);
+      if ((byte & 0x80) == 0) {
+        break;
+      }
+      if (shift >= 63) {
+        throw std::runtime_error("decodeVarint: value overflow");
+      }
+      shift = static_cast<uint8_t>(shift + 7);
+    }
+  }
+  if (uval == 0) {
+    throw std::runtime_error("decodeVarint: unexpected NaN marker");
+  }
+  uval--;
+  val = static_cast<int64_t>((uval >> 1) ^ static_cast<uint64_t>(-(static_cast<int64_t>(uval & 1))));
+  return count;
+}
+
 }  // namespace Cloudini

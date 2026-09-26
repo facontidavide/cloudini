@@ -559,15 +559,13 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, std::vector<uint8_t
   }
 
   const size_t points_count = cloud_data.size() / info_.point_step;
-  output.resize(MaxCompressedSize(info_, points_count, true));
-  // write the header
-  BufferView output_view(output.data(), output.size());
-  memcpy(output_view.data(), header_.data(), header_.size());
-  output_view.trim_front(header_.size());
-
-  const size_t added_bytes = encode(cloud_data, output_view, false);
-  const size_t new_size = header_.size() + added_bytes;
-  output.resize(new_size);
+  // Encode into a scratch buffer and copy out only the bytes produced: growing `output`
+  // to the worst-case bound would zero-fill a buffer 2-3x larger than the input on every call.
+  const size_t max_size = MaxCompressedSize(info_, points_count, false) + header_.size();
+  ensureScratchBuffer(output_scratch_, output_scratch_capacity_, max_size);
+  BufferView output_view(output_scratch_.get(), max_size);
+  const size_t new_size = encode(cloud_data, output_view, true);
+  output.assign(output_scratch_.get(), output_scratch_.get() + new_size);
   return new_size;
 }
 
