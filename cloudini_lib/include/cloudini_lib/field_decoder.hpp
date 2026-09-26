@@ -139,6 +139,32 @@ class FieldDecoderFloat_Lossy : public FieldDecoder {
 
   void decode(ConstBufferView& input, BufferView dest_point_view) override;
 
+  // Same result as decode() once per point, without per-byte bounds checks while a longest varint fits.
+  void decodePoints(ConstBufferView& input, uint8_t* output, size_t point_step, size_t count) override {
+    const uint8_t* ptr = input.data();
+    const uint8_t* const end = input.data() + input.size();
+    const bool store = offset_ != kDecodeButSkipStore;
+    size_t i = 0;
+    for (; i < count && static_cast<size_t>(end - ptr) >= kMaxVarintBytes; ++i) {
+      FloatType value;
+      if (*ptr == 0) {
+        ++ptr;
+        prev_value_ = 0;
+        value = std::numeric_limits<FloatType>::quiet_NaN();
+      } else {
+        int64_t diff = 0;
+        ptr += decodeVarintUnchecked(ptr, diff);
+        prev_value_ = static_cast<int64_t>(static_cast<uint64_t>(prev_value_) + static_cast<uint64_t>(diff));
+        value = static_cast<FloatType>(prev_value_) * multiplier_;
+      }
+      if (store) {
+        memcpy(output + i * point_step + offset_, &value, sizeof(FloatType));
+      }
+    }
+    input.trim_front(static_cast<size_t>(ptr - input.data()));
+    FieldDecoder::decodePoints(input, output + i * point_step, point_step, count - i);
+  }
+
   void reset() override {
     prev_value_ = 0;
   }

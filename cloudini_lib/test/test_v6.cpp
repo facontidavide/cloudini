@@ -324,3 +324,35 @@ TEST(V6, TruncatedOrCorruptedPayloadThrows) {
     } catch (const std::runtime_error&) {}
   }
 }
+
+TEST(V6, FloatColumnsNaNFractionalAndHuge) {
+  // intensity with a fractional resolution, some NaN, and (second cloud) one value too large to quantize
+  std::mt19937 rng(7);
+  auto points = firingOrderScan(500, 16, rng);
+  for (size_t i = 0; i < points.size(); ++i) {
+    points[i].intensity = (i % 11 == 0) ? std::numeric_limits<float>::quiet_NaN() : 0.37f * float(i % 400);
+  }
+  auto fields = ousterFields(0.001f);
+  fields[3].resolution = 0.01f;
+  const uint32_t n = uint32_t(points.size());
+  for (bool huge : {false, true}) {
+    auto cloud = points;
+    if (huge) {
+      cloud[100].intensity = 1.0e30f;
+    }
+    const auto decoded = decode(encode(
+        makeInfo(fields, n, 1, sizeof(OusterPoint), 6, CompressionOption::ZSTD), cloud.data(),
+        cloud.size() * sizeof(OusterPoint)));
+    for (size_t i = 0; i < cloud.size(); ++i) {
+      OusterPoint p;
+      std::memcpy(&p, decoded.data() + i * sizeof(OusterPoint), sizeof(OusterPoint));
+      if (std::isnan(cloud[i].intensity)) {
+        ASSERT_TRUE(std::isnan(p.intensity)) << i;
+      } else if (huge) {
+        ASSERT_EQ(p.intensity, cloud[i].intensity) << i;  // raw column: bit-exact
+      } else {
+        ASSERT_NEAR(p.intensity, cloud[i].intensity, 0.005f * 1.001f + 1e-6f * cloud[i].intensity) << i;
+      }
+    }
+  }
+}
