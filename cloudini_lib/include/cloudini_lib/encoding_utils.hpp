@@ -68,7 +68,8 @@ inline size_t encodeVarint64(int64_t value, uint8_t* ptr) {
 
 template <typename T>
 int64_t ToInt64(const uint8_t* ptr) {
-  T tmp = *(reinterpret_cast<const T*>(ptr));
+  T tmp;
+  memcpy(&tmp, ptr, sizeof(T));  // ptr may not be aligned for T
   return static_cast<int64_t>(tmp);
 }
 

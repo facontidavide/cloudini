@@ -65,20 +65,26 @@ void VerifyRoundTrip(const EncodingInfo& encoding_info, const std::vector<uint8_
 
   const auto& fields = encoding_info.fields;
 
-  for (size_t i = 0; i < encoding_info.width * encoding_info.height; ++i) {
-    float original_x = *reinterpret_cast<const float*>(original_data_ptr + offset + fields[0].offset);
-    float original_y = *reinterpret_cast<const float*>(original_data_ptr + offset + fields[1].offset);
-    float original_z = *reinterpret_cast<const float*>(original_data_ptr + offset + fields[2].offset);
-    float original_intensity = *reinterpret_cast<const float*>(original_data_ptr + offset + fields[3].offset);
-    uint16_t original_ring = *reinterpret_cast<const uint16_t*>(original_data_ptr + offset + fields[4].offset);
-    double original_timestamp = *reinterpret_cast<const double*>(original_data_ptr + offset + fields[5].offset);
+  // memcpy: the fields of this packed 26-byte point layout are not naturally aligned
+  auto load = [](const uint8_t* ptr, auto& value) { memcpy(&value, ptr, sizeof(value)); };
 
-    float decoded_x = *reinterpret_cast<const float*>(decoded_data_ptr + offset + fields[0].offset);
-    float decoded_y = *reinterpret_cast<const float*>(decoded_data_ptr + offset + fields[1].offset);
-    float decoded_z = *reinterpret_cast<const float*>(decoded_data_ptr + offset + fields[2].offset);
-    float decoded_intensity = *reinterpret_cast<const float*>(decoded_data_ptr + offset + fields[3].offset);
-    uint16_t decoded_ring = *reinterpret_cast<const uint16_t*>(decoded_data_ptr + offset + fields[4].offset);
-    double decoded_timestamp = *reinterpret_cast<const double*>(decoded_data_ptr + offset + fields[5].offset);
+  for (size_t i = 0; i < encoding_info.width * encoding_info.height; ++i) {
+    float original_x, original_y, original_z, original_intensity;
+    float decoded_x, decoded_y, decoded_z, decoded_intensity;
+    uint16_t original_ring, decoded_ring;
+    double original_timestamp, decoded_timestamp;
+    load(original_data_ptr + offset + fields[0].offset, original_x);
+    load(original_data_ptr + offset + fields[1].offset, original_y);
+    load(original_data_ptr + offset + fields[2].offset, original_z);
+    load(original_data_ptr + offset + fields[3].offset, original_intensity);
+    load(original_data_ptr + offset + fields[4].offset, original_ring);
+    load(original_data_ptr + offset + fields[5].offset, original_timestamp);
+    load(decoded_data_ptr + offset + fields[0].offset, decoded_x);
+    load(decoded_data_ptr + offset + fields[1].offset, decoded_y);
+    load(decoded_data_ptr + offset + fields[2].offset, decoded_z);
+    load(decoded_data_ptr + offset + fields[3].offset, decoded_intensity);
+    load(decoded_data_ptr + offset + fields[4].offset, decoded_ring);
+    load(decoded_data_ptr + offset + fields[5].offset, decoded_timestamp);
 
     ASSERT_NEAR(original_x, decoded_x, resolution) << "Point index: " << i;
     ASSERT_NEAR(original_y, decoded_y, resolution) << "Point index: " << i;
