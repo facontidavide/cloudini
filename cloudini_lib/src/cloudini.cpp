@@ -305,6 +305,9 @@ double readFloatField(const uint8_t* ptr, FieldType type) {
   return value;
 }
 
+// A refined grid may add at most this fraction of the original resolution to the decoding error.
+constexpr double kRefinementTolerance = 1e-3;
+
 // Coarsest resolution (a multiple of `resolution`) whose grid contains every value of the field.
 float refinedResolution(const PointField& field, float resolution, ConstBufferView cloud_data, size_t point_step) {
   const size_t points = cloud_data.size() / point_step;
@@ -365,7 +368,49 @@ float refinedResolution(const PointField& field, float resolution, ConstBufferVi
     gcd_value = static_cast<double>(gcd);
     inv_gcd = 1.0 / gcd_value;
   }
-  return gcd > 1 ? static_cast<float>(static_cast<double>(resolution) * static_cast<double>(gcd)) : resolution;
+  if (gcd <= 1) {
+    return resolution;
+  }
+
+  // The header stores the new resolution as a float R, which is not exactly g * r, and the decoder
+  // multiplies in the precision of the field: for large values k * R can land further from v than
+  // the original q * r. Decode every value both ways, as the decoder does, and keep R only if no
+  // value gets worse by more than kRefinementTolerance * r (beyond the original bound r / 2).
+  const float refined = static_cast<float>(static_cast<double>(resolution) * static_cast<double>(gcd));
+  // Worst decoding error of `value` with resolution `res`, computed as the encoders and decoders do.
+  auto decode_error = [&field](double value, float res) {
+    if (field.type == FieldType::FLOAT64) {
+      // FieldEncoderFloat_Lossy<double>: round(v * (1 / r)), decoded as steps * r
+      const double steps = std::round(value * (1.0 / static_cast<double>(res)));
+      return std::fabs(steps * static_cast<double>(res) - value);
+    }
+    // FLOAT32, in float arithmetic: FieldEncoderFloatN_Lossy multiplies by 1.0F / r and rounds to
+    // nearest even (SSE) or away from zero; FieldEncoderFloat_Lossy<float> multiplies by
+    // float(1.0 / r). The product is rounded to float precision before the rounding to an integer.
+    const float v = static_cast<float>(value);
+    double worst = 0.0;
+    for (const float multiplier : {1.0F / res, static_cast<float>(1.0 / static_cast<double>(res))}) {
+      const float scaled = v * multiplier;
+      for (const float steps : {std::nearbyint(scaled), std::round(scaled)}) {
+        worst = std::max(worst, std::fabs(static_cast<double>(steps * res) - value));
+      }
+    }
+    return worst;
+  };
+  const double tolerance = kRefinementTolerance * static_cast<double>(resolution);
+  const double half_resolution = 0.5 * static_cast<double>(resolution);
+  for (size_t i = 0; i < points; ++i) {
+    const double value = value_at(i);
+    if (std::isnan(value)) {
+      continue;
+    }
+    const double plain_error = decode_error(value, resolution);
+    const double refined_error = decode_error(value, refined);
+    if (refined_error > std::max(half_resolution, plain_error) + tolerance) {
+      return resolution;
+    }
+  }
+  return refined;
 }
 
 }  // namespace

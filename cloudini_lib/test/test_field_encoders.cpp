@@ -1417,3 +1417,76 @@ TEST(FieldEncoders, CorruptedPayloadNeverReadsPastTheEnd) {
     }
   }
 }
+
+// The refined resolution is stored as a float, so it is not exactly g * r: each decoded value moves
+// by (value / resolution) * |R - g * r|. For large values that can exceed the original error bound.
+// Realistic case: the odometer reading of a vehicle in meters (FLOAT64, ~100 km), logged in 1 cm steps
+// and stored with a 1 mm resolution. Refining must never make the decoded values worse than before.
+TEST(FieldEncoders, RefineResolutionsToDataKeepsErrorBoundForLargeValues) {
+  using namespace Cloudini;
+
+  struct Point {
+    float x, y, z;
+    float ring;         // integer values: refined to resolution 1
+    double odometer;    // meters, on a 1 cm grid
+    float temperature;  // ~9000-10000 on a 0.01 grid: float precision is ~0.001 there
+  };
+  constexpr size_t kPoints = 20000;
+  std::vector<Point> input(kPoints);
+  for (size_t i = 0; i < kPoints; ++i) {
+    auto& p = input[i];
+    p.x = 0.001f * static_cast<float>(i % 700);
+    p.y = -0.002f * static_cast<float>(i % 300);
+    p.z = 1.5f;
+    p.ring = static_cast<float>(i % 64);
+    p.odometer = 100000.0 - static_cast<double>(i) * 0.01;
+    p.temperature = 9000.0f + static_cast<float>(i % 100000) * 0.05f;
+  }
+
+  EncodingInfo info;
+  info.width = kPoints;
+  info.point_step = sizeof(Point);
+  info.fields = {
+      {"x", offsetof(Point, x), FieldType::FLOAT32, 0.001f},
+      {"y", offsetof(Point, y), FieldType::FLOAT32, 0.001f},
+      {"z", offsetof(Point, z), FieldType::FLOAT32, 0.001f},
+      {"ring", offsetof(Point, ring), FieldType::FLOAT32, 0.001f},
+      {"odometer", offsetof(Point, odometer), FieldType::FLOAT64, 0.001f},
+      {"temperature", offsetof(Point, temperature), FieldType::FLOAT32, 0.001f}};
+
+  const ConstBufferView in(reinterpret_cast<const uint8_t*>(input.data()), kPoints * sizeof(Point));
+  auto round_trip = [&](const EncodingInfo& encoding) {
+    std::vector<uint8_t> encoded;
+    PointcloudEncoder encoder(encoding);
+    encoder.encode(in, encoded);
+    ConstBufferView view(encoded.data(), encoded.size());
+    const EncodingInfo decoded_info = DecodeHeader(view);
+    std::vector<Point> output(kPoints);
+    PointcloudDecoder decoder;
+    decoder.decode(decoded_info, view, BufferView(reinterpret_cast<uint8_t*>(output.data()), kPoints * sizeof(Point)));
+    return output;
+  };
+
+  const std::vector<Point> plain = round_trip(info);
+  EncodingInfo refined_info = info;
+  RefineResolutionsToData(refined_info, in);
+  EXPECT_EQ(refined_info.fields[3].resolution, 1.0f);  // ring
+  const std::vector<Point> refined = round_trip(refined_info);
+
+  double max_error_odometer = 0.0;
+  for (size_t i = 0; i < kPoints; ++i) {
+    EXPECT_EQ(refined[i].ring, input[i].ring);
+    const double odometer_error = std::abs(refined[i].odometer - input[i].odometer);
+    max_error_odometer = std::max(max_error_odometer, odometer_error);
+    // never worse than without the refinement (for float fields near 1e4, the original error is
+    // already above resolution / 2: float has ~0.001 precision there)
+    // at most 0.1% of the resolution worse than without the refinement
+    ASSERT_LE(odometer_error, std::max(0.0005, std::abs(plain[i].odometer - input[i].odometer)) + 1e-6)
+        << "odometer of point " << i << " (" << input[i].odometer << ")";
+    ASSERT_LE(
+        std::abs(refined[i].temperature - input[i].temperature),
+        std::max(0.0005f, std::abs(plain[i].temperature - input[i].temperature)) + 1e-6f)
+        << "temperature of point " << i << " (" << input[i].temperature << ")";
+  }
+  EXPECT_LE(max_error_odometer, 0.0005 + 1e-6);
+}

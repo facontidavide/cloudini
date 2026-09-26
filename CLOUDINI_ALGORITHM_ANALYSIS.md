@@ -74,9 +74,12 @@ Fields are often stored as floats but hold integers (`intensity`, `ring`) or
 values on a coarse grid (a reflectance in 0.01 steps). Quantized at 1 mm, such a
 field wastes about 10 bits per point. `RefineResolutionsToData()` (opt-in, per
 cloud) replaces the resolution of these fields with the grid their values lie on:
-1 for integers, which are then stored exactly, or `k * resolution` otherwise. The
-error bound is unchanged and readers need nothing new, since the resolution is in
-the header.
+1 for integers, which are then stored exactly, or `k * resolution` otherwise.
+Readers need nothing new, since the resolution is in the header. `k * resolution`
+is stored as a float and the decoder multiplies in the field's precision, so for
+large values the coarser grid can decode further from the original: a second pass
+decodes every value both ways and keeps it only if no value gets worse by more
+than 0.1% of the resolution.
 
 ## Adaptive Integer Encoding
 
