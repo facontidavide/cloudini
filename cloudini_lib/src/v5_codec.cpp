@@ -406,15 +406,6 @@ V5AdaptiveIntStats analyzeAdaptiveIntField(V5AdaptiveIntField& field) {
   return stats;
 }
 
-void commitAdaptiveIntMode(V5AdaptiveIntField& field) {
-  if (field.committed) {
-    return;
-  }
-  const V5AdaptiveIntStats stats = analyzeAdaptiveIntField(field);
-  field.committed_mode = selectBestAdaptiveIntMode(stats);
-  field.committed = true;
-}
-
 void appendDeltaVarintSection(const std::vector<int64_t>& values, BufferView& out) {
   appendByte(out, static_cast<uint8_t>(AdaptiveIntMode::DeltaVarint));
   int64_t prev = 0;
@@ -483,6 +474,80 @@ void appendRleSection(const std::vector<uint64_t>& raw_values, size_t bytes_per_
   }
 
   std::memcpy(run_count_ptr, &run_count, sizeof(run_count));
+}
+
+size_t serializeAdaptiveIntSection(
+    V5AdaptiveIntField& field, AdaptiveIntMode mode, size_t section_bytes, std::vector<uint8_t>& section) {
+  section.resize(section_bytes);
+  BufferView out(section.data(), section.size());
+  switch (mode) {
+    case AdaptiveIntMode::DeltaVarint:
+      appendDeltaVarintSection(field.values, out);
+      break;
+    case AdaptiveIntMode::Palette:
+      appendPaletteSection(field, out);
+      break;
+    case AdaptiveIntMode::Rle:
+      appendRleSection(field.raw_values, field.bytes_per_value, out);
+      break;
+    case AdaptiveIntMode::DeltaRle:
+      appendDeltaRleSection(field.values, out);
+      break;
+  }
+  return section.size() - out.size();
+}
+
+size_t sectionBytes(const V5AdaptiveIntStats& stats, AdaptiveIntMode mode) {
+  switch (mode) {
+    case AdaptiveIntMode::DeltaVarint:
+      return stats.delta_bytes;
+    case AdaptiveIntMode::Palette:
+      return stats.palette_bytes;
+    case AdaptiveIntMode::Rle:
+      return stats.rle_bytes;
+    case AdaptiveIntMode::DeltaRle:
+      return stats.delta_rle_bytes;
+  }
+  return stats.delta_bytes;
+}
+
+// Below this stage-1 size the choice cannot matter much: skip the trial compression.
+constexpr size_t kTrialCompressionMinBytes = 64;
+
+// Adaptive sections are compressed by stage 2 together with the rest of the chunk, and the mode that is
+// smallest before compression is not always the smallest after it: bit-packed palette indexes, for
+// instance, hide the row-to-row repetition that delta-varint exposes to LZ matching. So, when stage 2 is
+// enabled and the stage-1 winner is not DeltaVarint, both are serialized for the probe values and the
+// one that compresses better is kept.
+AdaptiveIntMode selectAdaptiveIntMode(
+    V5AdaptiveIntField& field, const V5AdaptiveIntStats& stats, CompressionOption compression) {
+  const AdaptiveIntMode stage1_best = selectBestAdaptiveIntMode(stats);
+  if (compression == CompressionOption::NONE || stage1_best == AdaptiveIntMode::DeltaVarint ||
+      sectionBytes(stats, stage1_best) <= kTrialCompressionMinBytes) {
+    return stage1_best;
+  }
+
+  std::vector<uint8_t> section;
+  std::vector<uint8_t> compressed;
+  auto compressed_size = [&](AdaptiveIntMode mode) {
+    const size_t section_bytes = serializeAdaptiveIntSection(field, mode, sectionBytes(stats, mode), section);
+    // generous bound for both LZ4_compressBound and ZSTD_compressBound
+    compressed.resize(section_bytes + section_bytes / 8 + 1024);
+    BufferView compressed_view(compressed.data(), compressed.size());
+    return static_cast<size_t>(
+        CompressChunk(compression, ConstBufferView(section.data(), section_bytes), compressed_view));
+  };
+  return compressed_size(AdaptiveIntMode::DeltaVarint) < compressed_size(stage1_best) ? AdaptiveIntMode::DeltaVarint
+                                                                                      : stage1_best;
+}
+
+void commitAdaptiveIntMode(V5AdaptiveIntField& field, CompressionOption compression) {
+  if (field.committed) {
+    return;
+  }
+  const V5AdaptiveIntStats stats = analyzeAdaptiveIntField(field);
+  field.committed_mode = selectAdaptiveIntMode(field, stats, compression);
+  field.committed = true;
 }
 
 void beginCommittedAdaptiveIntSection(V5AdaptiveIntField& field, size_t points_in_chunk) {
@@ -682,9 +747,9 @@ void collectAdaptiveIntValue(V5AdaptiveIntField& field, const uint8_t* field_ptr
   appendCommittedValueToSection(field, field_ptr);
 }
 
-void appendCommittedAdaptiveIntSection(V5AdaptiveIntField& field, BufferView& out) {
+void appendCommittedAdaptiveIntSection(V5AdaptiveIntField& field, CompressionOption compression, BufferView& out) {
   if (!field.committed) {
-    commitAdaptiveIntMode(field);
+    commitAdaptiveIntMode(field, compression);
   } else if (field.streaming_section) {
     finishCommittedAdaptiveIntSection(field);
     appendBufferedSection(field, out);
@@ -922,8 +987,10 @@ size_t V5StageBufferSize(const EncodingInfo& info, size_t points_per_chunk) {
 void EncodeV5Stage1(
     const EncodingInfo& info, ConstBufferView cloud_data, size_t points_count, size_t points_per_chunk,
     const std::function<BufferView()>& get_stage_buffer,
-    const std::function<void(size_t serialized_size)>& write_stage1_chunk) {
+    const std::function<void(size_t serialized_size, const std::vector<size_t>& section_starts)>& write_stage1_chunk) {
   V5EncoderPlan plan = buildV5Plan(info, points_per_chunk);
+  std::vector<size_t> section_starts;
+  section_starts.reserve(plan.adaptive.size());
 
   size_t points_left = points_count;
   size_t point_offset = 0;
@@ -959,7 +1026,7 @@ void EncodeV5Stage1(
     if (has_uncommitted_adaptive && chunk_points > kAdaptiveModeProbePoints) {
       encode_point_range(0, kAdaptiveModeProbePoints);
       for (auto& adaptive : plan.adaptive) {
-        commitAdaptiveIntMode(adaptive);
+        commitAdaptiveIntMode(adaptive, info.compression_opt);
         beginCommittedAdaptiveIntSection(adaptive, chunk_points);
         appendProbeValuesToCommittedSection(adaptive);
       }
@@ -971,11 +1038,13 @@ void EncodeV5Stage1(
     for (auto& regular : plan.regular) {
       regular->flush(stage_view);
     }
+    section_starts.clear();
     for (auto& adaptive : plan.adaptive) {
-      appendCommittedAdaptiveIntSection(adaptive, stage_view);
+      section_starts.push_back(stage_buffer.size() - stage_view.size());
+      appendCommittedAdaptiveIntSection(adaptive, info.compression_opt, stage_view);
     }
 
-    write_stage1_chunk(stage_buffer.size() - stage_view.size());
+    write_stage1_chunk(stage_buffer.size() - stage_view.size(), section_starts);
 
     point_offset += chunk_points;
     points_left -= chunk_points;

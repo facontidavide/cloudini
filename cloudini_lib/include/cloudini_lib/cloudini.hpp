@@ -196,6 +196,8 @@ class PointcloudEncoder {
   std::unique_ptr<uint8_t[]> buffer_compressing_;
   size_t buffer_compressing_capacity_ = 0;
   size_t buffer_compressing_size_ = 0;
+  // offsets in buffer_compressing_ where stage 2 should start a new compressed block
+  std::vector<size_t> block_starts_compressing_;
 
   // Thread synchronization
   std::mutex mutex_;

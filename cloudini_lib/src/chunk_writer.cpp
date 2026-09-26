@@ -24,7 +24,9 @@
 
 namespace Cloudini::detail {
 
-size_t WriteStage1Chunk(const EncodingInfo& info, ConstBufferView stage1_data, BufferView& output) {
+size_t WriteStage1Chunk(
+    const EncodingInfo& info, ConstBufferView stage1_data, BufferView& output,
+    const std::vector<size_t>* block_starts) {
   if (stage1_data.size() > std::numeric_limits<uint32_t>::max()) {
     throw std::runtime_error("Chunk too large");
   }
@@ -42,7 +44,7 @@ size_t WriteStage1Chunk(const EncodingInfo& info, ConstBufferView stage1_data, B
   uint8_t* chunk_size_ptr = output.data();
   output.trim_front(sizeof(uint32_t));
 
-  const uint32_t chunk_size = CompressChunk(info.compression_opt, stage1_data, output);
+  const uint32_t chunk_size = CompressChunk(info.compression_opt, stage1_data, output, block_starts);
   std::memcpy(chunk_size_ptr, &chunk_size, sizeof(uint32_t));
   return static_cast<size_t>(chunk_size) + sizeof(uint32_t);
 }

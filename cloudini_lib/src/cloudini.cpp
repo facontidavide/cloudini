@@ -520,7 +520,8 @@ void PointcloudEncoder::compressionWorker() {
 
       ConstBufferView stage1_data(buffer_compressing_.get(), buffer_compressing_size_);
       BufferView compressed_output(output_view_.data(), output_view_.size());
-      const uint32_t chunk_size = detail::CompressChunk(info_.compression_opt, stage1_data, compressed_output);
+      const uint32_t chunk_size =
+          detail::CompressChunk(info_.compression_opt, stage1_data, compressed_output, &block_starts_compressing_);
       output_view_ = compressed_output;
       memcpy(compressed_chunk_size_ptr, &chunk_size, sizeof(uint32_t));
 
@@ -619,16 +620,17 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
     output_view_.trim_front(header_.size());
   }
 
-  auto write_stage1_chunk = [&](size_t serialized_size) {
+  auto write_stage1_chunk = [&](size_t serialized_size, const std::vector<size_t>& block_starts) {
     ConstBufferView stage1_data(buffer_.get(), serialized_size);
     if (info_.compression_opt == CompressionOption::NONE || !info_.use_threads) {
-      compressed_size_ += detail::WriteStage1Chunk(info_, stage1_data, output_view_);
+      compressed_size_ += detail::WriteStage1Chunk(info_, stage1_data, output_view_, &block_starts);
       return;
     }
     waitForCompressionComplete();
     {
       std::unique_lock<std::mutex> lock(mutex_);
       buffer_compressing_size_ = serialized_size;
+      block_starts_compressing_ = block_starts;
       std::swap(buffer_, buffer_compressing_);
       std::swap(buffer_capacity_, buffer_compressing_capacity_);
       has_data_to_compress_ = true;
@@ -659,7 +661,7 @@ size_t PointcloudEncoder::encode(ConstBufferView cloud_data, BufferView& output,
       BufferView stage_view(buffer_.get(), buffer_capacity_);
       const size_t serialized_size =
           detail::EncodeV4Stage1Chunk(info_, encoders_, remaining, detail::kPointsPerChunk, stage_view);
-      write_stage1_chunk(serialized_size);
+      write_stage1_chunk(serialized_size, {});
     }
   }
 

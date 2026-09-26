@@ -93,8 +93,16 @@ Each adaptive integer field chooses one mode:
 
 ### Mode Selection
 
-For each adaptive integer field, V5 estimates all adaptive modes and commits the
-smallest one.
+For each adaptive integer field, V5 estimates the Stage 1 size of all adaptive
+modes and picks the smallest one.
+
+When Stage 2 compression is enabled, the smallest mode before compression is not
+always the smallest after it: bit-packed palette indexes, for example, hide the
+row-to-row repetition that delta-varint exposes to LZ matching (e.g. per-column
+timestamps of an organized scan). So, if the Stage 1 winner is not `DeltaVarint`,
+the probe values are serialized in both modes and compressed with the configured
+compressor, and the mode with the smaller compressed size is committed. This only
+changes which (already supported) mode is written; decoders are unaffected.
 
 - If the first chunk has more than `4096` points, V5 probes the first `4096`
   points, picks the mode, then streams the rest of the chunk using that mode.
@@ -132,6 +140,11 @@ is being encoded.
 
 ZSTD contexts are reused per thread (`ZSTD_compressCCtx` / `ZSTD_decompressDCtx`)
 instead of being created by every `ZSTD_compress` / `ZSTD_decompress` call.
+
+For V5 chunks, the ZSTD frame ends a compressed block where each adaptive
+section starts. ZSTD entropy-codes literals with one set of statistics per block,
+so this keeps the statistics of the per-point stream and of each section apart.
+The chunk is still a single standard ZSTD frame.
 
 Scratch buffers are retained by capacity and are not zero-filled before each
 chunk. Only the serialized byte range is passed to Stage 2.

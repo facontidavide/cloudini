@@ -31,7 +31,7 @@ size_t V5StageBufferSize(const EncodingInfo& info, size_t points_per_chunk);
 void EncodeV5Stage1(
     const EncodingInfo& info, ConstBufferView cloud_data, size_t points_count, size_t points_per_chunk,
     const std::function<BufferView()>& get_stage_buffer,
-    const std::function<void(size_t serialized_size)>& write_stage1_chunk);
+    const std::function<void(size_t serialized_size, const std::vector<size_t>& section_starts)>& write_stage1_chunk);
 
 void BuildV5Decoders(
     const EncodingInfo& info, std::vector<std::unique_ptr<FieldDecoder>>& decoders, size_t& min_encoded_point_bytes);

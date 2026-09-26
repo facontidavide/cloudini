@@ -20,6 +20,8 @@
 
 namespace Cloudini::detail {
 
-size_t WriteStage1Chunk(const EncodingInfo& info, ConstBufferView stage1_data, BufferView& output);
+size_t WriteStage1Chunk(
+    const EncodingInfo& info, ConstBufferView stage1_data, BufferView& output,
+    const std::vector<size_t>* block_starts = nullptr);
 
 }  // namespace Cloudini::detail

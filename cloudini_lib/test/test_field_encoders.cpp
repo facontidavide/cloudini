@@ -1114,3 +1114,136 @@ TEST(FieldEncoders, EncodeToVectorMatchesPreallocatedBuffer) {
     ASSERT_EQ(0, std::memcmp(prealloc.data(), as_vector.data(), size));
   }
 }
+
+namespace {
+
+// Encode `values` as a single-field cloud with the given version and compression, return the payload size.
+template <typename IntType>
+size_t encodedIntFieldSize(
+    const std::vector<IntType>& values, Cloudini::FieldType type, uint8_t version,
+    Cloudini::CompressionOption compression) {
+  using namespace Cloudini;
+  EncodingInfo info = makeV5IntOnlyInfo(values.size(), type, compression);
+  info.version = version;
+  PointcloudEncoder encoder(info);
+  std::vector<uint8_t> encoded;
+  encoder.encode(
+      ConstBufferView(reinterpret_cast<const uint8_t*>(values.data()), values.size() * sizeof(IntType)), encoded);
+  if (version == 5) {
+    expectV5IntOnlyRoundTrip(values, type, encoded);
+  }
+  return encoded.size() - encoder.getHeader().size();
+}
+
+}  // namespace
+
+TEST(FieldEncoders, PointcloudV5_ModeSelectionAccountsForStage2) {
+  using namespace Cloudini;
+  constexpr uint8_t kPaletteMode = 1;
+
+  // Per-column timestamps of an organized scan (like Ouster's `t`): every row repeats the same 1024 values.
+  // Before stage 2, palette indexes (10 bits) beat delta-varint (3 bytes); after it, the repeated delta-varint
+  // rows compress far better than bit-packed indexes, so V5 must not end up larger than plain V4 deltas.
+  std::vector<uint32_t> column_time(1024);
+  std::mt19937 rng(7);
+  for (size_t col = 0; col < column_time.size(); ++col) {
+    column_time[col] = static_cast<uint32_t>(col * 97656 + rng() % 64);
+  }
+  const auto t = makeIntSequence<uint32_t>(64 * 1024, [&](size_t i) { return column_time[i % 1024]; });
+  EXPECT_EQ(
+      v5UncompressedChunkModes(encodeV5IntOnly(t, FieldType::UINT32, CompressionOption::NONE)),
+      std::vector<uint8_t>({kPaletteMode, kPaletteMode}));
+  for (auto compression : {CompressionOption::ZSTD, CompressionOption::LZ4}) {
+    const size_t v4 = encodedIntFieldSize(t, FieldType::UINT32, 4, compression);
+    const size_t v5 = encodedIntFieldSize(t, FieldType::UINT32, 5, compression);
+    EXPECT_LE(v5, v4 + 64) << "compression " << ToString(compression);
+  }
+
+  // Random choice among 16 values: the palette stays the better choice after compression too.
+  std::vector<uint32_t> levels(16);
+  for (auto& level : levels) {
+    level = static_cast<uint32_t>(rng());
+  }
+  const auto labels = makeIntSequence<uint32_t>(64 * 1024, [&](size_t) { return levels[rng() % 16]; });
+  const size_t v4 = encodedIntFieldSize(labels, FieldType::UINT32, 4, CompressionOption::ZSTD);
+  const size_t v5 = encodedIntFieldSize(labels, FieldType::UINT32, 5, CompressionOption::ZSTD);
+  EXPECT_LT(v5, v4);
+}
+
+TEST(FieldEncoders, PointcloudV5_MixedFieldsRoundTripWithStage2) {
+  using namespace Cloudini;
+
+  // xyzi floats followed by several adaptive integer sections, over multiple chunks, with and without the
+  // compression thread: the ZSTD blocks are split where the sections start.
+  struct Point {
+    float x, y, z, intensity;
+    uint32_t t;
+    uint16_t reflectivity, ring, ambient;
+    uint16_t pad;
+    uint32_t range;
+  };
+  constexpr size_t kWidth = 1024;
+  constexpr size_t kRows = 80;  // 81920 points: 3 chunks
+  std::vector<Point> input(kWidth * kRows);
+  std::mt19937 rng(3);
+  for (size_t r = 0; r < kRows; ++r) {
+    for (size_t c = 0; c < kWidth; ++c) {
+      Point& p = input[r * kWidth + c];
+      const float range = 5.0f + 0.001f * static_cast<float>(rng() % 20000);
+      const float az = 6.2831853f * static_cast<float>(c) / kWidth;
+      p.x = range * std::cos(az);
+      p.y = range * std::sin(az);
+      p.z = 0.01f * static_cast<float>(r);
+      p.intensity = static_cast<float>(rng() % 300);
+      p.t = static_cast<uint32_t>(c * 48828);
+      p.reflectivity = static_cast<uint16_t>(rng() % 256);
+      p.ring = static_cast<uint16_t>(r);
+      p.ambient = static_cast<uint16_t>(500 + rng() % 40);
+      p.pad = 0;
+      p.range = static_cast<uint32_t>(range * 1000.0f);
+    }
+  }
+  EncodingInfo info;
+  info.width = kWidth;
+  info.height = kRows;
+  info.point_step = sizeof(Point);
+  info.fields = {
+      {"x", 0, FieldType::FLOAT32, 0.001f}, {"y", 4, FieldType::FLOAT32, 0.001f},
+      {"z", 8, FieldType::FLOAT32, 0.001f}, {"intensity", 12, FieldType::FLOAT32, 0.001f},
+      {"t", 16, FieldType::UINT32, {}},     {"reflectivity", 20, FieldType::UINT16, {}},
+      {"ring", 22, FieldType::UINT16, {}},  {"ambient", 24, FieldType::UINT16, {}},
+      {"range", 28, FieldType::UINT32, {}},
+  };
+  const ConstBufferView in(reinterpret_cast<const uint8_t*>(input.data()), input.size() * sizeof(Point));
+
+  std::vector<uint8_t> reference;
+  for (auto compression : {CompressionOption::NONE, CompressionOption::LZ4, CompressionOption::ZSTD}) {
+    for (bool threads : {false, true}) {
+      info.compression_opt = compression;
+      info.use_threads = threads;
+      PointcloudEncoder encoder(info);
+      std::vector<uint8_t> encoded;
+      encoder.encode(in, encoded);
+
+      ConstBufferView view(encoded.data(), encoded.size());
+      const EncodingInfo header = DecodeHeader(view);
+      std::vector<uint8_t> decoded(input.size() * sizeof(Point), 0);
+      PointcloudDecoder decoder;
+      decoder.decode(header, view, decoded);
+      if (reference.empty()) {
+        reference = decoded;
+      }
+      ASSERT_EQ(decoded, reference) << ToString(compression) << " threads=" << threads;
+    }
+  }
+  // integer fields are lossless
+  const auto* decoded_points = reinterpret_cast<const Point*>(reference.data());
+  for (size_t i = 0; i < input.size(); ++i) {
+    ASSERT_EQ(decoded_points[i].t, input[i].t);
+    ASSERT_EQ(decoded_points[i].reflectivity, input[i].reflectivity);
+    ASSERT_EQ(decoded_points[i].ring, input[i].ring);
+    ASSERT_EQ(decoded_points[i].ambient, input[i].ambient);
+    ASSERT_EQ(decoded_points[i].range, input[i].range);
+    ASSERT_NEAR(decoded_points[i].x, input[i].x, 0.0006f);
+  }
+}

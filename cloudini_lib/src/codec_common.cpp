@@ -265,7 +265,51 @@ size_t FlushEncoders(std::vector<std::unique_ptr<FieldEncoder>>& encoders, Buffe
   return serialized_size;
 }
 
-uint32_t CompressChunk(CompressionOption compression, ConstBufferView input, BufferView& output) {
+namespace {
+
+// One ZSTD frame, ending a block at every offset in `block_starts`. ZSTD entropy-codes literals with one
+// set of statistics per block: starting a block where the data changes nature (e.g. a V5 adaptive
+// section after the per-point stream) keeps the statistics of the two regions apart.
+size_t compressZstdWithBlockStarts(ConstBufferView input, BufferView output, const std::vector<size_t>& block_starts) {
+  ZSTD_CCtx* cctx = threadCCtx();
+  auto check = [](size_t ret) {
+    if (ZSTD_isError(ret)) {
+      throw std::runtime_error(std::string("ZSTD compression failed: ") + ZSTD_getErrorName(ret));
+    }
+    return ret;
+  };
+  check(ZSTD_CCtx_reset(cctx, ZSTD_reset_session_and_parameters));
+  check(ZSTD_CCtx_setParameter(cctx, ZSTD_c_compressionLevel, 1));
+  check(ZSTD_CCtx_setPledgedSrcSize(cctx, input.size()));
+
+  ZSTD_outBuffer out = {output.data(), output.size(), 0};
+  auto compress_until = [&](size_t start, size_t end, ZSTD_EndDirective directive) {
+    ZSTD_inBuffer in = {input.data() + start, end - start, 0};
+    while (true) {
+      const size_t remaining = check(ZSTD_compressStream2(cctx, &out, &in, directive));
+      if (remaining == 0 && in.pos == in.size) {
+        return;
+      }
+      if (out.pos == out.size) {
+        throw std::runtime_error("ZSTD compression failed: output buffer too small");
+      }
+    }
+  };
+  size_t start = 0;
+  for (const size_t block_start : block_starts) {
+    if (block_start > start && block_start < input.size()) {
+      compress_until(start, block_start, ZSTD_e_flush);
+      start = block_start;
+    }
+  }
+  compress_until(start, input.size(), ZSTD_e_end);
+  return out.pos;
+}
+
+}  // namespace
+
+uint32_t CompressChunk(
+    CompressionOption compression, ConstBufferView input, BufferView& output, const std::vector<size_t>* block_starts) {
   if (input.size() > std::numeric_limits<uint32_t>::max()) {
     throw std::runtime_error("Chunk too large");
   }
@@ -287,7 +331,10 @@ uint32_t CompressChunk(CompressionOption compression, ConstBufferView input, Buf
     } break;
 
     case CompressionOption::ZSTD: {
-      const size_t cs = ZSTD_compressCCtx(threadCCtx(), output.data(), output.size(), input.data(), input.size(), 1);
+      const size_t cs =
+          (block_starts && !block_starts->empty())
+              ? compressZstdWithBlockStarts(input, output, *block_starts)
+              : ZSTD_compressCCtx(threadCCtx(), output.data(), output.size(), input.data(), input.size(), 1);
       if (ZSTD_isError(cs)) {
         throw std::runtime_error("ZSTD compression failed");
       }
