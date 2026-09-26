@@ -1040,7 +1040,8 @@ struct V6ChunkGeometry {
   bool raw = false;
 };
 
-void quantizeV6Chunk(const V6Geometry& g, const uint8_t* points, size_t point_step, size_t n, V6ChunkGeometry& out) {
+void quantizeV6Chunk(
+    const V6Geometry& g, const uint8_t* points, size_t point_step, size_t n, bool allow_mask, V6ChunkGeometry& out) {
   out.points = n;
   out.quantized.resize(n * 3);
   out.nan.resize(n * 3);
@@ -1066,7 +1067,7 @@ void quantizeV6Chunk(const V6Geometry& g, const uint8_t* points, size_t point_st
     nan_points += (nan_axes == 3);
     zero_points += (zero_axes == 3);
   }
-  if (out.raw || (nan_points == 0 && zero_points == 0)) {
+  if (out.raw || !allow_mask || (nan_points == 0 && zero_points == 0)) {
     return;
   }
   out.mask = nan_points >= zero_points ? V6MaskKind::NaN : V6MaskKind::Zero;
@@ -1581,6 +1582,10 @@ void EncodeV6Stage1(
   const bool select_by_compressed_size = v6SelectByCompressedSize(info);
   // experiment: "v6_blocks=none" starts no ZSTD block at the V6 sections (one-shot compression)
   const bool mark_sections = info.encoding_config.find("v6_blocks=none") == std::string::npos;
+  // ablations: "v6_predictor=previous" always predicts from the previous point (no lag detection, no
+  // probing); "v6_mask=off" codes no-return points like the others
+  const bool previous_only = info.encoding_config.find("v6_predictor=previous") != std::string::npos;
+  const bool allow_mask = info.encoding_config.find("v6_mask=off") == std::string::npos;
   size_t chunk_index = 0;
 
   size_t points_left = points_count;
@@ -1598,7 +1603,7 @@ void EncodeV6Stage1(
       }
     };
 
-    quantizeV6Chunk(geometry, base, info.point_step, n, chunk);
+    quantizeV6Chunk(geometry, base, info.point_step, n, allow_mask, chunk);
     if (chunk.raw) {
       appendByte(out, static_cast<uint8_t>(V6GeometryMode::Raw));
       for (size_t a = 0; a < kV6GeometryFields; ++a) {
@@ -1608,6 +1613,11 @@ void EncodeV6Stage1(
         }
       }
     } else {
+      if (previous_only) {  // ablation: no lag detection, no probing
+        state.lag = 0;
+        state.lag_known = true;
+        state.predictors[chunk_index] = static_cast<uint8_t>(V6Predictor::Previous);
+      }
       if (!state.lag_known) {
         state.lag = detectV6Lag(chunk);
         state.lag_known = true;
