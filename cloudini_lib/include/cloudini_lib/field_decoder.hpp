@@ -57,6 +57,21 @@ class FieldDecoder {
 
   virtual void reset() = 0;
 
+  /// Largest number of input bytes one decode() can consume, or 0 when unbounded (no fast path).
+  virtual size_t maxInputBytes() const {
+    return 0;
+  }
+
+  /**
+   * @brief Same result as decode(), for a caller that guarantees at least maxInputBytes() readable bytes
+   * at `ptr` (so no per-byte bounds checks). Advances `ptr`. Only valid when maxInputBytes() != 0.
+   */
+  virtual void decodeUnchecked(const uint8_t*& ptr, uint8_t* point) {
+    ConstBufferView view(ptr, maxInputBytes());
+    decode(view, BufferView(point, 0));
+    ptr = view.data();
+  }
+
   /// Minimum number of input bytes this decoder needs per call.
   /// Used by PointcloudDecoder for a single per-point bounds check.
   size_t minInputBytes() const {
@@ -89,6 +104,17 @@ class FieldDecoderCopy : public FieldDecoder {
 
   void reset() override {}
 
+  size_t maxInputBytes() const override {
+    return field_size_;
+  }
+
+  void decodeUnchecked(const uint8_t*& ptr, uint8_t* point) override {
+    if (offset_ != kDecodeButSkipStore) {
+      memcpy(point + offset_, ptr, field_size_);
+    }
+    ptr += field_size_;
+  }
+
  private:
   size_t offset_ = 0;
   size_t field_size_ = 0;
@@ -119,6 +145,20 @@ class FieldDecoderInt : public FieldDecoder {
 
   void reset() override {
     prev_value_ = 0;
+  }
+
+  size_t maxInputBytes() const override {
+    return kMaxVarintBytes;
+  }
+
+  void decodeUnchecked(const uint8_t*& ptr, uint8_t* point) override {
+    int64_t diff = 0;
+    ptr += decodeVarintUnchecked(ptr, diff);
+    const int64_t value = static_cast<int64_t>(static_cast<uint64_t>(prev_value_) + static_cast<uint64_t>(diff));
+    prev_value_ = value;
+    if (offset_ != kDecodeButSkipStore) {
+      memcpy(point + offset_, &value, sizeof(IntType));
+    }
   }
 
  private:
@@ -170,6 +210,27 @@ class FieldDecoderFloat_Lossy : public FieldDecoder {
     prev_value_ = 0;
   }
 
+  size_t maxInputBytes() const override {
+    return kMaxVarintBytes;
+  }
+
+  void decodeUnchecked(const uint8_t*& ptr, uint8_t* point) override {
+    FloatType value;
+    if (*ptr == 0) {
+      ++ptr;
+      prev_value_ = 0;
+      value = std::numeric_limits<FloatType>::quiet_NaN();
+    } else {
+      int64_t diff = 0;
+      ptr += decodeVarintUnchecked(ptr, diff);
+      prev_value_ = static_cast<int64_t>(static_cast<uint64_t>(prev_value_) + static_cast<uint64_t>(diff));
+      value = static_cast<FloatType>(prev_value_) * multiplier_;
+    }
+    if (offset_ != kDecodeButSkipStore) {
+      memcpy(point + offset_, &value, sizeof(FloatType));
+    }
+  }
+
  private:
   size_t offset_ = 0;
   FloatType multiplier_ = 0.0;
@@ -190,6 +251,21 @@ class FieldDecoderFloat_XOR : public FieldDecoder {
 
   void reset() override {
     prev_bits_ = 0;
+  }
+
+  size_t maxInputBytes() const override {
+    return sizeof(IntType);
+  }
+
+  void decodeUnchecked(const uint8_t*& ptr, uint8_t* point) override {
+    IntType residual = 0;
+    memcpy(&residual, ptr, sizeof(IntType));
+    ptr += sizeof(IntType);
+    const IntType current_bits = residual ^ prev_bits_;
+    prev_bits_ = current_bits;
+    if (offset_ != kDecodeButSkipStore) {
+      memcpy(point + offset_, &current_bits, sizeof(FloatType));
+    }
   }
 
  private:
@@ -366,6 +442,12 @@ class FieldDecoderFloatN_Lossy : public FieldDecoder {
   void reset() override {
     prev_vect_ = Vector4i(0, 0, 0, 0);
   }
+
+  size_t maxInputBytes() const override {
+    return fields_count_ * kMaxVarintBytes;
+  }
+
+  void decodeUnchecked(const uint8_t*& ptr, uint8_t* point) override;
 
  private:
   template <size_t N>

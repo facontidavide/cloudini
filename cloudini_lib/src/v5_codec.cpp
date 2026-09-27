@@ -827,10 +827,36 @@ void decodeV5AdaptiveIntValues(
         throw std::runtime_error("V5 adaptive int: truncated palette indexes");
       }
       const uint8_t* index_ptr = input.data();
+      size_t i = 0;
+      if (bits > 0) {
+        // Fast path: value i is at bit i * bits; read it from a 64-bit window while one is readable
+        // (bits <= 16, so the value never crosses the window). No loop-carried state.
+        const uint64_t mask = (uint64_t{1} << bits) - 1u;
+        const uint64_t* pal = palette.data();
+        const size_t pal_count = palette.size();
+        uint8_t* out = output_base + field.offset;
+        for (; i < expected_points && ((i * bits) >> 3) + 8 <= index_bytes; ++i) {
+          const size_t bitpos = i * bits;
+          uint64_t word;
+          std::memcpy(&word, index_ptr + (bitpos >> 3), sizeof(word));
+          const uint32_t idx = static_cast<uint32_t>((word >> (bitpos & 7)) & mask);
+          if (idx >= pal_count) {
+            throw std::runtime_error("V5 adaptive int: palette index out of range");
+          }
+          writeValueToPoint<Bytes, Store>(pal[idx], out + i * point_step);
+        }
+      }
+      // Tail (and bits == 0): the byte-at-a-time reader, started at bit i * bits.
+      const size_t bitpos = i * bits;
+      const uint8_t* tail_ptr = index_ptr + (bitpos >> 3);
       uint64_t scratch = 0;
       uint8_t held = 0;
-      for (size_t i = 0; i < expected_points; ++i) {
-        const uint32_t idx = readBitpackedIndex(index_ptr, scratch, held, bits);
+      if (i < expected_points && (bitpos & 7) != 0) {
+        scratch = static_cast<uint64_t>(*tail_ptr++) >> (bitpos & 7);
+        held = static_cast<uint8_t>(8 - (bitpos & 7));
+      }
+      for (; i < expected_points; ++i) {
+        const uint32_t idx = readBitpackedIndex(tail_ptr, scratch, held, bits);
         if (idx >= palette.size()) {
           throw std::runtime_error("V5 adaptive int: palette index out of range");
         }
@@ -1053,8 +1079,9 @@ void DecodeV5Stage1Chunk(
     // Typically the xyz(i) vector, when every other field is an adaptive section.
     decoders.front()->decodePoints(encoded_view, chunk_output, info.point_step, expected_points);
   } else {
-    for (size_t p = 0; p < expected_points; ++p) {
-      BufferView point_view(chunk_output + p * info.point_step, info.point_step);
+    const size_t p = DecodePointsUnchecked(decoders, encoded_view, chunk_output, info.point_step, expected_points);
+    for (size_t p2 = p; p2 < expected_points; ++p2) {
+      BufferView point_view(chunk_output + p2 * info.point_step, info.point_step);
       for (auto& decoder : decoders) {
         decoder->decode(encoded_view, point_view);
       }

@@ -86,6 +86,45 @@ void FieldDecoderFloatN_Lossy::decode(ConstBufferView& input, BufferView dest_po
   input.trim_front(consumed);
 }
 
+template <size_t N>
+static inline void decodeUncheckedImpl(
+    const uint8_t*& ptr, uint8_t* point, Vector4i& prev_vect, const Vector4f& multiplier,
+    const std::array<size_t, 4>& offset) {
+  const uint8_t* p = ptr;
+  for (size_t k = 0; k < N; ++k) {
+    float value;
+    if (*p == 0) {
+      ++p;
+      prev_vect[k] = 0;
+      value = std::numeric_limits<float>::quiet_NaN();
+    } else {
+      int64_t diff = 0;
+      p += decodeVarintUnchecked(p, diff);
+      const int32_t v = static_cast<int32_t>(static_cast<uint32_t>(prev_vect[k]) + static_cast<uint32_t>(diff));
+      prev_vect[k] = v;
+      value = static_cast<float>(v) * multiplier[k];
+    }
+    if (offset[k] != kDecodeButSkipStore) {
+      memcpy(point + offset[k], &value, sizeof(float));
+    }
+  }
+  ptr = p;
+}
+
+void FieldDecoderFloatN_Lossy::decodeUnchecked(const uint8_t*& ptr, uint8_t* point) {
+  switch (fields_count_) {
+    case 2:
+      decodeUncheckedImpl<2>(ptr, point, prev_vect_, multiplier_, offset_);
+      break;
+    case 3:
+      decodeUncheckedImpl<3>(ptr, point, prev_vect_, multiplier_, offset_);
+      break;
+    default:
+      decodeUncheckedImpl<4>(ptr, point, prev_vect_, multiplier_, offset_);
+      break;
+  }
+}
+
 void FieldDecoderFloatN_Lossy::decodePoints(ConstBufferView& input, uint8_t* output, size_t point_step, size_t count) {
   switch (fields_count_) {
     case 2:

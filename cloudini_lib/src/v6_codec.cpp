@@ -104,19 +104,20 @@ inline int64_t wrapV6(uint64_t value) {
 // Prediction of value i of one axis from the values already reconstructed (same axis only). The
 // arithmetic wraps around: values decoded from a corrupted stream can be anywhere in the int64 range
 // (the encoder's values stay below 2^50, where wrapping never happens).
-template <V6Predictor P>
+template <V6Predictor P, bool Interior = false>
 #if defined(__GNUC__)
 __attribute__((always_inline))
 #endif
 inline int64_t
 v6Predict(const int64_t* q, size_t i, size_t K) {
-  const int64_t prev = i >= 1 ? q[i - 1] : 0;
+  // Interior (decoder): i >= K + 2 is guaranteed, so the boundary tests fold away.
+  const int64_t prev = (Interior || i >= 1) ? q[i - 1] : 0;
   if constexpr (P == V6Predictor::Previous) {
     return prev;
   } else if constexpr (P == V6Predictor::LagK) {
-    return i >= K ? q[i - K] : prev;
+    return (Interior || i >= K) ? q[i - K] : prev;
   } else if constexpr (P == V6Predictor::Median) {
-    if (i <= K) {
+    if (!Interior && i <= K) {
       return prev;
     }
     // LOCO-I median edge detector
@@ -124,7 +125,7 @@ v6Predict(const int64_t* q, size_t i, size_t K) {
     const int64_t mx = std::max(pa, pb), mn = std::min(pa, pb);
     return pc >= mx ? mn : (pc <= mn ? mx : wrapV6(uint64_t(pa) + uint64_t(pb) - uint64_t(pc)));
   } else {
-    return i >= 2 ? wrapV6(2 * uint64_t(prev) - uint64_t(q[i - 2])) : prev;
+    return (Interior || i >= 2) ? wrapV6(2 * uint64_t(prev) - uint64_t(q[i - 2])) : prev;
   }
 }
 
@@ -941,10 +942,10 @@ struct V6AxisOut {
 };
 
 // Decodes one axis value of a valid point.
-template <V6Predictor P, bool Checked>
+template <V6Predictor P, bool Checked, bool Interior = false>
 inline float v6DecodeValue(
     const uint8_t*& ptr, const uint8_t* end, int64_t* q, size_t i, size_t K, const V6AxisOut& axis) {
-  const int64_t pred = v6Predict<P>(q, i, K);
+  const int64_t pred = v6Predict<P, Interior>(q, i, K);
   int64_t residual = 0;
   if (!v6ReadResidual<Checked>(ptr, end, residual)) {
     q[i] = pred;
@@ -974,8 +975,10 @@ void decodeV6Geometry(
     const size_t worst = count * kMaxVarintBytes;
     const bool fast = static_cast<size_t>(end[0] - ptr[0]) >= worst && static_cast<size_t>(end[1] - ptr[1]) >= worst &&
                       static_cast<size_t>(end[2] - ptr[2]) >= worst;
-    auto run = [&](auto checked_tag) {
+    const bool interior = block >= K + 2;
+    auto run = [&](auto checked_tag, auto interior_tag) {
       constexpr bool Checked = decltype(checked_tag)::value;
+      constexpr bool Interior = decltype(interior_tag)::value;
       // locals, so that the stream pointers stay in registers
       const uint8_t* p0 = ptr[0];
       const uint8_t* p1 = ptr[1];
@@ -995,9 +998,9 @@ void decodeV6Geometry(
           }
           continue;
         }
-        const float x = v6DecodeValue<P, Checked>(p0, e0, q0, i, K, a0);
-        const float y = v6DecodeValue<P, Checked>(p1, e1, q1, i, K, a1);
-        const float z = v6DecodeValue<P, Checked>(p2, e2, q2, i, K, a2);
+        const float x = v6DecodeValue<P, Checked, Interior>(p0, e0, q0, i, K, a0);
+        const float y = v6DecodeValue<P, Checked, Interior>(p1, e1, q1, i, K, a1);
+        const float z = v6DecodeValue<P, Checked, Interior>(p2, e2, q2, i, K, a2);
         if (a0.dst) {
           std::memcpy(a0.dst + i * step, &x, sizeof(float));
         }
@@ -1012,10 +1015,12 @@ void decodeV6Geometry(
       ptr[1] = p1;
       ptr[2] = p2;
     };
-    if (fast) {
-      run(std::false_type{});
+    if (fast && interior) {
+      run(std::false_type{}, std::true_type{});
+    } else if (fast) {
+      run(std::false_type{}, std::false_type{});
     } else {
-      run(std::true_type{});
+      run(std::true_type{}, std::false_type{});
     }
   }
 }

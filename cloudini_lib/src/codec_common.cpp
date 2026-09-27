@@ -251,6 +251,30 @@ void ResetEncoders(std::vector<std::unique_ptr<FieldEncoder>>& encoders) {
   }
 }
 
+size_t DecodePointsUnchecked(
+    std::vector<std::unique_ptr<FieldDecoder>>& decoders, ConstBufferView& input, uint8_t* output, size_t point_step,
+    size_t count) {
+  size_t max_point_bytes = 0;
+  for (const auto& decoder : decoders) {
+    const size_t m = decoder->maxInputBytes();
+    if (m == 0) {
+      return 0;
+    }
+    max_point_bytes += m;
+  }
+  const uint8_t* ptr = input.data();
+  const uint8_t* const end = input.data() + input.size();
+  size_t p = 0;
+  for (; p < count && static_cast<size_t>(end - ptr) >= max_point_bytes; ++p) {
+    uint8_t* point = output + p * point_step;
+    for (auto& decoder : decoders) {
+      decoder->decodeUnchecked(ptr, point);
+    }
+  }
+  input.trim_front(static_cast<size_t>(ptr - input.data()));
+  return p;
+}
+
 void ResetDecoders(std::vector<std::unique_ptr<FieldDecoder>>& decoders) {
   for (auto& decoder : decoders) {
     decoder->reset();
