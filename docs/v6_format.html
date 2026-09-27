@@ -153,6 +153,10 @@
 
   .spec td { white-space: normal; vertical-align: top; }
   .spec td:nth-child(2) { font-family: var(--font-mono); font-size: 13px; white-space: nowrap; }
+  .datasets td:first-child { font-weight: 600; min-width: 9em; }
+  .datasets td:nth-child(2) { font-family: var(--font-body); font-size: 14px; white-space: normal; min-width: 16em; }
+  .datasets td { font-size: 14px; }
+  .datasets a { overflow-wrap: anywhere; }
   .rails { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px 28px; }
   .rail { display: flex; flex-direction: column; gap: 4px; padding-left: 14px; border-left: 2px solid var(--rule); }
   .rail h3 { font-size: 1rem; }
@@ -377,8 +381,30 @@
     </div>
   </section>
 
+  <section aria-labelledby="data-title">
+    <h2 id="data-title">Appendix A. Datasets</h2>
+    <p>All sources are public. Each was converted to a raw PointCloud2 buffer with the layout listed; the charts use the names in the first column. Check each dataset's license on its home page before redistributing.</p>
+    <div class="panel">
+      <div class="scroll">
+        <table class="spec datasets">
+          <thead><tr><th scope="col">Dataset</th><th scope="col">Frames used</th><th scope="col">Layout (point step)</th><th scope="col">Download</th></tr></thead>
+          <tbody>
+            <tr><td>Ouster OS0-32, OS0-128, OS1-32, OS1-64, OS1-128, OS2-32, OS2-128</td><td>all frames of the test pcaps <code>OS-0-32-U1_v2.2.0_1024x10</code>, <code>OS-0-128-U1_v2.3.0_1024x10</code>, <code>OS-1-32-G_v2.1.1_1024x10</code>, <code>OS-1-64_1024x10_fw20</code>, <code>OS-1-128_v2.3.0_1024x10_lb_n3</code>, <code>OS-2-32-U0_v2.0.0_1024x10</code>, <code>OS-2-128-U1_v2.3.0_1024x10</code> (<code>sdk/tests/pcaps/</code>), destaggered, no return = (0, 0, 0)</td><td>ouster-ros: x, y, z, intensity f32; t u32; reflectivity, ring, ambient u16; range u32 (48 B)</td><td><a href="https://files.pythonhosted.org/packages/90/7f/9954147316e01442edac8f1877eb5eef43ba120e7a20b928066862a94c1d/ouster_sdk-1.0.1.tar.gz">ouster_sdk-1.0.1.tar.gz</a> (PyPI sdist of <a href="https://pypi.org/project/ouster-sdk/1.0.1/">ouster-sdk 1.0.1</a>)</td></tr>
+            <tr><td>KITTI HDL-64</td><td>first 3 scans of <code>velodyne_points/data/</code> in each drive</td><td>x, y, z, reflectance f32 (16 B)</td><td><a href="https://s3.eu-central-1.amazonaws.com/avg-kitti/raw_data/2011_09_26_drive_0001/2011_09_26_drive_0001_sync.zip">2011_09_26_drive_0001_sync.zip</a>, <a href="https://s3.eu-central-1.amazonaws.com/avg-kitti/raw_data/2011_09_26_drive_0009/2011_09_26_drive_0009_sync.zip">2011_09_26_drive_0009_sync.zip</a> (<a href="https://www.cvlibs.net/datasets/kitti/raw_data.php">KITTI raw data</a>)</td></tr>
+            <tr><td>Argoverse 2</td><td>sweeps <code>315969904359876000</code>, <code>315969904460072000</code>, <code>315969904559605000</code> of sensor val log <code>02678d04-cc9f-3148-9f95-1ba66347dff9</code>; xyz are float16 in the source</td><td>ROS 2 velodyne: x, y, z, intensity f32; ring u16; time f32 (22 B)</td><td><a href="https://s3.amazonaws.com/argoverse/datasets/av2/sensor/val/02678d04-cc9f-3148-9f95-1ba66347dff9/sensors/lidar/315969904359876000.feather">…359876000.feather</a>, <a href="https://s3.amazonaws.com/argoverse/datasets/av2/sensor/val/02678d04-cc9f-3148-9f95-1ba66347dff9/sensors/lidar/315969904460072000.feather">…460072000.feather</a>, <a href="https://s3.amazonaws.com/argoverse/datasets/av2/sensor/val/02678d04-cc9f-3148-9f95-1ba66347dff9/sensors/lidar/315969904559605000.feather">…559605000.feather</a> (<a href="https://www.argoverse.org/av2.html">Argoverse 2</a>)</td></tr>
+            <tr><td>nuScenes HDL-32</td><td>one LIDAR_TOP sweep (firing order)</td><td>x, y, z, intensity, ring f32 (20 B)</td><td><a href="https://raw.githubusercontent.com/open-mmlab/mmdetection3d/main/demo/data/nuscenes/n015-2018-07-24-11-22-45+0800__LIDAR_TOP__1532402927647951.pcd.bin">n015-2018-07-24-11-22-45+0800__LIDAR_TOP__1532402927647951.pcd.bin</a> (mmdetection3d demo data; <a href="https://www.nuscenes.org/">nuScenes</a>)</td></tr>
+            <tr><td>Hesai sample</td><td>the one message in the file (firing order)</td><td>x, y, z, intensity f32; ring u16; timestamp f64 (26 B)</td><td><a href="https://github.com/facontidavide/cloudini/blob/main/cloudini_lib/samples/dds_message.bin"><code>cloudini_lib/samples/dds_message.bin</code></a> (this repository)</td></tr>
+            <tr><td>PCD sample</td><td>the one cloud in the file (115,385 points)</td><td>x, y, z, intensity f32 (16 B)</td><td><a href="https://github.com/facontidavide/cloudini/blob/main/cloudini_lib/samples/lidar.pcd"><code>cloudini_lib/samples/lidar.pcd</code></a> (this repository)</td></tr>
+            <tr><td>Stereo RGB</td><td>the organized 640 × 480 cloud; 32% of points are NaN</td><td>x, y, z f32; rgba u32 (32 B)</td><td><a href="https://raw.githubusercontent.com/PointCloudLibrary/pcl/master/test/table_scene_mug_stereo_textured.pcd">table_scene_mug_stereo_textured.pcd</a> (<a href="https://github.com/PointCloudLibrary/pcl">PCL</a> test data)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="caption">Resolution 1 mm on every FLOAT32 field in all measurements; integer fields and FLOAT64 are lossless.</p>
+    </div>
+  </section>
+
   <footer>
-    <p>Datasets: Ouster OS0, OS1 and OS2 test captures (ouster-ros layout), KITTI raw HDL-64E, Argoverse 2, nuScenes LIDAR_TOP, PCL organized stereo cloud, and the Hesai and PCD samples in <code>cloudini_lib/samples</code>. Resolution 1 mm on every FLOAT32 field. Every decoded point was checked against half the resolution.</p>
+    <p>Datasets: see Appendix A. Every decoded point was checked against half the resolution.</p>
     <p>Measured on <code>claude/v6-prototype</code>. Sizes at e44f53f; the output is byte-identical at 2cf2d18. Instruction counts at 2cf2d18. Ablation sizes at 6af2c6b.</p>
     <p>Code: <a href="https://github.com/facontidavide/cloudini/pull/150">#150</a> (V6), <a href="https://github.com/facontidavide/cloudini/pull/149">#149</a> (decoder fixes for released versions).</p>
   </footer>
