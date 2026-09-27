@@ -45,15 +45,30 @@ void CloudiniPublisher::declareParameters(const std::string& base_topic) {
   encoding_version_descriptor.set__integer_range(
       {rcl_interfaces::msg::IntegerRange().set__from_value(4).set__to_value(Cloudini::kMaxEncodingVersion)});
   declareParam<int64_t>(encoding_version_descriptor.name, encoding_version_, encoding_version_descriptor);
-  getParam<int64_t>(encoding_version_descriptor.name, encoding_version_);
+  // declareParam drops the descriptor, so the range above is not enforced: check it here
+  const auto valid_version = [](int64_t v) { return v >= 4 && v <= Cloudini::kMaxEncodingVersion; };
+  int64_t encoding_version = encoding_version_;
+  getParam<int64_t>(encoding_version_descriptor.name, encoding_version);
+  if (valid_version(encoding_version)) {
+    encoding_version_ = encoding_version;
+  } else {
+    RCLCPP_ERROR(
+        getLogger(), "cloudini_encoding_version must be 4, 5 or 6 (got %ld), using %ld",
+        static_cast<long>(encoding_version), static_cast<long>(encoding_version_));
+  }
 
-  auto param_change_callback = [this](const std::vector<rclcpp::Parameter>& parameters) {
+  auto param_change_callback = [this, valid_version](const std::vector<rclcpp::Parameter>& parameters) {
     auto result = rcl_interfaces::msg::SetParametersResult();
     result.successful = true;
     for (auto parameter : parameters) {
       if (parameter.get_name().find("cloudini_resolution") != std::string::npos) {
         resolution_ = parameter.as_double();
       } else if (parameter.get_name().find("cloudini_encoding_version") != std::string::npos) {
+        if (!valid_version(parameter.as_int())) {
+          result.successful = false;
+          result.reason = "cloudini_encoding_version must be 4, 5 or 6";
+          return result;
+        }
         encoding_version_ = parameter.as_int();
       }
     }

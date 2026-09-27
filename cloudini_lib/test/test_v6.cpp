@@ -567,3 +567,14 @@ TEST(V6, EncoderCacheAcrossCloudSizes) {
   auto v5_info = makeInfo(fields, 64, 1, sizeof(OusterPoint), 5, CompressionOption::ZSTD);
   EXPECT_EQ(cache.get(v5_info).getEncodingInfo().version, 5);
 }
+
+TEST(V6, EncoderRejectsVersionsNoDecoderReads) {
+  // the version goes into the header as two digits: writing one the decoders reject would only fail downstream
+  const auto fields = ousterFields(0.001f);
+  for (uint8_t version : {uint8_t(0), uint8_t(1), uint8_t(kMaxEncodingVersion + 1), uint8_t(255)}) {
+    EXPECT_THROW(
+        PointcloudEncoder(makeInfo(fields, 64, 1, sizeof(OusterPoint), version, CompressionOption::ZSTD)),
+        std::runtime_error)
+        << int(version);
+  }
+}

@@ -621,6 +621,12 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
 }
 
 PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
+  // Same range as DecodeHeader: a version no decoder reads would only fail on the receiving side.
+  if (info_.version < 2 || info_.version > kMaxEncodingVersion) {
+    throw std::runtime_error(
+        "PointcloudEncoder: unsupported encoding version " + std::to_string(info_.version) + " (valid: 2 to " +
+        std::to_string(kMaxEncodingVersion) + ")");
+  }
   // The field encoders read SizeOf(type) bytes at field.offset inside every point:
   // a field that does not fit in point_step would read past the end of the cloud.
   for (const auto& field : info_.fields) {
