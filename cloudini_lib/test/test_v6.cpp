@@ -491,9 +491,9 @@ TEST(V6, MutatedPayloadsNeverCrash) {
         std::vector<uint8_t> out(c.points->size() * sizeof(OusterPoint));
         for (size_t it = 0; it < iterations; ++it) {
           auto msg = original;
-          const size_t len = msg.size() - body;
           const int edits = 1 + int(rng() % 4);
           for (int e = 0; e < edits; ++e) {
+            const size_t len = msg.size() - body;  // current size: an earlier edit may have truncated msg
             const size_t pos = body + rng() % len;
             switch (rng() % 5) {
               case 0:
