@@ -894,7 +894,7 @@ void decodeV5AdaptiveIntValues(
         const uint64_t value = readRawBits(input.data(), field.bytes_per_value);
         input.trim_front(field.bytes_per_value);
         const uint64_t run_len = readUVarint(input);
-        if (out_index + run_len > expected_points) {
+        if (run_len > expected_points - out_index) {  // out_index <= expected_points: no wrap-around
           throw std::runtime_error("V5 adaptive int: RLE run exceeds point count");
         }
         for (uint64_t k = 0; k < run_len; ++k) {
@@ -917,7 +917,7 @@ void decodeV5AdaptiveIntValues(
         const auto consumed = decodeVarint(input.data(), input.size(), diff);
         input.trim_front(consumed);
         const uint64_t run_len = readUVarint(input);
-        if (out_index + run_len > expected_points) {
+        if (run_len > expected_points - out_index) {  // out_index <= expected_points: no wrap-around
           throw std::runtime_error("V5 adaptive int: Delta-RLE run exceeds point count");
         }
         for (uint64_t k = 0; k < run_len; ++k) {

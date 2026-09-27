@@ -621,3 +621,91 @@ TEST(Cloudini, DecodeButSkipStoreIntegerFieldV5) {
     }
   }
 }
+
+namespace {
+
+struct RlePoint {
+  float x, y, z;
+  uint16_t ring;
+};
+
+// A V5 message (no stage-2 compression, one chunk) whose last section, the RLE section of the `ring`
+// field, is rewritten into two runs: one point, then `second_run` points.
+std::vector<uint8_t> craftTwoRuns(uint64_t second_run, bool delta_rle) {
+  std::vector<RlePoint> points(1000);
+  for (size_t i = 0; i < points.size(); ++i) {
+    points[i] = {0.01F * float(i), 1.0F, 2.0F, uint16_t(i < 500 ? 0xBEEF : 0x1234)};
+  }
+  Cloudini::EncodingInfo info;
+  info.width = uint32_t(points.size());
+  info.height = 1;
+  info.point_step = sizeof(RlePoint);
+  info.encoding_opt = Cloudini::EncodingOptions::LOSSY;
+  info.compression_opt = Cloudini::CompressionOption::NONE;
+  info.fields.resize(4);
+  const char* names[4] = {"x", "y", "z", "ring"};
+  for (size_t k = 0; k < 4; ++k) {
+    info.fields[k].name = names[k];
+    info.fields[k].offset = uint32_t(4 * k);
+    info.fields[k].type = k < 3 ? Cloudini::FieldType::FLOAT32 : Cloudini::FieldType::UINT16;
+    if (k < 3) {
+      info.fields[k].resolution = 0.001F;
+    }
+  }
+  std::vector<uint8_t> msg;
+  Cloudini::PointcloudEncoder(info).encode(
+      Cloudini::ConstBufferView(reinterpret_cast<const uint8_t*>(points.data()), points.size() * sizeof(RlePoint)),
+      msg);
+  Cloudini::ConstBufferView view(msg.data(), msg.size());
+  Cloudini::DecodeHeader(view);
+  const size_t chunk_size_pos = msg.size() - view.size();
+
+  // the encoder codes ring as two RLE runs: mode 2, u32 run count 2, [0xBEEF, 500], [0x1234, 500]
+  const std::vector<uint8_t> tail = {2, 2, 0, 0, 0, 0xEF, 0xBE, 0xF4, 0x03, 0x34, 0x12, 0xF4, 0x03};
+  if (msg.size() < tail.size() || !std::equal(tail.begin(), tail.end(), msg.end() - tail.size())) {
+    throw std::logic_error("unexpected encoding of the ring section");
+  }
+  msg.resize(msg.size() - tail.size());
+  // RLE: [0xBEEF, 1 point], [0xBEEF, second_run points]
+  // Delta-RLE: [+5, 1 point], [+0, second_run points] (encodeVarint64: zig-zag + 1)
+  std::vector<uint8_t> section = delta_rle ? std::vector<uint8_t>{3, 2, 0, 0, 0, 0x0B, 1, 0x01}
+                                           : std::vector<uint8_t>{2, 2, 0, 0, 0, 0xEF, 0xBE, 1, 0xEF, 0xBE};
+  for (uint64_t v = second_run;; v >>= 7) {
+    section.push_back(uint8_t((v & 0x7F) | (v > 0x7F ? 0x80 : 0)));
+    if (v <= 0x7F) {
+      break;
+    }
+  }
+  msg.insert(msg.end(), section.begin(), section.end());
+  uint32_t chunk_size = 0;
+  std::memcpy(&chunk_size, msg.data() + chunk_size_pos, sizeof(chunk_size));
+  chunk_size = uint32_t(chunk_size - tail.size() + section.size());
+  std::memcpy(msg.data() + chunk_size_pos, &chunk_size, sizeof(chunk_size));
+  return msg;
+}
+
+}  // namespace
+
+// A run length that makes out_index + run_len wrap around 2^64 must be rejected, not written past the
+// chunk (heap overflow).
+TEST(Cloudini, V5RleRunLengthOverflowIsRejected) {
+  for (const bool delta_rle : {false, true}) {
+    // well-formed: 1 + 999 points
+    {
+      const auto msg = craftTwoRuns(999, delta_rle);
+      Cloudini::ConstBufferView view(msg.data(), msg.size());
+      const auto header = Cloudini::DecodeHeader(view);
+      std::vector<uint8_t> out;
+      Cloudini::PointcloudDecoder().decode(header, view, out);
+      ASSERT_EQ(out.size(), 1000 * sizeof(RlePoint));
+    }
+    for (const uint64_t second_run : {uint64_t(1000), ~uint64_t(0), ~uint64_t(0) - 5}) {
+      const auto msg = craftTwoRuns(second_run, delta_rle);
+      Cloudini::ConstBufferView view(msg.data(), msg.size());
+      const auto header = Cloudini::DecodeHeader(view);
+      std::vector<uint8_t> out;
+      EXPECT_THROW(Cloudini::PointcloudDecoder().decode(header, view, out), std::runtime_error)
+          << "delta_rle " << delta_rle << " second run " << second_run;
+    }
+  }
+}
