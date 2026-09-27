@@ -65,7 +65,8 @@ void FieldDecoderFloatN_Lossy::decode(ConstBufferView& input, BufferView dest_po
       int64_t diff = 0;
       const auto remaining = static_cast<size_t>((input.data() + input.size()) - ptr_in);
       const auto count = decodeVarint(ptr_in, remaining, diff);
-      new_vect[i] = static_cast<int32_t>(diff) + prev_vect_[i];
+      // int32 wrap-around addition of the truncated delta (no signed overflow on corrupted input)
+      new_vect[i] = static_cast<int32_t>(static_cast<uint32_t>(prev_vect_[i]) + static_cast<uint32_t>(diff));
       float_vect[i] = static_cast<float>(new_vect[i]) * multiplier_[i];
       ptr_in += count;
     }
