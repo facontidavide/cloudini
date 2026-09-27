@@ -941,18 +941,26 @@ struct V6AxisOut {
   double res = 0.0;
 };
 
-// Decodes one axis value of a valid point.
+// Decodes one axis value of a valid point. Previous keeps its one-value history in scalar
+// state; the spatial predictors still use the quantized history array.
 template <V6Predictor P, bool Checked, bool Interior = false>
 inline float v6DecodeValue(
-    const uint8_t*& ptr, const uint8_t* end, int64_t* q, size_t i, size_t K, const V6AxisOut& axis) {
-  const int64_t pred = v6Predict<P, Interior>(q, i, K);
+    const uint8_t*& ptr, const uint8_t* end, int64_t* q, size_t i, size_t K, const V6AxisOut& axis, int64_t& previous) {
+  const int64_t pred = P == V6Predictor::Previous ? previous : v6Predict<P, Interior>(q, i, K);
   int64_t residual = 0;
   if (!v6ReadResidual<Checked>(ptr, end, residual)) {
-    q[i] = pred;
+    if constexpr (P != V6Predictor::Previous) {
+      q[i] = pred;
+    }
     return std::numeric_limits<float>::quiet_NaN();
   }
-  q[i] = static_cast<int64_t>(static_cast<uint64_t>(pred) + static_cast<uint64_t>(residual));
-  return v6Reconstruct(q[i], axis.res);
+  const int64_t value = wrapV6(uint64_t(pred) + uint64_t(residual));
+  if constexpr (P == V6Predictor::Previous) {
+    previous = value;
+  } else {
+    q[i] = value;
+  }
+  return v6Reconstruct(value, axis.res);
 }
 
 // Decodes x, y and z together: one pass over the points, three stream pointers. The validity mask is
@@ -962,6 +970,7 @@ void decodeV6Geometry(
     std::array<const uint8_t*, 3>& ptr, const std::array<const uint8_t*, 3>& end, size_t n, size_t K,
     const uint8_t* valid_bits, size_t mask_bytes, std::array<int64_t*, 3> q, size_t step,
     const std::array<V6AxisOut, 3>& axes, float invalid_value) {
+  int64_t previous0 = 0, previous1 = 0, previous2 = 0;
   for (size_t block = 0; block < n; block += 64) {
     const size_t block_end = std::min(n, block + 64);
     uint64_t bits = ~uint64_t(0);
@@ -988,9 +997,11 @@ void decodeV6Geometry(
       const V6AxisOut a0 = axes[0], a1 = axes[1], a2 = axes[2];
       for (size_t i = block; i < block_end; ++i) {
         if (!all_valid && !((bits >> (i - block)) & 1u)) {
-          q0[i] = i >= 1 ? q0[i - 1] : 0;
-          q1[i] = i >= 1 ? q1[i - 1] : 0;
-          q2[i] = i >= 1 ? q2[i - 1] : 0;
+          if constexpr (P != V6Predictor::Previous) {
+            q0[i] = i >= 1 ? q0[i - 1] : 0;
+            q1[i] = i >= 1 ? q1[i - 1] : 0;
+            q2[i] = i >= 1 ? q2[i - 1] : 0;
+          }
           for (const V6AxisOut* a : {&a0, &a1, &a2}) {
             if (a->dst) {
               std::memcpy(a->dst + i * step, &invalid_value, sizeof(float));
@@ -998,9 +1009,9 @@ void decodeV6Geometry(
           }
           continue;
         }
-        const float x = v6DecodeValue<P, Checked, Interior>(p0, e0, q0, i, K, a0);
-        const float y = v6DecodeValue<P, Checked, Interior>(p1, e1, q1, i, K, a1);
-        const float z = v6DecodeValue<P, Checked, Interior>(p2, e2, q2, i, K, a2);
+        const float x = v6DecodeValue<P, Checked, Interior>(p0, e0, q0, i, K, a0, previous0);
+        const float y = v6DecodeValue<P, Checked, Interior>(p1, e1, q1, i, K, a1, previous1);
+        const float z = v6DecodeValue<P, Checked, Interior>(p2, e2, q2, i, K, a2, previous2);
         if (a0.dst) {
           std::memcpy(a0.dst + i * step, &x, sizeof(float));
         }
@@ -1026,22 +1037,22 @@ void decodeV6Geometry(
 }
 
 // Decodes a single-stream V6 float column with the previous-value predictor.
-void decodeV6FloatColumn(
-    ConstBufferView& input, size_t n, int64_t* q, uint8_t* base, size_t step, uint32_t offset, float res) {
+void decodeV6FloatColumn(ConstBufferView& input, size_t n, uint8_t* base, size_t step, uint32_t offset, float res) {
   const uint8_t* ptr = input.data();
   const uint8_t* const end = input.data() + input.size();
   V6AxisOut axis;
   axis.dst = offset == kDecodeButSkipStore ? nullptr : base + offset;
   axis.res = static_cast<double>(res);
+  int64_t previous = 0;
   size_t i = 0;
   for (; i < n && static_cast<size_t>(end - ptr) >= kMaxVarintBytes; ++i) {
-    const float value = v6DecodeValue<V6Predictor::Previous, false>(ptr, end, q, i, 0, axis);
+    const float value = v6DecodeValue<V6Predictor::Previous, false>(ptr, end, nullptr, i, 0, axis, previous);
     if (axis.dst) {
       std::memcpy(axis.dst + i * step, &value, sizeof(float));
     }
   }
   for (; i < n; ++i) {
-    const float value = v6DecodeValue<V6Predictor::Previous, true>(ptr, end, q, i, 0, axis);
+    const float value = v6DecodeValue<V6Predictor::Previous, true>(ptr, end, nullptr, i, 0, axis, previous);
     if (axis.dst) {
       std::memcpy(axis.dst + i * step, &value, sizeof(float));
     }
@@ -1185,9 +1196,7 @@ void DecodeV6Stage1Chunk(
       }
       encoded_view.trim_front(n * sizeof(float));
     } else if (column_mode == static_cast<uint8_t>(V6GeometryMode::Predicted)) {
-      thread_local std::vector<int64_t> column;
-      column.resize(n);
-      decodeV6FloatColumn(encoded_view, n, column.data(), base, step, field.offset, *field.resolution);
+      decodeV6FloatColumn(encoded_view, n, base, step, field.offset, *field.resolution);
     } else {
       throw std::runtime_error("V6: unknown float column mode");
     }
