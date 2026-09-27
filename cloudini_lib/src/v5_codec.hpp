@@ -55,6 +55,7 @@ struct V6EncoderState {
   size_t cloud_points = 0;
   uint32_t encodes = 0;
   std::vector<uint8_t> predictors;  // per chunk; 0xFF = not chosen yet
+  std::vector<uint8_t> masks;       // per chunk mask kind; 0xFF = not known yet
   std::shared_ptr<void> scratch;    // buffers reused across calls
 };
 

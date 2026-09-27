@@ -142,6 +142,8 @@ void expectGeometryAndFields(
     for (int k = 0; k < 3; ++k) {
       if (std::isnan(in[k])) {
         ASSERT_TRUE(std::isnan(out[k])) << "point " << i << " axis " << k;
+      } else if (std::isinf(in[k])) {
+        ASSERT_EQ(out[k], in[k]) << "point " << i;
       } else {
         ASSERT_NEAR(out[k], in[k], 0.5f * resolution * 1.001f + 1e-6f * std::fabs(in[k])) << "point " << i;
       }
@@ -400,5 +402,59 @@ TEST(V6, KnobsAndEncoderReuse) {
           firing.size() * sizeof(OusterPoint)));
       expectGeometryAndFields(firing, decode(encoded), v5, 0.001f);
     }
+  }
+}
+
+TEST(V6, SteadyStateEncodeMatchesFirstEncode) {
+  // The first encode of a cloud size quantizes the chunk, then probes; later encodes reuse the choices and
+  // quantize while coding. Same cloud -> same bytes; changed content (mask kind, far or infinite values)
+  // still round-trips.
+  std::mt19937 rng(9);
+  const auto fields = ousterFields(0.001f);
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  auto with_nan = firingOrderScan(1100, 32, rng);  // > one 32768-point chunk
+  for (size_t i = 0; i < with_nan.size(); i += 11) {
+    with_nan[i].x = with_nan[i].y = with_nan[i].z = nan;
+  }
+  with_nan[3].y = nan;
+  auto with_zero = with_nan;
+  for (size_t i = 0; i < with_zero.size(); ++i) {
+    if (std::isnan(with_zero[i].x) && std::isnan(with_zero[i].z)) {
+      with_zero[i].x = with_zero[i].y = with_zero[i].z = 0.0f;
+    }
+  }
+  auto far = with_nan;
+  far[100].x = 5000.0f;     // 5e6 steps: quantized in double precision
+  far[34000].z = -7000.0f;  // in the second chunk
+  auto infinite = with_nan;
+  infinite[200].y = std::numeric_limits<float>::infinity();  // raw geometry for its chunk
+
+  const uint32_t n = uint32_t(with_nan.size());
+  const auto info = makeInfo(fields, n, 1, sizeof(OusterPoint), 6, CompressionOption::ZSTD);
+  auto encode_with = [&](PointcloudEncoder& encoder, const std::vector<OusterPoint>& cloud) {
+    std::vector<uint8_t> encoded;
+    encoder.encode(
+        ConstBufferView(reinterpret_cast<const uint8_t*>(cloud.data()), cloud.size() * sizeof(OusterPoint)), encoded);
+    return encoded;
+  };
+  auto check = [&](const std::vector<OusterPoint>& cloud, const std::vector<uint8_t>& encoded) {
+    const auto v5 = decode(encode(
+        makeInfo(fields, n, 1, sizeof(OusterPoint), 5, CompressionOption::ZSTD), cloud.data(),
+        cloud.size() * sizeof(OusterPoint)));
+    expectGeometryAndFields(cloud, decode(encoded), v5, 0.001f);
+  };
+
+  for (const auto* cloud : {&with_nan, &with_zero, &far, &infinite}) {
+    PointcloudEncoder encoder(info);
+    const auto first = encode_with(encoder, *cloud);
+    check(*cloud, first);
+    for (int round = 0; round < 3; ++round) {
+      ASSERT_EQ(encode_with(encoder, *cloud), first) << round;
+    }
+  }
+
+  PointcloudEncoder encoder(info);
+  for (const auto* cloud : {&with_nan, &with_zero, &far, &infinite, &with_nan, &with_zero}) {
+    check(*cloud, encode_with(encoder, *cloud));
   }
 }
