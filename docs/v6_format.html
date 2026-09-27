@@ -1,0 +1,810 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Cloudini V6 wire format reference. Self-contained; open in a browser. -->
+<title>Cloudini V6 Format</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,500..800&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  :root {
+    --bg: #f1f3f5;
+    --surface: #fbfcfd;
+    --ink: #121a22;
+    --ink-2: #44515d;
+    --muted: #697581;
+    --rule: #d6dce2;
+    --grid: #e5e9ed;
+    --axis: #b6bfc8;
+    --focus: #1d5fb0;
+    --hover: rgba(42, 120, 214, 0.08);
+    --v4: #2a78d6;
+    --v5: #eb6834;
+    --v6: #1baf7a;
+    --cell-0: #fbfcfd;
+    --chip: #e2e7eb;
+    --chip-on: #121a22;
+    --chip-on-ink: #fbfcfd;
+    --font-display: "Archivo", "Arial Narrow", Arial, sans-serif;
+    --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0e1317;
+      --surface: #161c21;
+      --ink: #edf1f4;
+      --ink-2: #b9c3cb;
+      --muted: #8b97a1;
+      --rule: #29323a;
+      --grid: #1f272e;
+      --axis: #43505b;
+      --focus: #6aa7ef;
+      --hover: rgba(57, 135, 229, 0.14);
+      --v4: #3987e5;
+      --v5: #d95926;
+      --v6: #199e70;
+      --cell-0: #161c21;
+      --chip: #232b32;
+      --chip-on: #edf1f4;
+      --chip-on-ink: #0e1317;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0e1317;
+    --surface: #161c21;
+    --ink: #edf1f4;
+    --ink-2: #b9c3cb;
+    --muted: #8b97a1;
+    --rule: #29323a;
+    --grid: #1f272e;
+    --axis: #43505b;
+    --focus: #6aa7ef;
+    --hover: rgba(57, 135, 229, 0.14);
+    --v4: #3987e5;
+    --v5: #d95926;
+    --v6: #199e70;
+    --cell-0: #161c21;
+    --chip: #232b32;
+    --chip-on: #edf1f4;
+    --chip-on-ink: #0e1317;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 17px;
+    line-height: 1.55;
+    padding-inline: 20px;
+  }
+  .page { max-width: 940px; margin: 0 auto; padding-block: 44px 80px; display: flex; flex-direction: column; gap: 64px; }
+  p { margin: 0; max-width: 68ch; }
+  a { color: var(--focus); text-underline-offset: 2px; }
+  code, .mono { font-family: var(--font-mono); font-size: 0.84em; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 3px; }
+  h1, h2, h3 { font-family: var(--font-display); margin: 0; text-wrap: balance; }
+  h1 { font-size: clamp(2.2rem, 1.3rem + 3.6vw, 3.5rem); font-weight: 800; font-stretch: 118%; line-height: 1.0; letter-spacing: -0.01em; }
+  h2 { font-size: clamp(1.5rem, 1.2rem + 1vw, 1.9rem); font-weight: 700; font-stretch: 112%; line-height: 1.1; }
+  h3 { font-size: 1.12rem; font-weight: 700; font-stretch: 108%; line-height: 1.2; }
+  .kicker { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .lead { font-size: 1.1rem; color: var(--ink-2); }
+  .muted { color: var(--muted); }
+  .caption { font-size: 14px; color: var(--muted); max-width: 76ch; }
+
+  header { display: flex; flex-direction: column; gap: 18px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 8px; }
+  .stat { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .stat .label { font-size: 13px; color: var(--muted); }
+  .medians { display: flex; flex-direction: column; gap: 6px; }
+  .mrow { display: grid; grid-template-columns: 26px 1fr 52px; gap: 8px; align-items: center; font-variant-numeric: tabular-nums; }
+  .mrow .v { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2); }
+  .mrow .bar { height: 8px; border-radius: 0 4px 4px 0; }
+  .mrow .n { font-family: var(--font-mono); font-size: 13px; text-align: right; }
+  .big { font-family: var(--font-display); font-weight: 800; font-stretch: 115%; font-size: 2.3rem; line-height: 1; }
+  .big small { font-family: var(--font-body); font-size: 0.95rem; font-weight: 400; color: var(--muted); font-stretch: 100%; }
+
+  section { display: flex; flex-direction: column; gap: 18px; }
+  .panel { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+  .scroll { overflow-x: auto; }
+  svg { display: block; }
+  svg text { font-family: var(--font-body); font-size: 12.5px; fill: var(--ink-2); }
+  svg .mono { font-family: var(--font-mono); font-size: 11.5px; }
+  svg .tick { font-family: var(--font-mono); font-size: 11px; fill: var(--muted); }
+  svg .strong { fill: var(--ink); font-weight: 600; }
+  svg .grid { stroke: var(--grid); stroke-width: 1; }
+  svg .axis { stroke: var(--axis); stroke-width: 1; }
+  .hit { fill: transparent; }
+  .hit:hover, .hit.on, .hit:focus { fill: var(--hover); }
+  .hit:focus { outline: none; }
+
+  .seg { display: inline-flex; flex-wrap: wrap; gap: 4px; background: var(--chip); padding: 3px; border-radius: 8px; width: max-content; max-width: 100%; }
+  .seg button { font: 600 14px var(--font-body); border: 0; border-radius: 6px; padding: 6px 12px; background: transparent; color: var(--ink-2); cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--chip-on); color: var(--chip-on-ink); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; color: var(--ink-2); }
+  .legend span { display: inline-flex; gap: 8px; align-items: center; }
+  .sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex: none; }
+  .sw.v4 { background: var(--v4); } .sw.v5 { background: var(--v5); } .sw.v6 { background: var(--v6); }
+  .line-sw { width: 18px; height: 0; border-top: 2px solid; display: inline-block; }
+
+  .scan-note { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 28px; font-size: 15px; color: var(--ink-2); }
+  .scan-note b { color: var(--ink); }
+
+  .changes { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .change { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .change .fig { background: var(--bg); border-radius: 8px; padding: 10px; }
+  .change p { font-size: 15.5px; color: var(--ink-2); }
+  .why { font-size: 15px; }
+  .why b { color: var(--ink); }
+  .effect { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; border-top: 1px solid var(--rule); padding-top: 10px; }
+  .effect .pill { background: color-mix(in oklab, var(--v6) 18%, var(--surface)); color: var(--ink); border-radius: 999px; padding: 2px 9px; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { padding: 6px 10px; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--rule); }
+  th { color: var(--muted); font-weight: 600; font-size: 12.5px; vertical-align: bottom; white-space: normal; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); font-size: 13px; }
+  td.cell { text-align: center; font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums; border-bottom: 2px solid var(--surface); border-left: 2px solid var(--surface); }
+  tr.median td { font-weight: 600; border-top: 2px solid var(--rule); }
+  tbody tr:last-child td { border-bottom: 0; }
+
+  .spec td { white-space: normal; vertical-align: top; }
+  .spec td:nth-child(2) { font-family: var(--font-mono); font-size: 13px; white-space: nowrap; }
+  .rails { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px 28px; }
+  .rail { display: flex; flex-direction: column; gap: 4px; padding-left: 14px; border-left: 2px solid var(--rule); }
+  .rail h3 { font-size: 1rem; }
+  .rail p { font-size: 15.5px; color: var(--ink-2); }
+
+  .timeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+  .step { position: relative; display: flex; flex-direction: column; gap: 6px; padding-top: 22px; }
+  .step::before { content: ""; position: absolute; top: 6px; left: 0; right: -14px; height: 2px; background: var(--rule); }
+  .step:last-child::before { right: 0; }
+  .step .dot { position: absolute; top: 0; left: 0; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); border: 2px solid var(--muted); }
+  .step.now .dot { border-color: var(--v5); background: var(--v5); }
+  .step.next .dot { border-color: var(--v6); }
+  .step.later .dot { border-color: var(--v6); background: var(--v6); }
+  .step .when { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  .step p { font-size: 15.5px; color: var(--ink-2); }
+
+  .tip { position: fixed; z-index: 10; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--rule); border-radius: 8px; box-shadow: 0 6px 20px rgba(10, 16, 24, 0.16); padding: 8px 10px; font-size: 13px; line-height: 1.45; min-width: 160px; }
+  .tip .h { color: var(--muted); margin-bottom: 3px; }
+  .tip .r { display: flex; align-items: center; gap: 7px; font-variant-numeric: tabular-nums; }
+  .tip .r b { margin-left: auto; padding-left: 12px; font-weight: 600; }
+
+  footer { font-size: 14px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 16px; display: flex; flex-direction: column; gap: 6px; }
+
+  @media (max-width: 560px) {
+    body { font-size: 16px; padding-inline: 16px; }
+    .page { gap: 48px; padding-block: 28px 56px; }
+    .panel { padding: 12px; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .scan-anim { transition: opacity 180ms ease; }
+  }
+</style>
+<style>body { margin: 0; }</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <p class="kicker">Cloudini · wire format version 6 · opt-in · PR #150</p>
+    <h1>V6 wire format: changes from V5</h1>
+    <p class="lead">V6 changes how quantized FLOAT32 fields are coded inside each 32,768-point chunk. x, y and z are coded as three residual streams against a predictor selected per chunk. Points without a return are excluded by a validity bitmap. Every other FLOAT32 field with a resolution gets one residual stream. The V5 adaptive integer sections are unchanged. Encoders write V6 only when <code>EncodingInfo::version = 6</code>.</p>
+    <div class="stats">
+      <div class="stat">
+        <span class="label">Median compressed size (ZSTD), % of raw, 13 datasets</span>
+        <div class="medians" id="medians"></div>
+      </div>
+      <div class="stat">
+        <span class="label">Size vs V5 (ZSTD)</span>
+        <span class="big">−7.8 to −38.6<small>%</small></span>
+        <span class="label">smaller on 13 of 13 datasets; median −13.1%</span>
+      </div>
+      <div class="stat">
+        <span class="label">Instructions vs V5, steady-state encode</span>
+        <span class="big">0.59–1.35<small>×</small></span>
+        <span class="label">first encode 0.77–1.76×; decode 0.64–1.08×, below 1.0 on 10 of 13</span>
+      </div>
+    </div>
+  </header>
+
+  <section aria-labelledby="why-title">
+    <h2 id="why-title">1. Motivation: prediction from the previous point</h2>
+    <p>V4 and V5 code each quantized coordinate as a delta from the preceding point in the buffer. How good that prediction is depends on the point order the driver uses.</p>
+    <p>In firing order, all lasers of one firing are stored, then all lasers of the next firing. The preceding point therefore belongs to a different beam, and the previous return of the same beam is K = number of lasers points back.</p>
+    <p>In row order, used by organized clouds (height &gt; 1), the preceding point is the adjacent return on the same beam, and K = width reaches the adjacent beam.</p>
+    <div class="panel">
+      <div class="seg" id="scan-mode" role="group" aria-label="Point order in memory">
+        <button type="button" id="scan-firing" data-mode="firing" aria-pressed="true">Firing order (nuScenes, Hesai)</button>
+        <button type="button" id="scan-rows" data-mode="rows" aria-pressed="false">Row order (organized Ouster)</button>
+      </div>
+      <div class="scroll"><div id="scan" role="img" aria-label="Returns by beam and firing, the buffer order, and the two candidate references of one point"></div></div>
+      <div class="legend">
+        <span><i class="line-sw" style="border-color: var(--muted); border-top-style: dashed"></i>buffer order</span>
+        <span><i class="sw v5"></i>preceding point (V4/V5 reference)</span>
+        <span><i class="sw v6"></i>point K back (V6 LagK reference)</span>
+      </div>
+      <p class="caption">Ranges in metres, illustrative. Residuals are zig-zag varints of the quantized difference. At 1 mm resolution, 7.47 m is 7,470 steps (2 bytes) and 0.03 m is 30 steps (1 byte). A jump to the 39 m beam is 3 bytes.</p>
+    </div>
+    <div class="scan-note">
+      <p><b>Firing order.</b> The LagK or Median predictor references the same beam. Measured effect of the predictor selection: nuScenes +33.1%, Hesai +17.5% (size increase with it disabled).</p>
+      <p><b>Row order.</b> The previous-point predictor is already close to optimal. The gain comes mostly from the validity mask and the stream layout. The Median predictor combines the left and upper neighbours.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="layout-title">
+    <h2 id="layout-title">2. Chunk layout</h2>
+    <p>Both versions split the cloud into chunks of 32,768 points. Stage 1 codes each chunk and stage 2 compresses it with LZ4 or ZSTD.</p>
+    <p>V5 stage 1 writes the FLOAT32 fields interleaved per point (FloatN varints), then one adaptive section per integer field.</p>
+    <p>V6 stage 1 writes, in order: the geometry section, one section per other quantized FLOAT32 field, and the V5 integer sections.</p>
+    <div class="panel">
+      <div class="scroll"><div id="layout" role="img" aria-label="Section order of a V5 chunk and a V6 chunk"></div></div>
+      <div class="legend">
+        <span><i class="sw" style="background: var(--muted)"></i>geometry header, validity bitmap</span>
+        <span><i class="sw v6"></i>V6 residual streams</span>
+        <span><i class="sw v5"></i>V5 interleaved stream</span>
+        <span><i class="sw v4"></i>adaptive integer sections (same code)</span>
+        <span><i class="line-sw" style="border-color: var(--ink)"></i>stage-2 block boundary</span>
+      </div>
+      <p class="caption">Schematic; section widths are not to scale.</p>
+    </div>
+    <div class="panel">
+      <h3>Geometry section</h3>
+      <div class="scroll">
+        <table class="spec">
+          <thead><tr><th scope="col">Field</th><th scope="col">Encoding</th><th scope="col">Values</th></tr></thead>
+          <tbody>
+            <tr><td><code>mode</code></td><td>u8</td><td>0 = raw: x, y, z as FLOAT32 columns, n × 4 bytes each; the other geometry fields are absent. 1 = predicted.</td></tr>
+            <tr><td><code>predictor</code></td><td>u8</td><td>0 Previous, 1 LagK, 2 Median (LOCO-I), 3 SecondOrder</td></tr>
+            <tr><td><code>K</code></td><td>uvarint</td><td>lag in points</td></tr>
+            <tr><td><code>mask_kind</code></td><td>u8</td><td>0 none, 1 NaN, 2 zero</td></tr>
+            <tr><td><code>valid</code></td><td>⌈n/8⌉ bytes</td><td>1 bit per point, LSB first; present when <code>mask_kind</code> ≠ 0</td></tr>
+            <tr><td><code>size_x</code>, <code>size_y</code></td><td>uvarint ×2</td><td>byte sizes of the x and y streams; the z stream ends where it ends</td></tr>
+            <tr><td><code>x</code>, <code>y</code>, <code>z</code></td><td>streams</td><td>one <code>encodeVarint64</code> per valid point (zig-zag + 1; 0 = NaN): q − prediction</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="caption">q = round(v / resolution). The encoder quantizes in float precision when |q| &lt; 2<sup>22</sup> and in double precision otherwise. The decoder reconstructs float(double(q) × resolution). An invalid point decodes as NaN or 0.0f on all three axes, and the predictors see the previous value repeated. Each other quantized FLOAT32 field is a section of its own: a u8 mode, then either n raw FLOAT32 values or a residual stream with the Previous predictor.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="changes-title">
+    <h2 id="changes-title">3. Changes and ablation</h2>
+    <p>Each effect is the increase in ZSTD output size when only that feature is disabled, across the 13 datasets.</p>
+    <div class="changes">
+      <article class="change">
+        <h3>Per-chunk predictor</h3>
+        <div class="fig" id="stencils" role="img" aria-label="Neighbours used by the four predictors"></div>
+        <p class="why"><b>Rationale:</b> the best reference depends on point order and scene.</p>
+        <p class="why"><b>Selection:</b> the encoder estimates the stage-1 size of each candidate on the first 4,096 points and keeps the smallest. LagK and Median are candidates only when 1 &lt; K and K + 1 &lt; 4,096.</p>
+        <p class="why"><b>K:</b> the width when height &gt; 1. Otherwise, the lag in [2, 2100] that minimizes Σ|q<sub>i</sub> − q<sub>i−K</sub>| over 64 sampled points of the first chunk.</p>
+        <div class="effect"><span class="pill">median +2.6%</span><span>nuScenes +33.1%, Hesai +17.5%</span></div>
+      </article>
+      <article class="change">
+        <h3>Validity mask</h3>
+        <div class="fig" id="maskfig" role="img" aria-label="Points, validity bits and the x stream holding only valid points"></div>
+        <p class="why"><b>Rationale:</b> no-return points (all three axes NaN, or all three 0.0f) break the prediction twice, once on entry and once on exit.</p>
+        <p class="why"><b>Coding:</b> the mask kind is the majority kind in the chunk. Invalid points are left out of the streams.</p>
+        <div class="effect"><span class="pill">median +4.7%</span><span>max +10.2% (Ouster OS0-128)</span></div>
+      </article>
+      <article class="change">
+        <h3>Per-field streams</h3>
+        <div class="fig" id="streamsfig" role="img" aria-label="Interleaved values split into one stream per axis"></div>
+        <p class="why"><b>Rationale:</b> x, y and z residuals have different distributions, and separate streams give stage 2 homogeneous input. Other quantized FLOAT32 fields are coded the same way, one stream each.</p>
+        <div class="effect"><span class="pill">V5 +3.2% to +22.4%</span><span>vs V6 with predictor and mask off</span></div>
+      </article>
+      <article class="change">
+        <h3>Stage-2 block boundaries</h3>
+        <div class="fig" id="blocksfig" role="img" aria-label="ZSTD blocks aligned with chunk sections"></div>
+        <p class="why"><b>Rationale:</b> ZSTD keeps one set of literal and sequence statistics per block.</p>
+        <p class="why"><b>Coding:</b> stage 1 passes its section offsets to stage 2, which ends a block (<code>ZSTD_e_flush</code>) at each one. The output is a single standard frame.</p>
+        <div class="effect"><span class="pill">median +5.3%</span><span>range +1.6% to +8.0%</span></div>
+      </article>
+      <article class="change">
+        <h3>Encoder state cache</h3>
+        <div class="fig" id="cachefig" role="img" aria-label="One probing encode followed by fifteen single-pass encodes"></div>
+        <p class="why"><b>Rationale:</b> lag detection and predictor probing need a separate pass over the chunk.</p>
+        <p class="why"><b>Behaviour:</b> the encoder keeps K, the predictor and the mask kind of each chunk for the next clouds of the stream, whatever their size, and probes again every 16 encodes. x, y, z are quantized with SSE and coded in one pass. On the first encode and on re-probes, only the first 4,096 points (8,192 for lag detection) are quantized for probing. Output bytes are identical either way.</p>
+        <p class="why"><b>Callers:</b> keep one encoder per stream (<code>PointcloudEncoderCache</code>). A new encoder per cloud always pays the first-encode cost.</p>
+        <div class="effect"><span class="pill">−3% to −27%</span><span>encode instructions; KITTI 1.83 → 1.35× V5</span></div>
+      </article>
+    </div>
+
+    <div class="panel">
+      <h3>Output size increase with one feature disabled (ZSTD)</h3>
+      <div class="scroll" id="ablation"></div>
+      <p class="caption">Resolution 1 mm. The last column compares V5 with V6 with predictor and mask disabled, so it is the stream layout and block boundaries only. 0.0% on the mask means the dataset has no no-return points.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="result-title">
+    <h2 id="result-title">4. Compressed size</h2>
+    <div class="panel">
+      <div class="legend">
+        <span><i class="sw v5"></i>V5</span>
+        <span><i class="sw v6"></i>V6</span>
+      </div>
+      <div id="sizes" role="img" aria-label="Compressed size of V5 and V6 per dataset"></div>
+      <p class="caption">ZSTD, % of raw size. Datasets are listed in the same order in every chart and table: largest reduction vs V5 first. Hover for V4, V5 and V6.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="cost-title">
+    <h2 id="cost-title">5. Encode and decode cost</h2>
+    <p>Instructions counted with callgrind, with ZSTD compression included, relative to V5: the first encode with a new encoder, a steady-state encode with a reused encoder, and one decode of each cloud.</p>
+    <div class="panel">
+      <div class="legend">
+        <span><i class="sw" style="background: var(--muted); transform: rotate(45deg) scale(0.8)"></i>first encode</span>
+        <span><i class="sw v6" style="border-radius: 50%"></i>encode (reused encoder)</span>
+        <span><i class="sw" style="border-radius: 50%; background: var(--surface); border: 2px solid var(--v6)"></i>decode</span>
+      </div>
+      <div id="speed" role="img" aria-label="Encode and decode instructions of V6 relative to V5 per dataset"></div>
+      <p class="caption">The first encode also probes the predictors on a prefix of each chunk: 0.77–1.76× V5, highest on KITTI (1.76×) and the PCD sample (1.74×). Those two datasets have no integer fields, so V5 takes its V4 FloatN path on them, which is the fastest V5 case.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="rails-title">
+    <h2 id="rails-title">6. Compatibility and validation</h2>
+    <div class="rails">
+      <div class="rail">
+        <h3>Version selection</h3>
+        <p>V6 is written only when <code>EncodingInfo::version = 6</code>. The default is V5. Decoders from 1.3.1 and earlier reject version 6.</p>
+      </div>
+      <div class="rail">
+        <h3>Fallbacks</h3>
+        <p>A chunk with an infinite value, or with |q| ≥ 2<sup>50</sup>, is written in raw mode and is bit-exact. The V5 layout is used for version-6 clouds unless x, y, z are the first three FLOAT32 fields with a resolution in (0, 10<sup>18</sup>); the decoder applies the same test to the header.</p>
+      </div>
+      <div class="rail">
+        <h3>Determinism</h3>
+        <p>The float-or-double quantization rule is applied per value. The first (probing) encode and later cached encodes of the same cloud therefore produce identical bytes, which a test checks.</p>
+      </div>
+      <div class="rail">
+        <h3>Format freeze and fuzzing</h3>
+        <p>The experiment switches were removed from <code>encoding_config</code>. A mutation test ran 81,000 corrupted V4/V5/V6 messages under ASan and UBSan with no failures. It found signed-overflow bugs, now fixed, and a heap overflow in the V5 RLE decoder, fixed in #149.</p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="rollout-title">
+    <h2 id="rollout-title">7. Rollout</h2>
+    <div class="timeline">
+      <div class="step now"><i class="dot"></i><span class="when">1.3.1</span><h3>Writes V5</h3><p>Reads versions 2–5; rejects version 6.</p></div>
+      <div class="step next"><i class="dot"></i><span class="when">Next minor · #150</span><h3>Reads V6, writes V5</h3><p>V6 on request.</p></div>
+      <div class="step later"><i class="dot"></i><span class="when">Following release</span><h3>Writes V6 by default</h3><p>Once deployed readers support V6.</p></div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Datasets: Ouster OS0, OS1 and OS2 test captures (ouster-ros layout), KITTI raw HDL-64E, Argoverse 2, nuScenes LIDAR_TOP, PCL organized stereo cloud, and the Hesai and PCD samples in <code>cloudini_lib/samples</code>. Resolution 1 mm on every FLOAT32 field. Every decoded point was checked against half the resolution.</p>
+    <p>Measured on <code>claude/v6-prototype</code>. Sizes at e44f53f; the output is byte-identical at 2cf2d18. Instruction counts at 2cf2d18. Ablation sizes at 6af2c6b.</p>
+    <p>Code: <a href="https://github.com/facontidavide/cloudini/pull/150">#150</a> (V6), <a href="https://github.com/facontidavide/cloudini/pull/149">#149</a> (decoder fixes for released versions).</p>
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var D = [{"name": "Argoverse 2", "v4": 47.56, "v5": 44.69, "v6": 39.23, "enc": 1.04, "dec": 0.64, "pred": 4.2, "mask": 0.0, "blk": 4.1, "lay": 8.5, "first": 1.23}, {"name": "Hesai sample", "v4": 10.42, "v5": 10.5, "v6": 7.58, "enc": 1.18, "dec": 0.73, "pred": 17.5, "mask": 4.7, "blk": 6.6, "lay": 14.4, "first": 1.43}, {"name": "KITTI HDL-64", "v4": 22.89, "v5": 22.89, "v6": 19.85, "enc": 1.35, "dec": 0.98, "pred": 1.7, "mask": 0.0, "blk": 7.0, "lay": 11.8, "first": 1.76}, {"name": "Ouster OS0-128", "v4": 16.63, "v5": 9.86, "v6": 8.57, "enc": 0.99, "dec": 0.94, "pred": 1.9, "mask": 10.2, "blk": 5.3, "lay": 4.0, "first": 1.06}, {"name": "Ouster OS0-32", "v4": 19.3, "v5": 12.4, "v6": 10.7, "enc": 1.06, "dec": 0.89, "pred": 3.6, "mask": 7.7, "blk": 8.0, "lay": 6.3, "first": 1.13}, {"name": "Ouster OS1-128", "v4": 17.66, "v5": 10.73, "v6": 8.91, "enc": 1.0, "dec": 0.98, "pred": 7.6, "mask": 7.9, "blk": 4.7, "lay": 5.4, "first": 1.07}, {"name": "Ouster OS1-32", "v4": 24.9, "v5": 18.11, "v6": 16.69, "enc": 1.04, "dec": 0.94, "pred": -0.4, "mask": 3.3, "blk": 2.8, "lay": 3.1, "first": 1.11}, {"name": "Ouster OS1-64", "v4": 12.83, "v5": 7.05, "v6": 6.0, "enc": 0.97, "dec": 0.84, "pred": 1.8, "mask": 9.2, "blk": 6.0, "lay": 6.8, "first": 1.04}, {"name": "Ouster OS2-128", "v4": 26.03, "v5": 19.34, "v6": 17.13, "enc": 1.08, "dec": 1.03, "pred": 6.5, "mask": 3.2, "blk": 4.9, "lay": 3.4, "first": 1.15}, {"name": "Ouster OS2-32", "v4": 25.44, "v5": 18.22, "v6": 16.04, "enc": 1.07, "dec": 1.03, "pred": 2.6, "mask": 7.1, "blk": 5.0, "lay": 5.0, "first": 1.14}, {"name": "PCD sample", "v4": 24.89, "v5": 24.89, "v6": 22.78, "enc": 1.32, "dec": 0.94, "pred": 0.0, "mask": 0.0, "blk": 5.6, "lay": 8.4, "first": 1.74}, {"name": "Stereo RGB", "v4": 4.47, "v5": 3.13, "v6": 2.8, "enc": 1.04, "dec": 1.08, "pred": 1.4, "mask": 7.9, "blk": 5.4, "lay": 5.1, "first": 1.24}, {"name": "nuScenes HDL-32", "v4": 35.38, "v5": 35.38, "v6": 21.72, "enc": 0.59, "dec": 0.64, "pred": 33.1, "mask": 0.0, "blk": 1.6, "lay": 18.3, "first": 0.77}];
+  // one dataset order for every chart and table: largest size reduction vs V5 first
+  var ORDERED = D.slice().sort(function (a, b) { return (1 - b.v6 / b.v5) - (1 - a.v6 / a.v5); });
+  var NS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs, parent) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) { e.setAttribute(k, attrs[k]); }
+    if (parent) { parent.appendChild(e); }
+    return e;
+  }
+  function txt(parent, x, y, s, attrs) { var t = el("text", Object.assign({ x: x, y: y }, attrs || {}), parent); t.textContent = s; return t; }
+  function median(a) { var s = a.slice().sort(function (x, y) { return x - y; }); var m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
+  function fmt(n, d) { return n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }); }
+  function width(id) { return Math.max(300, Math.floor(document.getElementById(id).clientWidth)); }
+
+  // tooltip
+  var tip = document.createElement("div");
+  tip.className = "tip"; tip.hidden = true; document.body.appendChild(tip);
+  function showTip(head, rows, x, y) {
+    tip.textContent = "";
+    var h = document.createElement("div"); h.className = "h"; h.textContent = head; tip.appendChild(h);
+    rows.forEach(function (r) {
+      var row = document.createElement("div"); row.className = "r";
+      if (r.color) { var sw = document.createElement("i"); sw.className = "sw"; sw.style.background = r.color; row.appendChild(sw); }
+      var l = document.createElement("span"); l.textContent = r.label; row.appendChild(l);
+      var b = document.createElement("b"); b.textContent = r.value; row.appendChild(b);
+      tip.appendChild(row);
+    });
+    tip.hidden = false;
+    var w = tip.offsetWidth, hh = tip.offsetHeight;
+    tip.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, x + 14)) + "px";
+    var top = y - hh - 12; if (top < 8) { top = y + 16; }
+    tip.style.top = top + "px";
+  }
+  function bindTip(target, content) {
+    target.setAttribute("tabindex", "0");
+    target.addEventListener("pointermove", function (e) { var c = content(); showTip(c.head, c.rows, e.clientX, e.clientY); target.classList.add("on"); });
+    target.addEventListener("pointerleave", function () { tip.hidden = true; target.classList.remove("on"); });
+    target.addEventListener("focus", function () { var c = content(); var r = target.getBoundingClientRect(); showTip(c.head, c.rows, r.left + 40, r.top); });
+    target.addEventListener("blur", function () { tip.hidden = true; });
+  }
+
+  // header medians
+  (function () {
+    var box = document.getElementById("medians");
+    var m = { V4: median(D.map(function (d) { return d.v4; })), V5: median(D.map(function (d) { return d.v5; })), V6: median(D.map(function (d) { return d.v6; })) };
+    ["V4", "V5", "V6"].forEach(function (v) {
+      var row = document.createElement("div"); row.className = "mrow";
+      var l = document.createElement("span"); l.className = "v"; l.textContent = v; row.appendChild(l);
+      var track = document.createElement("span");
+      var bar = document.createElement("span"); bar.className = "bar"; bar.style.display = "block";
+      bar.style.width = (m[v] / 25 * 100) + "%"; bar.style.background = "var(--" + v.toLowerCase() + ")";
+      track.appendChild(bar); row.appendChild(track);
+      var n = document.createElement("span"); n.className = "n"; n.textContent = fmt(m[v], 1) + "%"; row.appendChild(n);
+      box.appendChild(row);
+    });
+  })();
+
+  // ---- scan grid ----
+  var scanMode = "firing";
+  var RANGE = [
+    [4.12, 4.13, 4.15, 4.16, 4.18, 4.19, 4.21],
+    [7.80, 7.82, 7.83, 7.85, 7.86, 7.88, 7.90],
+    [15.21, 15.24, 15.27, 15.30, 15.33, 15.37, 15.40],
+    [38.90, 38.96, 39.02, 39.07, 39.13, 39.19, 39.25]
+  ];
+  function drawScan() {
+    var box = document.getElementById("scan");
+    box.textContent = "";
+    var beams = RANGE.length, firings = RANGE[0].length;
+    var w = Math.max(520, width("scan"));
+    var left = 78, top = 34, right = 14, bottom = 30;
+    var cw = (w - left - right) / firings, ch = 54;
+    var h = top + beams * ch + bottom;
+    var svg = el("svg", { width: w, height: h, viewBox: "0 0 " + w + " " + h }, box);
+    var defs = el("defs", {}, svg);
+    function marker(id, color) {
+      var m = el("marker", { id: id, viewBox: "0 0 10 10", refX: "9", refY: "5", markerWidth: "7", markerHeight: "7", orient: "auto-start-reverse" }, defs);
+      el("path", { d: "M0,0 L10,5 L0,10 z", fill: color }, m);
+    }
+    var cs = getComputedStyle(document.documentElement);
+    var cV5 = cs.getPropertyValue("--v5").trim(), cV6 = cs.getPropertyValue("--v6").trim(), cMuted = cs.getPropertyValue("--muted").trim();
+    marker("m5", cV5); marker("m6", cV6); marker("mm", cMuted);
+    function cx(f) { return left + f * cw + cw / 2; }
+    function cy(b) { return top + b * ch + ch / 2; }
+    txt(svg, left + (firings * cw) / 2, 16, "firing →", { "text-anchor": "middle", class: "tick" });
+    for (var f = 0; f < firings; f++) { txt(svg, cx(f), top - 4, String(f + 1), { "text-anchor": "middle", class: "tick" }); }
+    for (var b = 0; b < beams; b++) { txt(svg, left - 12, cy(b) + 4, "beam " + (b + 1), { "text-anchor": "end", class: "tick" }); }
+    // memory order path
+    var order = [];
+    if (scanMode === "firing") { for (f = 0; f < firings; f++) { for (b = 0; b < beams; b++) { order.push([b, f]); } } }
+    else { for (b = 0; b < beams; b++) { for (f = 0; f < firings; f++) { order.push([b, f]); } } }
+    var d = "";
+    order.forEach(function (p, i) { d += (i ? "L" : "M") + cx(p[1]) + "," + cy(p[0]); });
+    el("path", { d: d, fill: "none", stroke: cMuted, "stroke-width": 1.2, "stroke-dasharray": "3 4", opacity: 0.8 }, svg);
+    // the point i and its neighbours
+    var ib = 2, jf = 4;
+    var prev = scanMode === "firing" ? [ib - 1, jf] : [ib, jf - 1];
+    var kback = scanMode === "firing" ? [ib, jf - 1] : [ib - 1, jf];
+    // cells
+    for (b = 0; b < beams; b++) {
+      for (f = 0; f < firings; f++) {
+        var isI = b === ib && f === jf, isP = b === prev[0] && f === prev[1], isK = b === kback[0] && f === kback[1];
+        var r = 17;
+        var fill = isI ? "var(--ink)" : "var(--surface)";
+        var stroke = isP ? cV5 : isK ? cV6 : "var(--axis)";
+        el("circle", { cx: cx(f), cy: cy(b), r: r, fill: fill, stroke: stroke, "stroke-width": isP || isK ? 3 : 1 }, svg);
+        txt(svg, cx(f), cy(b) + 4, fmt(RANGE[b][f], 2), { "text-anchor": "middle", class: "mono", style: "font-size:10.5px;" + (isI ? "fill:var(--surface);font-weight:600" : "") });
+      }
+    }
+    function arrow(from, to, color, id, label, above) {
+      var x1 = cx(from[1]), y1 = cy(from[0]), x2 = cx(to[1]), y2 = cy(to[0]);
+      var dx = x2 - x1, dy = y2 - y1, len = Math.sqrt(dx * dx + dy * dy);
+      var ux = dx / len, uy = dy / len;
+      el("line", { x1: x1 + ux * 20, y1: y1 + uy * 20, x2: x2 - ux * 21, y2: y2 - uy * 21, stroke: color, "stroke-width": 2.5, "marker-end": "url(#" + id + ")" }, svg);
+      var mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+      var lx = mx + (dy === 0 ? 0 : 26), ly = my + (dy === 0 ? -24 : 4);
+      var t = txt(svg, lx, ly, label, { "text-anchor": dy === 0 ? "middle" : "start", class: "mono strong", style: "font-size:11.5px" });
+      return t;
+    }
+    var dPrev = Math.abs(RANGE[ib][jf] - RANGE[prev[0]][prev[1]]);
+    var dK = Math.abs(RANGE[ib][jf] - RANGE[kback[0]][kback[1]]);
+    arrow(prev, [ib, jf], cV5, "m5", "Δ " + fmt(dPrev, 2) + " m", true);
+    arrow(kback, [ib, jf], cV6, "m6", "Δ " + fmt(dK, 2) + " m", true);
+    var kLabel = scanMode === "firing" ? "K = 4 lasers" : "K = 7 points per row";
+    txt(svg, w - right, h - 8, "point i = beam 3, firing 5 · " + kLabel, { "text-anchor": "end", class: "tick" });
+  }
+  document.querySelectorAll("#scan-mode button").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      scanMode = btn.getAttribute("data-mode");
+      document.querySelectorAll("#scan-mode button").forEach(function (b) { b.setAttribute("aria-pressed", String(b === btn)); });
+      drawScan();
+    });
+  });
+
+  // ---- chunk layout ----
+  function drawLayout() {
+    var box = document.getElementById("layout");
+    box.textContent = "";
+    var w = Math.max(640, width("layout"));
+    var left = 44, right = 8, rowH = 40, gap = 46, top = 22;
+    var h = top + 2 * rowH + gap + 28;
+    var svg = el("svg", { width: w, height: h, viewBox: "0 0 " + w + " " + h }, box);
+    var avail = w - left - right;
+    function row(y, label, segs) {
+      txt(svg, 0, y + rowH / 2 + 5, label, { class: "strong", style: "font-family:var(--font-display);font-size:15px;font-weight:700" });
+      var total = segs.reduce(function (s, x) { return s + x.w; }, 0);
+      var x = left;
+      segs.forEach(function (s) {
+        var sw = s.w / total * avail;
+        el("rect", { x: x + 1, y: y, width: Math.max(1, sw - 2), height: rowH, rx: 4, fill: s.fill, opacity: s.op || 1 }, svg);
+        if (s.block) { el("line", { x1: x + 0.5, x2: x + 0.5, y1: y - 8, y2: y + rowH + 8, stroke: "var(--ink)", "stroke-width": 2 }, svg); }
+        if (s.label) {
+          txt(svg, x + sw / 2, y + rowH / 2 + 4, s.label, { "text-anchor": "middle", class: "mono", style: "fill:" + (s.dark ? "var(--surface)" : "var(--ink)") + ";font-size:11px;font-weight:600" });
+        }
+        if (s.sub) { txt(svg, x + sw / 2, y + rowH + 20, s.sub, { "text-anchor": "middle", class: "tick" }); }
+        x += sw;
+      });
+    }
+    var interleave = "x y z i x y z i x y z i …";
+    row(top, "V5", [
+      { w: 58, fill: "var(--v5)", label: interleave, dark: true, block: true, sub: "float fields, point by point (FloatN varints)" },
+      { w: 10, fill: "var(--v4)", label: "ring", dark: true, block: true },
+      { w: 10, fill: "var(--v4)", label: "t", dark: true, block: true, sub: "integer sections" },
+      { w: 8, fill: "var(--v4)", label: "refl.", dark: true, block: true }
+    ]);
+    row(top + rowH + gap, "V6", [
+      { w: 5, fill: "var(--muted)", label: "hdr", dark: true, block: true },
+      { w: 5, fill: "var(--muted)", op: 0.6, label: "mask", dark: true },
+      { w: 13, fill: "var(--v6)", label: "x", dark: true, block: true },
+      { w: 13, fill: "var(--v6)", label: "y", dark: true, block: true, sub: "one residual stream per axis" },
+      { w: 12, fill: "var(--v6)", label: "z", dark: true, block: true },
+      { w: 10, fill: "var(--v6)", op: 0.75, label: "intensity", dark: true, block: true, sub: "float column" },
+      { w: 10, fill: "var(--v4)", label: "ring", dark: true, block: true },
+      { w: 10, fill: "var(--v4)", label: "t", dark: true, block: true, sub: "same as V5" },
+      { w: 8, fill: "var(--v4)", label: "refl.", dark: true, block: true }
+    ]);
+  }
+
+  // ---- small figures in the change cards ----
+  function stencils() {
+    var box = document.getElementById("stencils");
+    box.textContent = "";
+    var w = Math.max(250, box.clientWidth - 20), h = 4 * 40 + 22;
+    var svg = el("svg", { width: w, height: h, viewBox: "0 0 " + w + " " + h }, box);
+    var items = [
+      { name: "Previous", f: "a", used: ["a"] },
+      { name: "K back", f: "b", used: ["b"] },
+      { name: "Median (LOCO-I)", f: "med(a, b, a+b−c)", used: ["a", "b", "c"] },
+      { name: "Second order", f: "2a − a′", used: ["a", "a2"] }
+    ];
+    var s = 12, rowH = 40;
+    var cells = { c: [0, 1], b: [0, 2], a2: [1, 0], a: [1, 1], x: [1, 2] };
+    var names = { c: "c", b: "b", a2: "a′", a: "a" };
+    items.forEach(function (it, k) {
+      var gx = 6, gy = k * rowH + 6;
+      for (var r = 0; r < 2; r++) {
+        for (var c = 0; c < 3; c++) {
+          var key = null;
+          for (var kk in cells) { if (cells[kk][0] === r && cells[kk][1] === c) { key = kk; } }
+          var used = key && it.used.indexOf(key) >= 0;
+          var fill = key === "x" ? "var(--ink)" : used ? "var(--v6)" : "var(--surface)";
+          el("rect", { x: gx + c * (s + 3), y: gy + r * (s + 3), width: s, height: s, rx: 2, fill: fill, stroke: "var(--axis)", "stroke-width": key === "x" || used ? 0 : 1 }, svg);
+        }
+      }
+      txt(svg, gx + 3 * (s + 3) + 8, gy + 11, it.name, { class: "strong", style: "font-size:12.5px" });
+      txt(svg, gx + 3 * (s + 3) + 8, gy + 27, it.f, { class: "mono", style: "font-size:10.5px" });
+    });
+    el("rect", { x: 6, y: h - 16, width: 10, height: 10, rx: 2, fill: "var(--ink)" }, svg);
+    txt(svg, 20, h - 7, "coded", { class: "tick", style: "font-size:10.5px" });
+    el("rect", { x: 66, y: h - 16, width: 10, height: 10, rx: 2, fill: "var(--v6)" }, svg);
+    txt(svg, 80, h - 7, "used; top row = K back", { class: "tick", style: "font-size:10.5px" });
+  }
+  function maskFig() {
+    var box = document.getElementById("maskfig");
+    box.textContent = "";
+    var w = Math.max(250, box.clientWidth - 20), h = 112;
+    var svg = el("svg", { width: w, height: h, viewBox: "0 0 " + w + " " + h }, box);
+    var valid = [1, 1, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0];
+    var n = valid.length, left = 66, cw = (w - left - 4) / n;
+    txt(svg, 0, 22, "points", { class: "tick" });
+    txt(svg, 0, 52, "bits", { class: "tick" });
+    txt(svg, 0, 84, "x stream", { class: "tick" });
+    var sx = 0;
+    valid.forEach(function (v, i) {
+      var x = left + i * cw;
+      el("circle", { cx: x + cw / 2, cy: 18, r: Math.min(7, cw / 2 - 2), fill: v ? "var(--v6)" : "var(--surface)", stroke: v ? "none" : "var(--muted)", "stroke-dasharray": v ? "" : "2 2" }, svg);
+      txt(svg, x + cw / 2, 56, String(v), { "text-anchor": "middle", class: "mono", style: v ? "" : "fill:var(--muted)" });
+    });
+    var nv = valid.filter(Boolean).length;
+    for (var k = 0; k < nv; k++) {
+      el("rect", { x: left + k * cw + 1, y: 72, width: cw - 2, height: 18, rx: 3, fill: "var(--v6)", opacity: 0.85 }, svg);
+    }
+    txt(svg, 0, 108, "invalid: 1 bit each, 0 stream bytes", { class: "tick", style: "font-size:10.5px" });
+  }
+  function streamsFig() {
+    var box = document.getElementById("streamsfig");
+    box.textContent = "";
+    var w = Math.max(250, box.clientWidth - 20), h = 112;
+    var svg = el("svg", { width: w, height: h, viewBox: "0 0 " + w + " " + h }, box);
+    var seq = ["x", "y", "z", "x", "y", "z", "x", "y", "z", "x", "y", "z"];
+    var left = 40, cw = (w - left - 4) / seq.length;
+    txt(svg, 0, 22, "V5", { class: "tick" });
+    seq.forEach(function (a, i) {
+      el("rect", { x: left + i * cw + 1, y: 8, width: cw - 2, height: 20, rx: 3, fill: "var(--v5)", opacity: a === "x" ? 1 : a === "y" ? 0.72 : 0.48 }, svg);
+      txt(svg, left + i * cw + cw / 2, 22, a, { "text-anchor": "middle", class: "mono", style: "fill:var(--surface);font-weight:600" });
+    });
+    ["x", "y", "z"].forEach(function (a, r) {
+      txt(svg, 0, 54 + r * 22, r === 0 ? "V6" : "", { class: "tick" });
+      for (var i = 0; i < 4; i++) {
+        el("rect", { x: left + i * cw + 1, y: 40 + r * 22, width: cw - 2, height: 18, rx: 3, fill: "var(--v6)", opacity: a === "x" ? 1 : a === "y" ? 0.72 : 0.48 }, svg);
+        txt(svg, left + i * cw + cw / 2, 53 + r * 22, a, { "text-anchor": "middle", class: "mono", style: "fill:var(--surface);font-weight:600" });
+      }
+      txt(svg, left + 4 * cw + 8, 53 + r * 22, a + " stream", { class: "tick" });
+    });
+  }
+  function blocksFig() {
+    var box = document.getElementById("blocksfig");
+    box.textContent = "";
+    var w = Math.max(250, box.clientWidth - 20), h = 100;
+    var svg = el("svg", { width: w, height: h, viewBox: "0 0 " + w + " " + h }, box);
+    var segs = [["x", 3], ["y", 3], ["z", 3], ["ints", 3]];
+    var total = segs.reduce(function (s, x) { return s + x[1]; }, 0), x = 0;
+    segs.forEach(function (s, k) {
+      var sw = s[1] / total * w;
+      el("rect", { x: x + 1, y: 14, width: sw - 2, height: 26, rx: 3, fill: k < 3 ? "var(--v6)" : "var(--v4)" }, svg);
+      txt(svg, x + sw / 2, 31, s[0], { "text-anchor": "middle", class: "mono", style: "fill:var(--surface);font-weight:600" });
+      el("line", { x1: x + 1, x2: x + 1, y1: 6, y2: 48, stroke: "var(--ink)", "stroke-width": 2 }, svg);
+      el("rect", { x: x + 4, y: 56, width: sw - 8, height: 12, rx: 3, fill: "var(--grid)", stroke: "var(--axis)" }, svg);
+      txt(svg, x + sw / 2, 84, "table " + (k + 1), { "text-anchor": "middle", class: "tick", style: "font-size:10px" });
+      x += sw;
+    });
+    txt(svg, 0, 98, "one frame, a table per section", { class: "tick", style: "font-size:10.5px" });
+  }
+  function cacheFig() {
+    var box = document.getElementById("cachefig");
+    box.textContent = "";
+    var w = Math.max(250, box.clientWidth - 20), h = 92;
+    var svg = el("svg", { width: w, height: h, viewBox: "0 0 " + w + " " + h }, box);
+    var n = 17, cw = w / n;
+    for (var i = 0; i < n; i++) {
+      var probe = i % 16 === 0;
+      el("rect", { x: i * cw + 1, y: probe ? 10 : 30, width: cw - 2, height: probe ? 40 : 20, rx: 3, fill: probe ? "var(--v5)" : "var(--v6)" }, svg);
+    }
+    txt(svg, 0, 70, "probe (2 passes)", { class: "tick" });
+    txt(svg, w, 70, "cached (1 pass)", { class: "tick", "text-anchor": "end" });
+    txt(svg, 0, 88, "height: relative encode work", { class: "tick", style: "font-size:10.5px" });
+  }
+
+  // ---- ablation heat map ----
+  function ablation() {
+    var box = document.getElementById("ablation");
+    box.textContent = "";
+    var cols = [
+      { k: "pred", h: "Predictor selection off", t: function (d) { return d.pred; } },
+      { k: "mask", h: "Validity mask off", t: function (d) { return d.mask; } },
+      { k: "blk", h: "Block boundaries off", t: function (d) { return d.blk; } },
+      { k: "lay", h: "V5 vs streams + blocks", t: function (d) { return (1 / (1 - d.lay / 100) - 1) * 100; } }
+    ];
+    var max = 34;
+    var t = document.createElement("table");
+    var thead = document.createElement("thead"), tr = document.createElement("tr");
+    var th0 = document.createElement("th"); th0.textContent = "Dataset"; th0.scope = "col"; tr.appendChild(th0);
+    cols.forEach(function (c) { var th = document.createElement("th"); th.scope = "col"; th.className = "num"; th.textContent = c.h; th.style.textAlign = "center"; tr.appendChild(th); });
+    thead.appendChild(tr); t.appendChild(thead);
+    var tb = document.createElement("tbody");
+    function cell(v) {
+      var td = document.createElement("td"); td.className = "cell";
+      var p = Math.max(0, Math.min(1, v / max));
+      var pct = Math.round(8 + p * 82);
+      td.style.background = "color-mix(in oklab, var(--v6) " + pct + "%, var(--cell-0))";
+      td.style.color = pct > 55 ? "var(--surface)" : "var(--ink)";
+      td.textContent = (v >= 0 ? "+" : "−") + fmt(Math.abs(v), 1) + "%";
+      return td;
+    }
+    var rows = ORDERED;
+    rows.forEach(function (d) {
+      var r = document.createElement("tr");
+      var n = document.createElement("td"); n.textContent = d.name; r.appendChild(n);
+      cols.forEach(function (c) { r.appendChild(cell(c.t(d))); });
+      tb.appendChild(r);
+    });
+    var mr = document.createElement("tr"); mr.className = "median";
+    var mn = document.createElement("td"); mn.textContent = "Median"; mr.appendChild(mn);
+    cols.forEach(function (c) { mr.appendChild(cell(median(D.map(c.t)))); });
+    tb.appendChild(mr);
+    t.appendChild(tb); box.appendChild(t);
+  }
+
+  // ---- sizes: V5 -> V6 dumbbell ----
+  function sizes() {
+    var box = document.getElementById("sizes");
+    box.textContent = "";
+    var w = width("sizes");
+    var narrow = w < 560;
+    var labelW = narrow ? 112 : 138, right = narrow ? 52 : 64, rowH = 30, top = 6;
+    var rows = ORDERED;
+    var h = top + rows.length * rowH + 26;
+    var svg = el("svg", { width: w, height: h, viewBox: "0 0 " + w + " " + h }, box);
+    var max = 50, x0 = labelW, scale = (w - labelW - right) / max, bottom = h - 24;
+    for (var v = 0; v <= max; v += 10) {
+      var x = x0 + v * scale;
+      el("line", { x1: x, x2: x, y1: top, y2: bottom, class: v === 0 ? "axis" : "grid" }, svg);
+      txt(svg, x, bottom + 16, v + (v === max ? "%" : ""), { "text-anchor": v === max ? "end" : "middle", class: "tick" });
+    }
+    rows.forEach(function (d, i) {
+      var y = top + i * rowH + rowH / 2;
+      var hit = el("rect", { x: 0, y: y - rowH / 2, width: w, height: rowH, class: "hit", "aria-label": d.name + ": V5 " + d.v5 + "%, V6 " + d.v6 + "%" }, svg);
+      txt(svg, labelW - 10, y + 4, d.name, { "text-anchor": "end" });
+      var xa = x0 + d.v5 * scale, xb = x0 + d.v6 * scale;
+      el("line", { x1: xb, x2: xa, y1: y, y2: y, stroke: "var(--axis)", "stroke-width": 2 }, svg);
+      el("circle", { cx: xa, cy: y, r: 5.5, fill: "var(--v5)", stroke: "var(--surface)", "stroke-width": 2 }, svg);
+      el("circle", { cx: xb, cy: y, r: 5.5, fill: "var(--v6)", stroke: "var(--surface)", "stroke-width": 2 }, svg);
+      var gain = (1 - d.v6 / d.v5) * 100;
+      txt(svg, xa + 10, y + 4, "−" + fmt(gain, 0) + "%", { class: "mono strong" });
+      bindTip(hit, function () {
+        return { head: d.name + " · ZSTD", rows: [
+          { color: "var(--v4)", label: "V4", value: fmt(d.v4, 2) + "%" },
+          { color: "var(--v5)", label: "V5", value: fmt(d.v5, 2) + "%" },
+          { color: "var(--v6)", label: "V6", value: fmt(d.v6, 2) + "%" }] };
+      });
+    });
+  }
+
+  // ---- speed: dot plot vs V5 ----
+  function speed() {
+    var box = document.getElementById("speed");
+    box.textContent = "";
+    var w = width("speed");
+    var narrow = w < 560;
+    var labelW = narrow ? 112 : 138, right = 18, rowH = 28, top = 8;
+    var rows = ORDERED;
+    var h = top + rows.length * rowH + 28;
+    var svg = el("svg", { width: w, height: h, viewBox: "0 0 " + w + " " + h }, box);
+    var lo = 0.5, hi = 2.0, x0 = labelW, scale = (w - labelW - right) / (hi - lo), bottom = h - 26;
+    function X(v) { return x0 + (v - lo) * scale; }
+    [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].forEach(function (v) {
+      el("line", { x1: X(v), x2: X(v), y1: top, y2: bottom, class: v === 1 ? "axis" : "grid", "stroke-width": v === 1 ? 2 : 1 }, svg);
+      txt(svg, X(v), bottom + 16, "×" + fmt(v, 2), { "text-anchor": v === 2 ? "end" : v === 0.5 ? "start" : "middle", class: "tick" });
+    });
+    rows.forEach(function (d, i) {
+      var y = top + i * rowH + rowH / 2;
+      var hit = el("rect", { x: 0, y: y - rowH / 2, width: w, height: rowH, class: "hit", "aria-label": d.name + ": encode ×" + d.enc + ", decode ×" + d.dec + " of V5" }, svg);
+      txt(svg, labelW - 10, y + 4, d.name, { "text-anchor": "end" });
+      el("line", { x1: X(Math.min(d.enc, d.dec)), x2: X(Math.max(d.first, d.dec)), y1: y, y2: y, stroke: "var(--grid)", "stroke-width": 2 }, svg);
+      el("rect", { x: X(d.first) - 4.5, y: y - 4.5, width: 9, height: 9, fill: "var(--muted)", transform: "rotate(45 " + X(d.first) + " " + y + ")" }, svg);
+      el("circle", { cx: X(d.dec), cy: y, r: 5.5, fill: "var(--surface)", stroke: "var(--v6)", "stroke-width": 2.2 }, svg);
+      el("circle", { cx: X(d.enc), cy: y, r: 5.5, fill: "var(--v6)", stroke: "var(--surface)", "stroke-width": 1.5 }, svg);
+      bindTip(hit, function () {
+        return { head: d.name + " · instructions vs V5", rows: [
+          { color: "var(--muted)", label: "first encode", value: "×" + fmt(d.first, 2) },
+          { color: "var(--v6)", label: "encode", value: "×" + fmt(d.enc, 2) },
+          { color: "var(--surface)", label: "decode", value: "×" + fmt(d.dec, 2) }] };
+      });
+    });
+  }
+
+  function render() {
+    drawScan(); drawLayout(); stencils(); maskFig(); streamsFig(); blocksFig(); cacheFig(); sizes(); speed();
+  }
+  ablation();
+  render();
+  var lastW = document.querySelector(".page").clientWidth, pending = null;
+  if (window.ResizeObserver) {
+    new ResizeObserver(function () {
+      var now = document.querySelector(".page").clientWidth;
+      if (now === lastW) { return; }
+      lastW = now;
+      if (pending) { cancelAnimationFrame(pending); }
+      pending = requestAnimationFrame(render);
+    }).observe(document.querySelector(".page"));
+  }
+  if (window.matchMedia) {
+    var mq = window.matchMedia("(prefers-color-scheme: dark)");
+    if (mq.addEventListener) { mq.addEventListener("change", render); }
+  }
+  if (document.fonts && document.fonts.ready) { document.fonts.ready.then(render); }
+})();
+</script>
+</body>
+</html>
