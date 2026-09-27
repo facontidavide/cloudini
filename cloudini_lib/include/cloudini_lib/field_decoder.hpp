@@ -66,10 +66,8 @@ class FieldDecoder {
    * @brief Same result as decode(), for a caller that guarantees at least maxInputBytes() readable bytes
    * at `ptr` (so no per-byte bounds checks). Advances `ptr`. Only valid when maxInputBytes() != 0.
    */
-  virtual void decodeUnchecked(const uint8_t*& ptr, uint8_t* point) {
-    ConstBufferView view(ptr, maxInputBytes());
-    decode(view, BufferView(point, 0));
-    ptr = view.data();
+  virtual void decodeUnchecked(const uint8_t*& /*ptr*/, uint8_t* /*point*/) {
+    throw std::logic_error("FieldDecoder::decodeUnchecked: override it together with maxInputBytes()");
   }
 
   /// Minimum number of input bytes this decoder needs per call.
@@ -96,9 +94,8 @@ class FieldDecoderCopy : public FieldDecoder {
     if (input.size() < field_size_) {
       throw std::runtime_error("FieldDecoderCopy::decode: truncated input");
     }
-    if (offset_ != kDecodeButSkipStore) {
-      memcpy(dest_point_view.data() + offset_, input.data(), field_size_);
-    }
+    const uint8_t* ptr = input.data();
+    FieldDecoderCopy::decodeUnchecked(ptr, dest_point_view.data());
     input.trim_front(field_size_);
   }
 
@@ -184,23 +181,9 @@ class FieldDecoderFloat_Lossy : public FieldDecoder {
   void decodePoints(ConstBufferView& input, uint8_t* output, size_t point_step, size_t count) override {
     const uint8_t* ptr = input.data();
     const uint8_t* const end = input.data() + input.size();
-    const bool store = offset_ != kDecodeButSkipStore;
     size_t i = 0;
     for (; i < count && static_cast<size_t>(end - ptr) >= kMaxVarintBytes; ++i) {
-      FloatType value;
-      if (*ptr == 0) {
-        ++ptr;
-        prev_value_ = 0;
-        value = std::numeric_limits<FloatType>::quiet_NaN();
-      } else {
-        int64_t diff = 0;
-        ptr += decodeVarintUnchecked(ptr, diff);
-        prev_value_ = static_cast<int64_t>(static_cast<uint64_t>(prev_value_) + static_cast<uint64_t>(diff));
-        value = static_cast<FloatType>(prev_value_) * multiplier_;
-      }
-      if (store) {
-        memcpy(output + i * point_step + offset_, &value, sizeof(FloatType));
-      }
+      FieldDecoderFloat_Lossy::decodeUnchecked(ptr, output + i * point_step);
     }
     input.trim_front(static_cast<size_t>(ptr - input.data()));
     FieldDecoder::decodePoints(input, output + i * point_step, point_step, count - i);
@@ -496,17 +479,8 @@ inline void FieldDecoderFloat_XOR<FloatType>::decode(ConstBufferView& input, Buf
   if (input.size() < sizeof(IntType)) {
     throw std::runtime_error("FieldDecoderFloat_XOR::decode: truncated input");
   }
-  IntType residual = 0;
-  memcpy(&residual, input.data(), sizeof(IntType));
+  const uint8_t* ptr = input.data();
+  FieldDecoderFloat_XOR<FloatType>::decodeUnchecked(ptr, dest_point_view.data());
   input.trim_front(sizeof(IntType));
-
-  // XOR the residual with the previous bits to recover the current value
-  const IntType current_bits = residual ^ prev_bits_;
-  prev_bits_ = current_bits;
-
-  // Convert back to float and store in destination
-  if (offset_ != kDecodeButSkipStore) {
-    memcpy(dest_point_view.data() + offset_, &current_bits, sizeof(FloatType));
-  }
 }
 }  // namespace Cloudini

@@ -97,26 +97,12 @@ void DecodeV4Stage1Chunk(
     output_buffer.trim_front(point_step);
   };
 
-  if (expected_points > 0 && decoders.size() == 1) {
-    // A single per-point decoder (e.g. xyz / xyzi clouds) decodes the whole chunk in one call.
+  if (expected_points > 0) {
     if (output_buffer.size() < expected_points * point_step) {
       throw std::runtime_error("Output buffer is too small to hold the decoded data");
     }
-    decoders.front()->decodePoints(encoded_view, output_buffer.data(), point_step, expected_points);
+    DecodePoints(decoders, encoded_view, output_buffer.data(), point_step, expected_points);
     output_buffer.trim_front(expected_points * point_step);
-  } else if (expected_points > 0) {
-    if (output_buffer.size() < expected_points * point_step) {
-      throw std::runtime_error("Output buffer is too small to hold the decoded data");
-    }
-    const size_t done =
-        DecodePointsUnchecked(decoders, encoded_view, output_buffer.data(), point_step, expected_points);
-    output_buffer.trim_front(done * point_step);
-    for (size_t p = done; p < expected_points; ++p) {
-      if (encoded_view.size() < min_encoded_point_bytes) {
-        throw std::runtime_error("Truncated encoded data: not enough bytes for a complete point");
-      }
-      decode_point();
-    }
   } else {
     while (!encoded_view.empty()) {
       if (encoded_view.size() < min_encoded_point_bytes) {

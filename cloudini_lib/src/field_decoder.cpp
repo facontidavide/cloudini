@@ -86,41 +86,45 @@ void FieldDecoderFloatN_Lossy::decode(ConstBufferView& input, BufferView dest_po
   input.trim_front(consumed);
 }
 
-template <size_t N>
-static inline void decodeUncheckedImpl(
-    const uint8_t*& ptr, uint8_t* point, Vector4i& prev_vect, const Vector4f& multiplier,
-    const std::array<size_t, 4>& offset) {
-  const uint8_t* p = ptr;
+// One point of N lossy floats, for a caller that guarantees N * kMaxVarintBytes readable bytes at `ptr`.
+// `prev` is the int32 history: decodePointsImpl passes a local copy (kept in registers), decodeUnchecked
+// the member.
+template <size_t N, class Prev, class Multiplier, class Offset>
+static inline void decodeFloatNPoint(
+    const uint8_t*& ptr_ref, uint8_t* point, Prev& prev, const Multiplier& multiplier, const Offset& offset) {
+  // a local pointer: the float stores through uint8_t* would otherwise force `ptr_ref` back to memory
+  const uint8_t* ptr = ptr_ref;
   for (size_t k = 0; k < N; ++k) {
     float value;
-    if (*p == 0) {
-      ++p;
-      prev_vect[k] = 0;
+    if (*ptr == 0) {
+      // NaN marker
+      ++ptr;
+      prev[k] = 0;
       value = std::numeric_limits<float>::quiet_NaN();
     } else {
       int64_t diff = 0;
-      p += decodeVarintUnchecked(p, diff);
-      const int32_t v = static_cast<int32_t>(static_cast<uint32_t>(prev_vect[k]) + static_cast<uint32_t>(diff));
-      prev_vect[k] = v;
-      value = static_cast<float>(v) * multiplier[k];
+      ptr += decodeVarintUnchecked(ptr, diff);
+      // same wrap-around as decode(): int32 addition of the truncated delta
+      prev[k] = static_cast<int32_t>(static_cast<uint32_t>(prev[k]) + static_cast<uint32_t>(diff));
+      value = static_cast<float>(prev[k]) * multiplier[k];
     }
     if (offset[k] != kDecodeButSkipStore) {
       memcpy(point + offset[k], &value, sizeof(float));
     }
   }
-  ptr = p;
+  ptr_ref = ptr;
 }
 
 void FieldDecoderFloatN_Lossy::decodeUnchecked(const uint8_t*& ptr, uint8_t* point) {
   switch (fields_count_) {
     case 2:
-      decodeUncheckedImpl<2>(ptr, point, prev_vect_, multiplier_, offset_);
+      decodeFloatNPoint<2>(ptr, point, prev_vect_, multiplier_, offset_);
       break;
     case 3:
-      decodeUncheckedImpl<3>(ptr, point, prev_vect_, multiplier_, offset_);
+      decodeFloatNPoint<3>(ptr, point, prev_vect_, multiplier_, offset_);
       break;
     default:
-      decodeUncheckedImpl<4>(ptr, point, prev_vect_, multiplier_, offset_);
+      decodeFloatNPoint<4>(ptr, point, prev_vect_, multiplier_, offset_);
       break;
   }
 }
@@ -159,25 +163,7 @@ void FieldDecoderFloatN_Lossy::decodePointsImpl(
 
   size_t i = 0;
   for (; i < count && static_cast<size_t>(end - ptr) >= kMaxPointBytes; ++i) {
-    uint8_t* point = output + i * point_step;
-    for (size_t k = 0; k < N; ++k) {
-      float value;
-      if (*ptr == 0) {
-        // NaN marker
-        ++ptr;
-        prev[k] = 0;
-        value = std::numeric_limits<float>::quiet_NaN();
-      } else {
-        int64_t diff = 0;
-        ptr += decodeVarintUnchecked(ptr, diff);
-        // same wrap-around as decode(): int32 addition of the truncated delta
-        prev[k] = static_cast<int32_t>(static_cast<uint32_t>(prev[k]) + static_cast<uint32_t>(diff));
-        value = static_cast<float>(prev[k]) * multiplier[k];
-      }
-      if (offset[k] != kDecodeButSkipStore) {
-        memcpy(point + offset[k], &value, sizeof(float));
-      }
-    }
+    decodeFloatNPoint<N>(ptr, output + i * point_step, prev, multiplier, offset);
   }
 
   for (size_t k = 0; k < N; ++k) {

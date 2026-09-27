@@ -176,21 +176,6 @@ void appendBitpackedIndexes(const std::vector<uint32_t>& indexes, uint8_t bits, 
   }
 }
 
-uint32_t readBitpackedIndex(const uint8_t*& ptr, uint64_t& scratch, uint8_t& held, uint8_t bits) {
-  if (bits == 0) {
-    return 0;
-  }
-  while (held < bits) {
-    scratch |= (static_cast<uint64_t>(*ptr++) << held);
-    held = static_cast<uint8_t>(held + 8u);
-  }
-  const uint64_t mask = (uint64_t{1} << bits) - 1u;
-  const uint32_t out = static_cast<uint32_t>(scratch & mask);
-  scratch >>= bits;
-  held = static_cast<uint8_t>(held - bits);
-  return out;
-}
-
 size_t encodedUVarintSize(uint64_t value) {
   size_t bytes = 1;
   while (value > 0x7Fu) {
@@ -826,41 +811,33 @@ void decodeV5AdaptiveIntValues(
       if (input.size() < index_bytes) {
         throw std::runtime_error("V5 adaptive int: truncated palette indexes");
       }
-      const uint8_t* index_ptr = input.data();
-      size_t i = 0;
-      if (bits > 0) {
-        // Fast path: value i is at bit i * bits; read it from a 64-bit window while one is readable
-        // (bits <= 16, so the value never crosses the window). No loop-carried state.
-        const uint64_t mask = (uint64_t{1} << bits) - 1u;
-        const uint64_t* pal = palette.data();
-        const size_t pal_count = palette.size();
-        uint8_t* out = output_base + field.offset;
-        for (; i < expected_points && ((i * bits) >> 3) + 8 <= index_bytes; ++i) {
-          const size_t bitpos = i * bits;
+      // Index i is at bit i * bits of the index bytes. bits <= 16, so it never crosses a 64-bit window
+      // read at its byte: no loop-carried state. The last indexes, whose window would run past the
+      // index bytes, are read the same way from a zero-padded copy (fewer than 8 bytes).
+      const uint64_t mask = (uint64_t{1} << bits) - 1u;
+      const uint64_t* pal = palette.data();
+      const size_t pal_count = palette.size();
+      uint8_t* out = output_base + field.offset;
+      auto decode_indexes = [&](const uint8_t* index_bits, size_t first_bit, size_t from, size_t to) {
+        for (size_t i = from; i < to; ++i) {
+          const size_t bitpos = i * bits - first_bit;
           uint64_t word;
-          std::memcpy(&word, index_ptr + (bitpos >> 3), sizeof(word));
+          std::memcpy(&word, index_bits + (bitpos >> 3), sizeof(word));
           const uint32_t idx = static_cast<uint32_t>((word >> (bitpos & 7)) & mask);
           if (idx >= pal_count) {
             throw std::runtime_error("V5 adaptive int: palette index out of range");
           }
           writeValueToPoint<Bytes, Store>(pal[idx], out + i * point_step);
         }
-      }
-      // Tail (and bits == 0): the byte-at-a-time reader, started at bit i * bits.
-      const size_t bitpos = i * bits;
-      const uint8_t* tail_ptr = index_ptr + (bitpos >> 3);
-      uint64_t scratch = 0;
-      uint8_t held = 0;
-      if (i < expected_points && (bitpos & 7) != 0) {
-        scratch = static_cast<uint64_t>(*tail_ptr++) >> (bitpos & 7);
-        held = static_cast<uint8_t>(8 - (bitpos & 7));
-      }
-      for (; i < expected_points; ++i) {
-        const uint32_t idx = readBitpackedIndex(tail_ptr, scratch, held, bits);
-        if (idx >= palette.size()) {
-          throw std::runtime_error("V5 adaptive int: palette index out of range");
-        }
-        writeValueToPoint<Bytes, Store>(palette[idx], output_base + i * point_step + field.offset);
+      };
+      // first index whose window is not inside the index bytes (index_bytes == 0 when bits == 0)
+      const size_t in_place = index_bytes < 8 ? 0 : std::min(expected_points, ((index_bytes - 8) * 8 + 7) / bits + 1);
+      decode_indexes(input.data(), 0, 0, in_place);
+      if (in_place < expected_points) {
+        const size_t first_byte = in_place * bits / 8;
+        uint8_t padded[16] = {};
+        std::memcpy(padded, input.data() + first_byte, index_bytes - first_byte);
+        decode_indexes(padded, first_byte * 8, in_place, expected_points);
       }
       input.trim_front(index_bytes);
     } break;
@@ -1075,18 +1052,8 @@ void DecodeV5Stage1Chunk(
 
   ResetDecoders(decoders);
   uint8_t* chunk_output = output_buffer.data();
-  if (decoders.size() == 1) {
-    // Typically the xyz(i) vector, when every other field is an adaptive section.
-    decoders.front()->decodePoints(encoded_view, chunk_output, info.point_step, expected_points);
-  } else {
-    const size_t p = DecodePointsUnchecked(decoders, encoded_view, chunk_output, info.point_step, expected_points);
-    for (size_t p2 = p; p2 < expected_points; ++p2) {
-      BufferView point_view(chunk_output + p2 * info.point_step, info.point_step);
-      for (auto& decoder : decoders) {
-        decoder->decode(encoded_view, point_view);
-      }
-    }
-  }
+  // Typically only the xyz(i) vector is left here, when every other field is an adaptive section.
+  DecodePoints(decoders, encoded_view, chunk_output, info.point_step, expected_points);
 
   const std::vector<V5AdaptiveIntField> adaptive_fields = getV5AdaptiveFields(info);
   for (const auto& field : adaptive_fields) {

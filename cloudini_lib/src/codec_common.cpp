@@ -251,17 +251,18 @@ void ResetEncoders(std::vector<std::unique_ptr<FieldEncoder>>& encoders) {
   }
 }
 
-size_t DecodePointsUnchecked(
+namespace {
+// The unchecked part of DecodePoints(). Kept out of line: inlined into DecodePoints() it compiled to a
+// slower loop (V4 decode -6% on Ouster, -10% on nuScenes). Returns the number of points decoded.
+#if defined(__GNUC__)
+__attribute__((noinline))
+#elif defined(_MSC_VER)
+__declspec(noinline)
+#endif
+size_t
+decodePointsUnchecked(
     std::vector<std::unique_ptr<FieldDecoder>>& decoders, ConstBufferView& input, uint8_t* output, size_t point_step,
-    size_t count) {
-  size_t max_point_bytes = 0;
-  for (const auto& decoder : decoders) {
-    const size_t m = decoder->maxInputBytes();
-    if (m == 0) {
-      return 0;
-    }
-    max_point_bytes += m;
-  }
+    size_t count, size_t max_point_bytes) {
   const uint8_t* ptr = input.data();
   const uint8_t* const end = input.data() + input.size();
   size_t p = 0;
@@ -273,6 +274,34 @@ size_t DecodePointsUnchecked(
   }
   input.trim_front(static_cast<size_t>(ptr - input.data()));
   return p;
+}
+}  // namespace
+
+void DecodePoints(
+    std::vector<std::unique_ptr<FieldDecoder>>& decoders, ConstBufferView& input, uint8_t* output, size_t point_step,
+    size_t count) {
+  if (decoders.size() == 1) {
+    decoders.front()->decodePoints(input, output, point_step, count);
+    return;
+  }
+  size_t min_point_bytes = 0;
+  size_t max_point_bytes = 0;
+  bool unchecked = true;
+  for (const auto& decoder : decoders) {
+    min_point_bytes += decoder->minInputBytes();
+    max_point_bytes += decoder->maxInputBytes();
+    unchecked = unchecked && decoder->maxInputBytes() != 0;
+  }
+  size_t p = unchecked ? decodePointsUnchecked(decoders, input, output, point_step, count, max_point_bytes) : 0;
+  for (; p < count; ++p) {
+    if (input.size() < min_point_bytes) {
+      throw std::runtime_error("Truncated encoded data: not enough bytes for a complete point");
+    }
+    BufferView point_view(output + p * point_step, point_step);
+    for (auto& decoder : decoders) {
+      decoder->decode(input, point_view);
+    }
+  }
 }
 
 void ResetDecoders(std::vector<std::unique_ptr<FieldDecoder>>& decoders) {
