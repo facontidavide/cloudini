@@ -731,14 +731,18 @@ void EncodeV6Stage1(
   auto& mask_bits = scratch.mask_bits;
   auto& section_starts = scratch.section_starts;
 
-  // Lag and predictors: reused from the previous clouds of the same size, probed again periodically.
+  // Lag, predictor and mask kind of each chunk: reused from the previous clouds of the stream (their size
+  // may differ: unorganized scans vary from cloud to cloud), probed again every kV6ReprobeInterval clouds.
+  // A chunk the previous clouds did not have is probed now.
   const size_t chunks_count = (points_count + points_per_chunk - 1) / points_per_chunk;
-  if (state.encodes % kV6ReprobeInterval == 0 || state.cloud_points != points_count) {
-    state.cloud_points = points_count;
+  if (state.encodes % kV6ReprobeInterval == 0) {
     state.lag_known = false;
     state.predictors.assign(chunks_count, 0xFF);
     state.masks.assign(chunks_count, 0xFF);
     state.encodes = 0;
+  } else if (state.predictors.size() != chunks_count) {
+    state.predictors.resize(chunks_count, 0xFF);
+    state.masks.resize(chunks_count, 0xFF);
   }
   state.encodes++;
   if (info.height > 1) {  // organized clouds: the point one row up

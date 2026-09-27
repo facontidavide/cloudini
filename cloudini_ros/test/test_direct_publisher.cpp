@@ -63,7 +63,8 @@ class DirectCompressionPublisher : public rclcpp::Node {
 
     const size_t original_size = msg->data.size();
 
-    Cloudini::SerializeCompressedPointCloud2(*msg, resolution_, output_buffer_);
+    Cloudini::SerializeCompressedPointCloud2(
+        *msg, resolution_, output_buffer_, Cloudini::kEncodingVersion, &encoder_cache_);
 
     // Zero-copy publish: point SerializedMessage at our buffer
     output_message_.get_rcl_serialized_message().buffer = output_buffer_.data();
@@ -86,6 +87,7 @@ class DirectCompressionPublisher : public rclcpp::Node {
   rclcpp::GenericPublisher::SharedPtr publisher_;
 
   std::vector<uint8_t> output_buffer_;
+  Cloudini::PointcloudEncoderCache encoder_cache_;  // one encoder for the topic
   rclcpp::SerializedMessage output_message_;
   float resolution_ = 0.001f;
 

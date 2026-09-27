@@ -118,6 +118,8 @@ struct EncodingInfo {
 };
 
 constexpr const char* kMagicHeader = "CLOUDINI_V";
+
+class PointcloudEncoder;
 constexpr int kMagicHeaderLength = 10;
 
 enum class HeaderEncoding { BINARY, YAML };
@@ -198,6 +200,10 @@ class PointcloudEncoder {
     return header_;
   }
 
+  // Changes the width and height written in the header of the next encoded clouds. Everything else in
+  // the EncodingInfo stays; use it to encode clouds of varying size with the same encoder.
+  void setCloudSize(uint32_t width, uint32_t height);
+
   ~PointcloudEncoder();
 
  private:
@@ -239,6 +245,21 @@ class PointcloudEncoder {
   std::exception_ptr worker_exception_;
 
   BufferView output_view_;
+};
+
+/**
+ * @brief Keeps one PointcloudEncoder for a stream of clouds (e.g. one topic).
+ *
+ * The encoder is reused while the fields, point step, options and version stay the same; a change of
+ * width or height only updates its header. Reuse matters for V6: the encoder keeps the lag, predictor and
+ * mask kind it chose for each chunk, and codes the next clouds in a single pass.
+ */
+class PointcloudEncoderCache {
+ public:
+  PointcloudEncoder& get(const EncodingInfo& info);
+
+ private:
+  std::unique_ptr<PointcloudEncoder> encoder_;
 };
 
 /**

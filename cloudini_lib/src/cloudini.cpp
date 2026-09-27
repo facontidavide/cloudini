@@ -639,6 +639,33 @@ PointcloudEncoder::PointcloudEncoder(const EncodingInfo& info) : info_(info) {
   }
 }
 
+void PointcloudEncoder::setCloudSize(uint32_t width, uint32_t height) {
+  if (width == info_.width && height == info_.height) {
+    return;
+  }
+  info_.width = width;
+  info_.height = height;
+  header_.clear();
+  EncodeHeader(info_, header_);
+}
+
+PointcloudEncoder& PointcloudEncoderCache::get(const EncodingInfo& info) {
+  if (encoder_) {
+    const EncodingInfo& current = encoder_->getEncodingInfo();
+    EncodingInfo resized = info;
+    resized.width = current.width;
+    resized.height = current.height;
+    // operator== compares fields, sizes and options, not the version, the configuration or the threading
+    if (resized == current && info.version == current.version && info.encoding_config == current.encoding_config &&
+        info.use_threads == current.use_threads) {
+      encoder_->setCloudSize(info.width, info.height);
+      return *encoder_;
+    }
+  }
+  encoder_ = std::make_unique<PointcloudEncoder>(info);
+  return *encoder_;
+}
+
 PointcloudEncoder::~PointcloudEncoder() {
   if (compressing_thread_.joinable()) {
     {

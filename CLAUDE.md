@@ -144,6 +144,8 @@ ros2 run cloudini_ros cloudini_topic_converter --ros-args \
   -p topic_output:=/points/compressed \
   -p resolution:=0.001
 
+# Add -p encoding_version:=6 to write V6 (default 5)
+
 # Decompress: CompressedPointCloud2 -> sensor_msgs/PointCloud2
 ros2 run cloudini_ros cloudini_topic_converter --ros-args \
   -p compressing:=false \
@@ -177,6 +179,9 @@ ros2 run cloudini_ros test_direct_publisher --ros-args \
 # Roughly halves output size on real LIDAR with stage-2 ZSTD.
 ./build_release/tools/cloudini_rosbag_converter -c -y --viz -f DATA/my_bag/
 
+# Write V6 (smaller; needs a V6-capable decoder). Default is version 5.
+./build_release/tools/cloudini_rosbag_converter -c -y --encoding-version 6 -f DATA/my_bag/
+
 # Decode back to PointCloud2
 ./build_release/tools/cloudini_rosbag_converter -d -y -f DATA/my_bag_encoded/
 ```
@@ -202,7 +207,7 @@ Implementation: `cloudini_ros::applyVizLossyPreprocessing` in
 
 **Codec benchmark**:
 ```bash
-# Per-topic ratio + encode/decode speed for V4 vs V4+viz
+# Per-topic ratio + encode/decode speed for V4/V5/V6 and their viz variants
 ./build_release/tools/mcap_codec_benchmark DATA/my_bag.mcap --max-messages 100
 
 # Add --zstd for after-ZSTD-3 sizes (production-equivalent)
@@ -232,10 +237,18 @@ FLOAT32 fields with a resolution get their own residual stream. The layout
 is used only when x, y, z are the first three FLOAT32 fields with a
 resolution in (0, 1e18); other version-6 clouds use the V5 layout. The
 encoder caches lag, predictor and mask kind per cloud size (re-probed every
-16 clouds) and then quantizes and codes in one SSE pass. Code: V6 section of
-`cloudini_lib/src/v5_codec.cpp`; tests in `cloudini_lib/test/test_v6.cpp`
-(including a mutation test of corrupted V4/V5/V6 payloads; set
-`CLOUDINI_FUZZ_ITERATIONS` for longer runs under ASan/UBSan).
+16 clouds, also across clouds of different size) and quantizes and codes in
+one SSE pass; the first encode probes a prefix of each chunk, then codes it the
+same way. Keep one encoder per stream to benefit: `Cloudini::PointcloudEncoderCache`
+(used by the rosbag converter, `mcap_codec_benchmark`, the topic converter and
+the point_cloud_transport plugin). Selecting V6: `--encoding-version 6`
+(rosbag converter), `encoding_version:=6` (topic converter),
+`cloudini_encoding_version: 6` (plugin), or the `encoding_version` argument of
+`SerializeCompressedPointCloud2`. Code: `cloudini_lib/src/v6_codec.cpp` (uses the
+V5 integer sections through `AdaptiveIntSectionsEncoder` in `v5_codec.hpp`);
+tests in `cloudini_lib/test/test_v6.cpp` (including a mutation test of corrupted
+V4/V5/V6 payloads; set `CLOUDINI_FUZZ_ITERATIONS` for longer runs under
+ASan/UBSan). Format reference with measurements: `docs/v6_format.html`.
 
 ### Debugging with ROS2 CLI
 

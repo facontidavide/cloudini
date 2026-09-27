@@ -189,10 +189,11 @@ void writePointCloudHeader(nanocdr::Encoder& encoder, const RosPointCloud2& pc_i
 RosPointCloud2 getDeserializedPointCloudMessage(Cloudini::ConstBufferView pc2_dds_msg);
 
 // Given as input a raw DDS message, containing a sensor_msgs/msg/PointCloud2,
-// apply compression and write the result into a point_cloud_interfaces/msg/CompressedPointCloud2
+// apply compression and write the result into a point_cloud_interfaces/msg/CompressedPointCloud2.
+// With `encoder_cache`, the encoder is reused across the messages of a stream (see PointcloudEncoderCache).
 void convertPointCloud2ToCompressedCloud(
     const RosPointCloud2& pc_info, const Cloudini::EncodingInfo& encoding_info,
-    std::vector<uint8_t>& compressed_dds_msg);
+    std::vector<uint8_t>& compressed_dds_msg, Cloudini::PointcloudEncoderCache* encoder_cache = nullptr);
 
 // Assumining that pc_info contains compressed data, decompress it directly into raw_dds_msg
 void convertCompressedCloudToPointCloud2(const RosPointCloud2& pc_info, std::vector<uint8_t>& pc2_dds_msg);

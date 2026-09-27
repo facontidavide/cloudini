@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <vector>
 
 #include "cloudini_lib/contrib/ankerl/unordered_dense.h"
@@ -165,7 +166,7 @@ void convertCompressedCloudToPointCloud2(const RosPointCloud2& pc_info, std::vec
 
 void convertPointCloud2ToCompressedCloud(
     const RosPointCloud2& pc_info, const Cloudini::EncodingInfo& encoding_info,
-    std::vector<uint8_t>& compressed_dds_msg) {
+    std::vector<uint8_t>& compressed_dds_msg, Cloudini::PointcloudEncoderCache* encoder_cache) {
   compressed_dds_msg.clear();
   nanocdr::Encoder cdr_encoder(pc_info.cdr_header, compressed_dds_msg);
   writePointCloudHeader(cdr_encoder, pc_info);
@@ -205,7 +206,9 @@ void convertPointCloud2ToCompressedCloud(
 
   Cloudini::BufferView compressed_data_view(
       compressed_dds_msg.data() + prev_size, compressed_dds_msg.size() - prev_size);
-  Cloudini::PointcloudEncoder cloud_encoder(encoding_info);
+  std::optional<Cloudini::PointcloudEncoder> local_encoder;
+  Cloudini::PointcloudEncoder& cloud_encoder =
+      encoder_cache ? encoder_cache->get(encoding_info) : local_encoder.emplace(encoding_info);
   const size_t compressed_size = cloud_encoder.encode(pc_info.data, compressed_data_view, true);
 
   // we can finally write the actual size of the compressed data

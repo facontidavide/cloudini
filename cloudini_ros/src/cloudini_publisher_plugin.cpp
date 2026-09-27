@@ -36,13 +36,25 @@ void CloudiniPublisher::declareParameters(const std::string& base_topic) {
 
   getParam<double>(encode_resolution_descriptor.name, resolution_);
 
+  rcl_interfaces::msg::ParameterDescriptor encoding_version_descriptor;
+  encoding_version_descriptor.name = "cloudini_encoding_version";
+  encoding_version_descriptor.type = rcl_interfaces::msg::ParameterType::PARAMETER_INTEGER;
+  encoding_version_descriptor.description =
+      "Cloudini wire version: 5 (default, read by every released decoder) or 6 (smaller, needs a V6-capable "
+      "decoder)";
+  encoding_version_descriptor.set__integer_range(
+      {rcl_interfaces::msg::IntegerRange().set__from_value(4).set__to_value(Cloudini::kMaxEncodingVersion)});
+  declareParam<int64_t>(encoding_version_descriptor.name, encoding_version_, encoding_version_descriptor);
+  getParam<int64_t>(encoding_version_descriptor.name, encoding_version_);
+
   auto param_change_callback = [this](const std::vector<rclcpp::Parameter>& parameters) {
     auto result = rcl_interfaces::msg::SetParametersResult();
     result.successful = true;
     for (auto parameter : parameters) {
       if (parameter.get_name().find("cloudini_resolution") != std::string::npos) {
         resolution_ = parameter.as_double();
-        return result;
+      } else if (parameter.get_name().find("cloudini_encoding_version") != std::string::npos) {
+        encoding_version_ = parameter.as_int();
       }
     }
     return result;
@@ -52,7 +64,9 @@ void CloudiniPublisher::declareParameters(const std::string& base_topic) {
 
 CloudiniPublisher::TypedEncodeResult CloudiniPublisher::encodeTyped(const sensor_msgs::msg::PointCloud2& raw) const {
   auto info = Cloudini::ConvertToEncodingInfo(raw, resolution_);
-  Cloudini::PointcloudEncoder encoder(info);
+  info.version = static_cast<uint8_t>(encoding_version_);
+  std::lock_guard<std::mutex> lock(encoder_mutex_);
+  Cloudini::PointcloudEncoder& encoder = encoder_cache_.get(info);
 
   // copy all the fields from the raw point cloud to the compressed one
   point_cloud_interfaces::msg::CompressedPointCloud2 result;

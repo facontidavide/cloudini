@@ -59,6 +59,9 @@ class CloudiniPointcloudConverter : public rclcpp::Node {
   rclcpp::SerializedMessage output_message_;
   bool compressing_ = true;
   double resolution_ = 0.001;  // 1mm
+  uint8_t encoding_version_ = Cloudini::kEncodingVersion;
+  // one encoder for the whole stream (V6 reuses its per-chunk choices between clouds)
+  Cloudini::PointcloudEncoderCache encoder_cache_;
 
   uint64_t tot_original_size = 0;
   uint64_t tot_compressed_size = 0;
@@ -108,10 +111,19 @@ CloudiniPointcloudConverter::CloudiniPointcloudConverter(const rclcpp::NodeOptio
   this->declare_parameter<std::string>("topic_output", "");
   this->declare_parameter<double>("resolution", 0.001);
   this->declare_parameter<bool>("log_compression_stats", true);
+  // 5 (default) is read by every released decoder; 6 is smaller but needs a V6-capable decoder
+  this->declare_parameter<int>("encoding_version", Cloudini::kEncodingVersion);
 
   // read parameters
   compressing_ = this->get_parameter("compressing").as_bool();
   resolution_ = this->get_parameter("resolution").as_double();
+  const int64_t encoding_version = this->get_parameter("encoding_version").as_int();
+  if (encoding_version < 4 || encoding_version > Cloudini::kMaxEncodingVersion) {
+    RCLCPP_ERROR(
+        this->get_logger(), "encoding_version must be 4, 5 or 6 (got %ld)", static_cast<long>(encoding_version));
+    throw std::runtime_error("Unsupported encoding_version");
+  }
+  encoding_version_ = static_cast<uint8_t>(encoding_version);
 
   const std::string input_topic = this->get_parameter("topic_input").as_string();
   if (input_topic.empty()) {
@@ -168,8 +180,9 @@ void CloudiniPointcloudConverter::callback(std::shared_ptr<rclcpp::SerializedMes
 
   if (compressing_) {
     cloudini_ros::applyResolutionProfile(cloudini_ros::ResolutionProfile{}, pc_info.fields, resolution_);
-    const auto encoding_info = cloudini_ros::toEncodingInfo(pc_info);
-    cloudini_ros::convertPointCloud2ToCompressedCloud(pc_info, encoding_info, output_raw_message_);
+    auto encoding_info = cloudini_ros::toEncodingInfo(pc_info);
+    encoding_info.version = encoding_version_;
+    cloudini_ros::convertPointCloud2ToCompressedCloud(pc_info, encoding_info, output_raw_message_, &encoder_cache_);
   } else {
     cloudini_ros::convertCompressedCloudToPointCloud2(pc_info, output_raw_message_);
   }

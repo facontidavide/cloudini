@@ -51,6 +51,10 @@ class McapConverter {
   //   - "ring" field removed
   void addProfile(const std::string& profile);
 
+  // Wire version of the encoded clouds (default: Cloudini::kEncodingVersion). 6 writes V6, which decoders
+  // before V6 support cannot read.
+  void setEncodingVersion(uint8_t version);
+
   void encodePointClouds(
       std::filesystem::path file_out, std::optional<float> default_resolution,
       Cloudini::CompressionOption mcap_writer_compression, bool viz_lossy = false);
@@ -72,6 +76,7 @@ class McapConverter {
   std::map<uint16_t, uint16_t> old_to_new_schema_id_;
   std::map<uint16_t, uint16_t> old_to_new_channel_id_;
   std::map<std::string, float> profile_resolutions_;
+  uint8_t encoding_version_ = Cloudini::kEncodingVersion;
 
   size_t processed_messages_ = 0;
   size_t total_input_bytes_ = 0;

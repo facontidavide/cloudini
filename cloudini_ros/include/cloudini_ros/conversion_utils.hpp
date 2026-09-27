@@ -61,6 +61,10 @@ cloudini_ros::RosPointCloud2 ConvertToRosPointCloud2(const sensor_msgs::msg::Poi
  * @param msg The PointCloud2 message to compress
  * @param resolution The quantization resolution for FLOAT32 fields (e.g. 0.001 for 1mm)
  * @param serialized_dds_msg Output buffer for the CDR-serialized CompressedPointCloud2
+ * @param encoding_version Cloudini wire version: kEncodingVersion (5, the default) or 6 (smaller, needs a
+ *        V6-capable decoder)
+ * @param encoder_cache Optional: reuses one encoder across the messages of a topic (see
+ *        PointcloudEncoderCache); keep it next to the buffer
  *
  * Example (simple):
  * @code
@@ -82,7 +86,8 @@ cloudini_ros::RosPointCloud2 ConvertToRosPointCloud2(const sensor_msgs::msg::Poi
  * @endcode
  */
 void SerializeCompressedPointCloud2(
-    const sensor_msgs::msg::PointCloud2& msg, float resolution, std::vector<uint8_t>& serialized_dds_msg);
+    const sensor_msgs::msg::PointCloud2& msg, float resolution, std::vector<uint8_t>& serialized_dds_msg,
+    uint8_t encoding_version = kEncodingVersion, PointcloudEncoderCache* encoder_cache = nullptr);
 
 }  // namespace Cloudini
 #endif  // CLOUDINI_ROS__CONVERSION_UTILS_HPP_

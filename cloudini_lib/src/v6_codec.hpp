@@ -32,14 +32,13 @@ namespace Cloudini::detail {
 // resolution in (0, 1e18); other version-6 clouds use the V5 chunk layout (the decoder decides the same way).
 bool UsesV6Codec(const EncodingInfo& info);
 
-// State a PointcloudEncoder keeps between encode() calls with V6: the detected lag and the predictor
-// chosen for each chunk are reused for the next clouds of the same size, and probed again every
+// State a PointcloudEncoder keeps between encode() calls with V6: the detected lag and the predictor and
+// mask kind chosen for each chunk are reused for the next clouds, and probed again every
 // kV6ReprobeInterval clouds.
 constexpr uint32_t kV6ReprobeInterval = 16;
 struct V6EncoderState {
   size_t lag = 0;
   bool lag_known = false;
-  size_t cloud_points = 0;
   uint32_t encodes = 0;
   std::vector<uint8_t> predictors;  // per chunk; 0xFF = not chosen yet
   std::vector<uint8_t> masks;       // per chunk mask kind; 0xFF = not known yet

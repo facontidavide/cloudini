@@ -139,6 +139,16 @@ mcap::Compression toMcapCompression(Cloudini::CompressionOption compression) {
   }
 }
 //------------------------------------------------------
+void McapConverter::setEncodingVersion(uint8_t version) {
+  if (version < 4 || version > Cloudini::kMaxEncodingVersion) {
+    throw std::runtime_error(
+        "Unsupported encoding version " + std::to_string(version) + " (4 to " +
+        std::to_string(Cloudini::kMaxEncodingVersion) + ")");
+  }
+  encoding_version_ = version;
+}
+
+//------------------------------------------------------
 void McapConverter::encodePointClouds(
     std::filesystem::path file_out, std::optional<float> default_resolution,
     Cloudini::CompressionOption mcap_writer_compression, bool viz_lossy) {
@@ -168,6 +178,8 @@ void McapConverter::encodePointClouds(
   mcap::ProblemCallback problem = [](const mcap::Status&) {};
 
   std::vector<uint8_t> compressed_dds_msg;
+  // one encoder per channel, reused across its messages
+  std::map<uint16_t, Cloudini::PointcloudEncoderCache> encoders;
 
   for (const auto& msg : reader_->readMessages(problem, reader_options)) {
     mcap::Message new_msg = msg.message;
@@ -199,12 +211,14 @@ void McapConverter::encodePointClouds(
     }
 
     auto encoding_info = cloudini_ros::toEncodingInfo(pc_info);
+    encoding_info.version = encoding_version_;
     // no need to do ZSTD compression twice
     if (mcap_writer_compression == Cloudini::CompressionOption::ZSTD) {
       encoding_info.compression_opt = Cloudini::CompressionOption::NONE;
     }
 
-    cloudini_ros::convertPointCloud2ToCompressedCloud(pc_info, encoding_info, compressed_dds_msg);
+    cloudini_ros::convertPointCloud2ToCompressedCloud(
+        pc_info, encoding_info, compressed_dds_msg, &encoders[msg.channel->id]);
 
     // copy pointers to compressed_dds_msg
     new_msg.data = reinterpret_cast<const std::byte*>(compressed_dds_msg.data());

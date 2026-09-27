@@ -98,7 +98,11 @@ int main(int argc, char** argv) {
        "Roughly halves output size on real LIDAR with stage-2 ZSTD. Lossy on NaN "
        "positions, mm-coincident duplicates, and sub-microsecond FLOAT64 precision.")  //
       ("m,method", "Compression method to use when writing data back to mcap ('zstd', 'none')",
-       cxxopts::value<std::string>()->default_value("zstd"));
+       cxxopts::value<std::string>()->default_value("zstd"))  //
+      ("encoding-version",
+       "Wire version of the encoded clouds (compression only): 4, 5 (default) or 6. Version 6 is smaller "
+       "but needs a V6-capable decoder.",
+       cxxopts::value<int>()->default_value(std::to_string(Cloudini::kEncodingVersion)));
 
   auto parse_result = options.parse(argc, argv);
 
@@ -328,6 +332,12 @@ int main(int argc, char** argv) {
         std::cout << "\nViz-lossy preprocessing: drop NaN, voxel-dedupe at " << resolution
                   << " m, quantize FLOAT64 to 1us\n";
       }
+      const int encoding_version = parse_result["encoding-version"].as<int>();
+      if (encoding_version < 4 || encoding_version > Cloudini::kMaxEncodingVersion) {
+        std::cerr << "Error: --encoding-version must be 4, 5 or 6." << std::endl;
+        return 1;
+      }
+      converter.setEncodingVersion(static_cast<uint8_t>(encoding_version));
       converter.encodePointClouds(output_filename, resolution, mcap_writer_compression, viz_lossy);
     }
     if (decode) {

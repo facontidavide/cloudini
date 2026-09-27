@@ -535,3 +535,35 @@ TEST(V6, MutatedPayloadsNeverCrash) {
   EXPECT_GT(rejected, 0u);
   std::cout << "mutated payloads: " << decoded_ok << " decoded, " << rejected << " rejected\n";
 }
+
+// One encoder for a stream of unorganized clouds of varying size: the cache keeps the encoder (and the V6
+// choices), the header carries each cloud's size, and every cloud round-trips.
+TEST(V6, EncoderCacheAcrossCloudSizes) {
+  std::mt19937 rng(11);
+  const auto fields = ousterFields(0.001f);
+  const auto full = firingOrderScan(1100, 32, rng);  // two chunks at full size
+  PointcloudEncoderCache cache;
+  const PointcloudEncoder* first = nullptr;
+  for (size_t points : {size_t(35200), size_t(34000), size_t(20000), size_t(35000), size_t(64)}) {
+    std::vector<OusterPoint> cloud(full.begin(), full.begin() + points);
+    const auto info = makeInfo(fields, uint32_t(points), 1, sizeof(OusterPoint), 6, CompressionOption::ZSTD);
+    auto& encoder = cache.get(info);
+    if (!first) {
+      first = &encoder;
+    }
+    ASSERT_EQ(&encoder, first) << points;  // reused
+    std::vector<uint8_t> encoded;
+    encoder.encode(
+        ConstBufferView(reinterpret_cast<const uint8_t*>(cloud.data()), cloud.size() * sizeof(OusterPoint)), encoded);
+    EncodingInfo header;
+    const auto decoded = decode(encoded, &header);
+    ASSERT_EQ(header.width, points);
+    const auto v5 = decode(encode(
+        makeInfo(fields, uint32_t(points), 1, sizeof(OusterPoint), 5, CompressionOption::ZSTD), cloud.data(),
+        cloud.size() * sizeof(OusterPoint)));
+    expectGeometryAndFields(cloud, decoded, v5, 0.001f);
+  }
+  // another version (or other fields) needs another encoder
+  auto v5_info = makeInfo(fields, 64, 1, sizeof(OusterPoint), 5, CompressionOption::ZSTD);
+  EXPECT_EQ(cache.get(v5_info).getEncodingInfo().version, 5);
+}
