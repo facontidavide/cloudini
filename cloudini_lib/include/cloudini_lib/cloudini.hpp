@@ -65,7 +65,8 @@ struct V6EncoderState;
 }
 
 constexpr const uint8_t kEncodingVersion = 5;
-// Newest version the decoder reads. Version 6 is experimental: encoders write it only when asked to.
+// Newest version the decoder reads. Encoders write version 6 only when asked to (EncodingInfo::version = 6):
+// decoders before 1.4 cannot read it.
 constexpr const uint8_t kMaxEncodingVersion = 6;
 
 struct EncodingInfo {

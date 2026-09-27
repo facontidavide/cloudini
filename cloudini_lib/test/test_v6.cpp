@@ -359,7 +359,7 @@ TEST(V6, FloatColumnsNaNFractionalAndHuge) {
   }
 }
 
-TEST(V6, KnobsAndEncoderReuse) {
+TEST(V6, EncoderReuse) {
   std::mt19937 rng(8);
   const auto fields = ousterFields(0.001f);
   // organized scan with (0, 0, 0) no-return points, and a firing-order scan whose size is not a multiple of 64
@@ -369,39 +369,31 @@ TEST(V6, KnobsAndEncoderReuse) {
   for (size_t i = 0; i < firing.size(); i += 13) {
     firing[i].x = firing[i].y = firing[i].z = std::numeric_limits<float>::quiet_NaN();
   }
-  for (const char* config :
-       {"", "v6_zstd=frames", "v6_cache=off", "v6_blocks=none", "v6_predictor=previous", "v6_mask=off",
-        "v6_predictor=previous,v6_mask=off"}) {
-    // one encoder reused for several clouds: same size (cached lag and predictors), then another content
-    auto info = makeInfo(fields, 512, 32, sizeof(OusterPoint), 6, CompressionOption::ZSTD);
-    info.encoding_config = config;
-    PointcloudEncoder encoder(info);
-    for (int round = 0; round < 3; ++round) {
-      auto cloud = organized;
-      for (auto& p : cloud) {
-        p.x += 0.01f * float(round);
-      }
-      std::vector<uint8_t> encoded;
-      encoder.encode(
-          ConstBufferView(reinterpret_cast<const uint8_t*>(cloud.data()), cloud.size() * sizeof(OusterPoint)), encoded);
-      const auto v5 = decode(encode(
-          makeInfo(fields, 512, 32, sizeof(OusterPoint), 5, CompressionOption::ZSTD), cloud.data(),
-          cloud.size() * sizeof(OusterPoint)));
-      expectGeometryAndFields(cloud, decode(encoded), v5, 0.001f);
+  // one encoder reused for several clouds: same size (cached lag and predictors), then another content
+  PointcloudEncoder encoder(makeInfo(fields, 512, 32, sizeof(OusterPoint), 6, CompressionOption::ZSTD));
+  for (int round = 0; round < 3; ++round) {
+    auto cloud = organized;
+    for (auto& p : cloud) {
+      p.x += 0.01f * float(round);
     }
-    auto finfo = makeInfo(fields, uint32_t(firing.size()), 1, sizeof(OusterPoint), 6, CompressionOption::ZSTD);
-    finfo.encoding_config = config;
-    PointcloudEncoder firing_encoder(finfo);
-    for (int round = 0; round < 2; ++round) {
-      std::vector<uint8_t> encoded;
-      firing_encoder.encode(
-          ConstBufferView(reinterpret_cast<const uint8_t*>(firing.data()), firing.size() * sizeof(OusterPoint)),
-          encoded);
-      const auto v5 = decode(encode(
-          makeInfo(fields, uint32_t(firing.size()), 1, sizeof(OusterPoint), 5, CompressionOption::ZSTD), firing.data(),
-          firing.size() * sizeof(OusterPoint)));
-      expectGeometryAndFields(firing, decode(encoded), v5, 0.001f);
-    }
+    std::vector<uint8_t> encoded;
+    encoder.encode(
+        ConstBufferView(reinterpret_cast<const uint8_t*>(cloud.data()), cloud.size() * sizeof(OusterPoint)), encoded);
+    const auto v5 = decode(encode(
+        makeInfo(fields, 512, 32, sizeof(OusterPoint), 5, CompressionOption::ZSTD), cloud.data(),
+        cloud.size() * sizeof(OusterPoint)));
+    expectGeometryAndFields(cloud, decode(encoded), v5, 0.001f);
+  }
+  PointcloudEncoder firing_encoder(
+      makeInfo(fields, uint32_t(firing.size()), 1, sizeof(OusterPoint), 6, CompressionOption::ZSTD));
+  for (int round = 0; round < 2; ++round) {
+    std::vector<uint8_t> encoded;
+    firing_encoder.encode(
+        ConstBufferView(reinterpret_cast<const uint8_t*>(firing.data()), firing.size() * sizeof(OusterPoint)), encoded);
+    const auto v5 = decode(encode(
+        makeInfo(fields, uint32_t(firing.size()), 1, sizeof(OusterPoint), 5, CompressionOption::ZSTD), firing.data(),
+        firing.size() * sizeof(OusterPoint)));
+    expectGeometryAndFields(firing, decode(encoded), v5, 0.001f);
   }
 }
 

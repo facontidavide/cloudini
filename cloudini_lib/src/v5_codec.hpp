@@ -41,13 +41,14 @@ void DecodeV5Stage1Chunk(
     const EncodingInfo& info, std::vector<std::unique_ptr<FieldDecoder>>& decoders, ConstBufferView& encoded_view,
     BufferView& output_buffer, size_t expected_points);
 
-// V6 (experimental, opt-in with EncodingInfo::version = 6): geometry predicted from the best neighbour,
-// invalid-point mask, one stream per field. Requires LOSSY and x, y, z as the first three FLOAT32 fields.
+// V6 (opt-in with EncodingInfo::version = 6): geometry predicted from the best neighbour, invalid-point
+// mask, one stream per field. Requires LOSSY and x, y, z as the first three FLOAT32 fields with a
+// resolution; other version-6 clouds use the V5 chunk layout (the decoder decides the same way).
 bool UsesV6Codec(const EncodingInfo& info);
 
 // State a PointcloudEncoder keeps between encode() calls with V6: the detected lag and the predictor
 // chosen for each chunk are reused for the next clouds of the same size, and probed again every
-// kV6ReprobeInterval clouds ("v6_cache=off" in encoding_config probes every cloud).
+// kV6ReprobeInterval clouds.
 constexpr uint32_t kV6ReprobeInterval = 16;
 struct V6EncoderState {
   size_t lag = 0;
@@ -59,9 +60,6 @@ struct V6EncoderState {
   std::shared_ptr<void> scratch;    // buffers reused across calls
 };
 
-// "v6_zstd=frames" in encoding_config: one ZSTD frame per V6 section instead of one frame with a block
-// per section (experiment knob; standard decoders read concatenated frames).
-bool V6SeparateZstdFrames(const EncodingInfo& info);
 size_t V6StageBufferSize(const EncodingInfo& info, size_t points_per_chunk);
 
 void EncodeV6Stage1(

@@ -667,9 +667,8 @@ void PointcloudEncoder::compressionWorker() {
 
       ConstBufferView stage1_data(buffer_compressing_.get(), buffer_compressing_size_);
       BufferView compressed_output(output_view_.data(), output_view_.size());
-      const uint32_t chunk_size = detail::CompressChunk(
-          info_.compression_opt, stage1_data, compressed_output, block_starts_compressing_,
-          detail::V6SeparateZstdFrames(info_));
+      const uint32_t chunk_size =
+          detail::CompressChunk(info_.compression_opt, stage1_data, compressed_output, block_starts_compressing_);
       output_view_ = compressed_output;
       memcpy(compressed_chunk_size_ptr, &chunk_size, sizeof(uint32_t));
 

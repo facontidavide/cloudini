@@ -980,7 +980,7 @@ void decodeV5AdaptiveIntSection(
 }  // namespace
 
 //==========================================================================================
-// V6 (experimental): geometry predicted from the best neighbour, invalid-point mask, one stream per field.
+// V6: geometry predicted from the best neighbour, invalid-point mask, one stream per field.
 //
 // Chunk layout (stage 1):
 //   geometry section   u8 mode: 0 = raw FLOAT32 columns x, y, z; 1 = predicted, followed by
@@ -1070,8 +1070,7 @@ struct V6ChunkGeometry {
   bool raw = false;
 };
 
-void quantizeV6Chunk(
-    const V6Geometry& g, const uint8_t* points, size_t point_step, size_t n, bool allow_mask, V6ChunkGeometry& out) {
+void quantizeV6Chunk(const V6Geometry& g, const uint8_t* points, size_t point_step, size_t n, V6ChunkGeometry& out) {
   out.points = n;
   out.quantized.resize(n * 3);
   out.nan.resize(n * 3);
@@ -1101,7 +1100,7 @@ void quantizeV6Chunk(
     nan_points += (nan_axes == 3);
     zero_points += (zero_axes == 3);
   }
-  if (out.raw || !allow_mask || (nan_points == 0 && zero_points == 0)) {
+  if (out.raw || (nan_points == 0 && zero_points == 0)) {
     return;
   }
   out.mask = nan_points >= zero_points ? V6MaskKind::NaN : V6MaskKind::Zero;
@@ -1353,27 +1352,6 @@ void buildV6Streams(const V6ChunkGeometry& c, size_t count, V6Predictor predicto
   }
 }
 
-// How the predictor of a chunk is chosen: by the stage-1 size of the probe (default) or by its
-// size after trial compression. Set with "v6_select=compressed" in EncodingInfo::encoding_config.
-bool v6SelectByCompressedSize(const EncodingInfo& info) {
-  return info.encoding_config.find("v6_select=compressed") != std::string::npos;
-}
-
-size_t v6StreamsCost(const V6Streams& s, CompressionOption compression, bool compressed_size) {
-  size_t cost = 0;
-  std::vector<uint8_t> compressed;
-  for (size_t a = 0; a < 3; ++a) {
-    if (!compressed_size || compression == CompressionOption::NONE || s.size[a] == 0) {
-      cost += s.size[a];
-      continue;
-    }
-    compressed.resize(CompressBound(compression, s.size[a]));
-    BufferView view(compressed.data(), compressed.size());
-    cost += CompressChunk(compression, ConstBufferView(s.data[a].data(), s.size[a]), view);
-  }
-  return cost;
-}
-
 // Lag between a point and "the same laser one firing earlier", from the first chunk: the K with the
 // smallest mean distance between points i and i - K, on a sample of points.
 size_t detectV6Lag(const V6ChunkGeometry& c) {
@@ -1437,21 +1415,15 @@ size_t estimateV6Streams(const V6ChunkGeometry& c, size_t count, V6Predictor pre
   return bytes;
 }
 
-V6Predictor chooseV6Predictor(
-    const V6ChunkGeometry& c, size_t K, CompressionOption compression, bool compressed_size, V6Streams& s) {
+// The predictor with the smallest stage-1 size on the first points of the chunk.
+V6Predictor chooseV6Predictor(const V6ChunkGeometry& c, size_t K, V6Streams& s) {
   const size_t probe = std::min(c.points, kV6ProbePoints);
   V6Predictor candidates[4] = {V6Predictor::Previous, V6Predictor::SecondOrder, V6Predictor::LagK, V6Predictor::Median};
   const size_t count = (K > 1 && K + 1 < probe) ? 4 : 2;
   V6Predictor best = V6Predictor::Previous;
   size_t best_cost = std::numeric_limits<size_t>::max();
   for (size_t k = 0; k < count; ++k) {
-    size_t cost = 0;
-    if (compressed_size && compression != CompressionOption::NONE) {
-      buildV6Streams(c, probe, candidates[k], K, s);
-      cost = v6StreamsCost(s, compression, true);
-    } else {
-      cost = estimateV6Streams(c, probe, candidates[k], K, s);
-    }
+    const size_t cost = estimateV6Streams(c, probe, candidates[k], K, s);
     if (cost < best_cost) {
       best_cost = cost;
       best = candidates[k];
@@ -1681,7 +1653,7 @@ void DecodeV5Stage1Chunk(
 }
 
 //==========================================================================================
-// V6 (experimental)
+// V6
 
 bool UsesV6Codec(const EncodingInfo& info) {
   if (info.version < 6 || info.encoding_opt != EncodingOptions::LOSSY || info.fields.size() < kV6GeometryFields) {
@@ -1694,10 +1666,6 @@ bool UsesV6Codec(const EncodingInfo& info) {
     }
   }
   return true;
-}
-
-bool V6SeparateZstdFrames(const EncodingInfo& info) {
-  return UsesV6Codec(info) && info.encoding_config.find("v6_zstd=frames") != std::string::npos;
 }
 
 size_t V6StageBufferSize(const EncodingInfo& info, size_t points_per_chunk) {
@@ -1753,9 +1721,8 @@ void EncodeV6Stage1(
   auto& section_starts = scratch.section_starts;
 
   // Lag and predictors: reused from the previous clouds of the same size, probed again periodically.
-  const bool use_cache = info.encoding_config.find("v6_cache=off") == std::string::npos;
   const size_t chunks_count = (points_count + points_per_chunk - 1) / points_per_chunk;
-  if (!use_cache || state.encodes % kV6ReprobeInterval == 0 || state.cloud_points != points_count) {
+  if (state.encodes % kV6ReprobeInterval == 0 || state.cloud_points != points_count) {
     state.cloud_points = points_count;
     state.lag_known = false;
     state.predictors.assign(chunks_count, 0xFF);
@@ -1768,13 +1735,6 @@ void EncodeV6Stage1(
     state.lag_known = true;
   }
 
-  const bool select_by_compressed_size = v6SelectByCompressedSize(info);
-  // experiment: "v6_blocks=none" starts no ZSTD block at the V6 sections (one-shot compression)
-  const bool mark_sections = info.encoding_config.find("v6_blocks=none") == std::string::npos;
-  // ablations: "v6_predictor=previous" always predicts from the previous point (no lag detection, no
-  // probing); "v6_mask=off" codes no-return points like the others
-  const bool previous_only = info.encoding_config.find("v6_predictor=previous") != std::string::npos;
-  const bool allow_mask = info.encoding_config.find("v6_mask=off") == std::string::npos;
   size_t chunk_index = 0;
 
   size_t points_left = points_count;
@@ -1786,17 +1746,9 @@ void EncodeV6Stage1(
     BufferView stage_buffer = get_stage_buffer();
     BufferView out(stage_buffer.data(), stage_buffer.size());
     section_starts.clear();
-    auto mark_section = [&] {
-      if (mark_sections) {
-        section_starts.push_back(stage_buffer.size() - out.size());
-      }
-    };
+    // stage 2 starts a new ZSTD block at each section
+    auto mark_section = [&] { section_starts.push_back(stage_buffer.size() - out.size()); };
 
-    if (previous_only) {  // ablation: no lag detection, no probing
-      state.lag = 0;
-      state.lag_known = true;
-      state.predictors[chunk_index] = static_cast<uint8_t>(V6Predictor::Previous);
-    }
     uint8_t& cached = state.predictors[chunk_index];
     uint8_t& cached_mask = state.masks[chunk_index];
     auto usable_predictor = [&] {
@@ -1821,7 +1773,7 @@ void EncodeV6Stage1(
           geometry, base, info.point_step, n, predictor, state.lag, mask, streams, mask_bits.data());
     }
     if (!coded) {
-      quantizeV6Chunk(geometry, base, info.point_step, n, allow_mask, chunk);
+      quantizeV6Chunk(geometry, base, info.point_step, n, chunk);
     }
     if (!coded && chunk.raw) {
       appendByte(out, static_cast<uint8_t>(V6GeometryMode::Raw));
@@ -1838,8 +1790,7 @@ void EncodeV6Stage1(
           state.lag_known = true;
         }
         if (cached == 0xFF) {
-          cached = static_cast<uint8_t>(
-              chooseV6Predictor(chunk, state.lag, info.compression_opt, select_by_compressed_size, streams));
+          cached = static_cast<uint8_t>(chooseV6Predictor(chunk, state.lag, streams));
         }
         cached_mask = static_cast<uint8_t>(chunk.mask);
         predictor = usable_predictor();
