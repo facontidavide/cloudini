@@ -222,6 +222,21 @@ can choose V4 delta-varint, palette indexes, raw-value RLE, or Delta-RLE
 for repeated increments. Use
 `mcap_codec_benchmark` to compare V4/V5 and V4-viz/V5-viz.
 
+**V6 (opt-in)**: `EncodingInfo::version = 6` writes V6; the default stays V5
+and decoders before V6 support cannot read it. V6 keeps the V5 integer
+sections and codes x, y, z per chunk as three residual streams against a
+predictor chosen per chunk (previous point, point K back, LOCO-I median of
+the two, or second order; K = row width for organized clouds, detected
+otherwise), with an optional validity mask for NaN or all-zero points. Other
+FLOAT32 fields with a resolution get their own residual stream. The layout
+is used only when x, y, z are the first three FLOAT32 fields with a
+resolution in (0, 1e18); other version-6 clouds use the V5 layout. The
+encoder caches lag, predictor and mask kind per cloud size (re-probed every
+16 clouds) and then quantizes and codes in one SSE pass. Code: V6 section of
+`cloudini_lib/src/v5_codec.cpp`; tests in `cloudini_lib/test/test_v6.cpp`
+(including a mutation test of corrupted V4/V5/V6 payloads; set
+`CLOUDINI_FUZZ_ITERATIONS` for longer runs under ASan/UBSan).
+
 ### Debugging with ROS2 CLI
 
 ```bash
