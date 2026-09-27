@@ -649,6 +649,10 @@ void appendRleValue(V5AdaptiveIntField& field, uint64_t value) {
   field.stream_has_run = true;
 }
 
+// Called once per point and field: flatten keeps GCC from moving the vector push out of line.
+#if defined(__GNUC__)
+__attribute__((flatten))
+#endif
 void appendCommittedValueToSection(V5AdaptiveIntField& field, const uint8_t* field_ptr) {
   switch (field.committed_mode) {
     case AdaptiveIntMode::DeltaVarint: {
@@ -1007,6 +1011,13 @@ constexpr double kV6MaxQuantized = 1125899906842624.0;  // 2^50
 // Values that quantize within this magnitude are quantized in float precision, as the V4 FloatN
 // encoder does (error below one resolution step); larger ones in double precision.
 constexpr float kV6FloatQuantized = 4194304.0f;  // 2^22
+// Fields with a larger resolution (or a NaN one) are not V6-coded, so that no decoded value, even from a
+// corrupted stream, leaves the float range.
+constexpr float kV6MaxResolution = 1e18f;
+
+bool isV6Resolution(const std::optional<float>& resolution) {
+  return resolution && *resolution > 0.0f && *resolution < kV6MaxResolution;
+}
 
 struct V6Geometry {
   std::array<uint32_t, 3> offset{};
@@ -1035,7 +1046,13 @@ float readF32(const uint8_t* ptr) {
   return v;
 }
 
-// Prediction of value i of one axis from the values already reconstructed (same axis only).
+inline int64_t wrapV6(uint64_t value) {
+  return static_cast<int64_t>(value);
+}
+
+// Prediction of value i of one axis from the values already reconstructed (same axis only). The
+// arithmetic wraps around: values decoded from a corrupted stream can be anywhere in the int64 range
+// (the encoder's values stay below 2^50, where wrapping never happens).
 template <V6Predictor P>
 #if defined(__GNUC__)
 __attribute__((always_inline))
@@ -1054,9 +1071,9 @@ v6Predict(const int64_t* q, size_t i, size_t K) {
     // LOCO-I median edge detector
     const int64_t pa = prev, pb = q[i - K], pc = q[i - K - 1];
     const int64_t mx = std::max(pa, pb), mn = std::min(pa, pb);
-    return pc >= mx ? mn : (pc <= mn ? mx : pa + pb - pc);
+    return pc >= mx ? mn : (pc <= mn ? mx : wrapV6(uint64_t(pa) + uint64_t(pb) - uint64_t(pc)));
   } else {
-    return i >= 2 ? 2 * prev - q[i - 2] : prev;
+    return i >= 2 ? wrapV6(2 * uint64_t(prev) - uint64_t(q[i - 2])) : prev;
   }
 }
 
@@ -1448,7 +1465,7 @@ bool isV6RegularField(const EncodingInfo& info, size_t index) {
 // previous-value predictor, in a column of their own.
 bool isV6FloatColumn(const EncodingInfo& info, size_t index) {
   const auto& field = info.fields[index];
-  return index >= kV6GeometryFields && field.type == FieldType::FLOAT32 && field.resolution && *field.resolution > 0.0f;
+  return index >= kV6GeometryFields && field.type == FieldType::FLOAT32 && isV6Resolution(field.resolution);
 }
 
 // One V6 float column: u8 mode (V6GeometryMode), then the raw FLOAT32 values or the residual stream.
@@ -1661,7 +1678,7 @@ bool UsesV6Codec(const EncodingInfo& info) {
   }
   for (size_t a = 0; a < kV6GeometryFields; ++a) {
     const auto& field = info.fields[a];
-    if (field.type != FieldType::FLOAT32 || !field.resolution || *field.resolution <= 0.0f) {
+    if (field.type != FieldType::FLOAT32 || !isV6Resolution(field.resolution)) {
       return false;
     }
   }
@@ -1885,6 +1902,7 @@ namespace {
 
 // Value of a quantized step. While q is exact in a float, float(q) * resolution gives the same bits (the
 // double product of two floats is exact, and both round it once), so the double product costs nothing more.
+// Defined for every q: V6 resolutions are below kV6MaxResolution, so |q * res| < 2^63 * 1e18 < FLT_MAX.
 inline float v6Reconstruct(int64_t q, double res) {
   return static_cast<float>(static_cast<double>(q) * res);
 }

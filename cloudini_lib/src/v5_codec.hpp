@@ -43,7 +43,7 @@ void DecodeV5Stage1Chunk(
 
 // V6 (opt-in with EncodingInfo::version = 6): geometry predicted from the best neighbour, invalid-point
 // mask, one stream per field. Requires LOSSY and x, y, z as the first three FLOAT32 fields with a
-// resolution; other version-6 clouds use the V5 chunk layout (the decoder decides the same way).
+// resolution in (0, 1e18); other version-6 clouds use the V5 chunk layout (the decoder decides the same way).
 bool UsesV6Codec(const EncodingInfo& info);
 
 // State a PointcloudEncoder keeps between encode() calls with V6: the detected lag and the predictor

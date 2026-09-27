@@ -19,7 +19,9 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <limits>
 #include <random>
 #include <stdexcept>
@@ -449,4 +451,87 @@ TEST(V6, SteadyStateEncodeMatchesFirstEncode) {
   for (const auto* cloud : {&with_nan, &with_zero, &far, &infinite, &with_nan, &with_zero}) {
     check(*cloud, encode_with(encoder, *cloud));
   }
+}
+
+// Corrupted payloads (byte flips, bursts of 0xFF / 0x80, long varints, truncation) of real V4, V5 and V6
+// messages: the decoder either throws or decodes, and never reads or writes out of bounds nor hits
+// undefined behaviour (run under ASan/UBSan). CLOUDINI_FUZZ_ITERATIONS raises the iteration count.
+TEST(V6, MutatedPayloadsNeverCrash) {
+  size_t iterations = 150;
+  if (const char* env = std::getenv("CLOUDINI_FUZZ_ITERATIONS")) {
+    iterations = std::strtoul(env, nullptr, 10);
+  }
+  std::mt19937 rng(10);
+  const auto fields = ousterFields(0.001f);
+  auto organized = organizedScan(256, 16, rng);
+  auto firing = firingOrderScan(300, 16, rng);
+  for (size_t i = 0; i < firing.size(); i += 9) {
+    firing[i].x = firing[i].y = firing[i].z = std::numeric_limits<float>::quiet_NaN();
+  }
+  firing[4].y = std::numeric_limits<float>::quiet_NaN();
+  auto huge = firing;
+  huge[7].x = 3.0e30f;          // raw geometry
+  huge[8].intensity = 1.0e30f;  // raw float column
+
+  struct Case {
+    const std::vector<OusterPoint>* points;
+    uint32_t width, height;
+  };
+  const Case cases[] = {
+      {&organized, 256, 16}, {&firing, uint32_t(firing.size()), 1}, {&huge, uint32_t(huge.size()), 1}};
+  size_t decoded_ok = 0, rejected = 0;
+  for (const auto& c : cases) {
+    for (uint8_t version : {uint8_t(4), uint8_t(5), uint8_t(6)}) {
+      for (auto compression : {CompressionOption::NONE, CompressionOption::LZ4, CompressionOption::ZSTD}) {
+        const auto info = makeInfo(fields, c.width, c.height, sizeof(OusterPoint), version, compression);
+        const auto original = encode(info, c.points->data(), c.points->size() * sizeof(OusterPoint));
+        ConstBufferView header_view(original.data(), original.size());
+        const EncodingInfo header = DecodeHeader(header_view);
+        const size_t body = original.size() - header_view.size();
+        std::vector<uint8_t> out(c.points->size() * sizeof(OusterPoint));
+        for (size_t it = 0; it < iterations; ++it) {
+          auto msg = original;
+          const size_t len = msg.size() - body;
+          const int edits = 1 + int(rng() % 4);
+          for (int e = 0; e < edits; ++e) {
+            const size_t pos = body + rng() % len;
+            switch (rng() % 5) {
+              case 0:
+                msg[pos] ^= uint8_t(1u << (rng() % 8));
+                break;
+              case 1:
+                msg[pos] = uint8_t(rng());
+                break;
+              case 2:  // burst of 0xFF or 0x80: long or overlong varints
+                for (size_t k = pos; k < std::min(msg.size(), pos + 1 + rng() % 12); ++k) {
+                  msg[k] = (rng() & 1) ? 0xFF : 0x80;
+                }
+                break;
+              case 3: {  // a 10-byte varint: the largest residual / run length / size
+                const uint8_t v[10] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01};
+                for (size_t k = 0; k < 10 && pos + k < msg.size(); ++k) {
+                  msg[pos + k] = v[k];
+                }
+              } break;
+              default:
+                msg.resize(body + rng() % len);
+                break;
+            }
+            if (msg.size() <= body) {
+              break;
+            }
+          }
+          ConstBufferView payload(msg.data() + body, msg.size() - body);
+          try {
+            PointcloudDecoder().decode(header, payload, BufferView(out.data(), out.size()));
+            ++decoded_ok;
+          } catch (const std::exception&) {
+            ++rejected;
+          }
+        }
+      }
+    }
+  }
+  EXPECT_GT(rejected, 0u);
+  std::cout << "mutated payloads: " << decoded_ok << " decoded, " << rejected << " rejected\n";
 }

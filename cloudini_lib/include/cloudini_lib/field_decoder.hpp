@@ -108,7 +108,8 @@ class FieldDecoderInt : public FieldDecoder {
     int64_t diff = 0;
     auto count = decodeVarint(input.data(), input.size(), diff);
 
-    int64_t value = prev_value_ + diff;
+    // wrap-around addition: a corrupted delta must not overflow a signed integer
+    const int64_t value = static_cast<int64_t>(static_cast<uint64_t>(prev_value_) + static_cast<uint64_t>(diff));
     prev_value_ = value;
     if (offset_ != kDecodeButSkipStore) {
       memcpy(dest_point_view.data() + offset_, &value, sizeof(IntType));
@@ -396,7 +397,8 @@ inline void FieldDecoderFloat_Lossy<FloatType>::decode(ConstBufferView& input, B
 
   int64_t diff = 0;
   const auto count = decodeVarint(input.data(), input.size(), diff);
-  const int64_t value = prev_value_ + diff;
+  // wrap-around addition: a corrupted delta must not overflow a signed integer
+  const int64_t value = static_cast<int64_t>(static_cast<uint64_t>(prev_value_) + static_cast<uint64_t>(diff));
   const FloatType value_real = static_cast<FloatType>(value) * multiplier_;
   prev_value_ = value;
 
