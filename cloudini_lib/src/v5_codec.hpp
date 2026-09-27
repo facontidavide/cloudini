@@ -41,37 +41,28 @@ void DecodeV5Stage1Chunk(
     const EncodingInfo& info, std::vector<std::unique_ptr<FieldDecoder>>& decoders, ConstBufferView& encoded_view,
     BufferView& output_buffer, size_t expected_points);
 
-// V6 (opt-in with EncodingInfo::version = 6): geometry predicted from the best neighbour, invalid-point
-// mask, one stream per field. Requires LOSSY and x, y, z as the first three FLOAT32 fields with a
-// resolution in (0, 1e18); other version-6 clouds use the V5 chunk layout (the decoder decides the same way).
-bool UsesV6Codec(const EncodingInfo& info);
+// The V5 adaptive integer sections, for chunks of other layouts (V6).
+bool IsAdaptiveIntType(FieldType type);
 
-// State a PointcloudEncoder keeps between encode() calls with V6: the detected lag and the predictor
-// chosen for each chunk are reused for the next clouds of the same size, and probed again every
-// kV6ReprobeInterval clouds.
-constexpr uint32_t kV6ReprobeInterval = 16;
-struct V6EncoderState {
-  size_t lag = 0;
-  bool lag_known = false;
-  size_t cloud_points = 0;
-  uint32_t encodes = 0;
-  std::vector<uint8_t> predictors;  // per chunk; 0xFF = not chosen yet
-  std::vector<uint8_t> masks;       // per chunk mask kind; 0xFF = not known yet
-  std::shared_ptr<void> scratch;    // buffers reused across calls
+// Codes the integer fields `field_indexes` of each chunk as V5 adaptive sections. The coding mode of each
+// field is chosen on the first chunk and kept for the next ones, as in V5.
+class AdaptiveIntSectionsEncoder {
+ public:
+  AdaptiveIntSectionsEncoder(const EncodingInfo& info, std::span<const size_t> field_indexes, size_t points_per_chunk);
+  ~AdaptiveIntSectionsEncoder();
+
+  // Appends one section per field to `out`; calls before_section() before each one.
+  void encodeChunk(
+      const uint8_t* points, size_t point_step, size_t count, CompressionOption compression, BufferView& out,
+      const std::function<void()>& before_section);
+
+ private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
 };
 
-size_t V6StageBufferSize(const EncodingInfo& info, size_t points_per_chunk);
-
-void EncodeV6Stage1(
-    const EncodingInfo& info, V6EncoderState& state, ConstBufferView cloud_data, size_t points_count,
-    size_t points_per_chunk, const std::function<BufferView()>& get_stage_buffer,
-    const std::function<void(size_t serialized_size, std::span<const size_t> section_starts)>& write_stage1_chunk);
-
-void BuildV6Decoders(
-    const EncodingInfo& info, std::vector<std::unique_ptr<FieldDecoder>>& decoders, size_t& min_encoded_point_bytes);
-
-void DecodeV6Stage1Chunk(
-    const EncodingInfo& info, std::vector<std::unique_ptr<FieldDecoder>>& decoders, ConstBufferView& encoded_view,
-    BufferView& output_buffer, size_t expected_points);
+// Decodes the adaptive sections of the integer fields of `info` that follow its leading lossy float fields.
+void DecodeAdaptiveIntSections(
+    const EncodingInfo& info, ConstBufferView& input, uint8_t* points, size_t point_step, size_t count);
 
 }  // namespace Cloudini::detail

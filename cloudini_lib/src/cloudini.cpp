@@ -33,6 +33,7 @@
 #include "codec_common.hpp"
 #include "v4_codec.hpp"
 #include "v5_codec.hpp"
+#include "v6_codec.hpp"
 
 namespace Cloudini {
 

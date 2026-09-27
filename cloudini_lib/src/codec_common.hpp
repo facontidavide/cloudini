@@ -16,8 +16,10 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <span>
+#include <stdexcept>
 #include <vector>
 
 #include "cloudini_lib/cloudini.hpp"
@@ -55,5 +57,54 @@ uint32_t CompressChunk(
 ConstBufferView DecompressChunk(
     CompressionOption compression, ConstBufferView chunk_data, std::vector<uint8_t>& decompressed_buffer,
     size_t max_decompressed_size);
+
+// Byte writers and readers of the V5 and V6 stage-1 sections.
+inline void appendByte(BufferView& out, uint8_t value) {
+  if (out.empty()) {
+    throw std::runtime_error("stage 1: output buffer full");
+  }
+  out.data()[0] = value;
+  out.trim_front(1);
+}
+
+inline void appendByte(std::vector<uint8_t>& out, uint8_t value) {
+  out.push_back(value);
+}
+
+inline void appendUVarint(uint64_t value, BufferView& out) {
+  while (value > 0x7Fu) {
+    appendByte(out, static_cast<uint8_t>((value & 0x7Fu) | 0x80u));
+    value >>= 7u;
+  }
+  appendByte(out, static_cast<uint8_t>(value));
+}
+
+inline void appendUVarint(uint64_t value, std::vector<uint8_t>& out) {
+  while (value > 0x7Fu) {
+    appendByte(out, static_cast<uint8_t>((value & 0x7Fu) | 0x80u));
+    value >>= 7u;
+  }
+  appendByte(out, static_cast<uint8_t>(value));
+}
+
+inline uint64_t readUVarint(ConstBufferView& input) {
+  uint64_t value = 0;
+  uint8_t shift = 0;
+  while (true) {
+    if (input.empty()) {
+      throw std::runtime_error("stage 1: truncated unsigned varint");
+    }
+    const uint8_t byte = input.data()[0];
+    input.trim_front(1);
+    value |= (static_cast<uint64_t>(byte & 0x7Fu) << shift);
+    if ((byte & 0x80u) == 0) {
+      return value;
+    }
+    shift = static_cast<uint8_t>(shift + 7u);
+    if (shift >= 64) {
+      throw std::runtime_error("stage 1: unsigned varint overflow");
+    }
+  }
+}
 
 }  // namespace Cloudini::detail
