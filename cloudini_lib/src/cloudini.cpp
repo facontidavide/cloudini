@@ -845,7 +845,51 @@ void PointcloudDecoder::updateDecoders(const EncodingInfo& info) {
   }
 }
 
+namespace {
+// Largest overhang (bytes past point_step) reproduced as older decoders did; see PointcloudDecoder::decode.
+constexpr uint64_t kMaxFieldOverhang = 4096;
+}  // namespace
+
 void PointcloudDecoder::decode(const EncodingInfo& info, ConstBufferView compressed_data, BufferView output) {
+  // The header comes from the message, and encoders before 1.3.1 accepted fields that do not fit in
+  // point_step (e.g. a FLOAT32 at offset 12 with point_step 14). The field decoders write SizeOf(type)
+  // bytes at field.offset in every point: such a field spills into the next point, which is decoded
+  // after it, and past the output buffer for the last point.
+  uint64_t overhang = 0;
+  for (const auto& field : info.fields) {
+    if (field.offset != kDecodeButSkipStore) {
+      const uint64_t end = static_cast<uint64_t>(field.offset) + static_cast<uint64_t>(SizeOf(field.type));
+      overhang = std::max(overhang, end > info.point_step ? end - info.point_step : 0);
+    }
+  }
+  if (overhang == 0) {
+    decodeImpl(info, compressed_data, output);
+    return;
+  }
+
+  const uint64_t cloud_size = static_cast<uint64_t>(info.width) * info.height * info.point_step;
+  if (overhang <= kMaxFieldOverhang && output.size() >= cloud_size) {
+    // Decode exactly as older decoders did (same writes, in the same order) into a buffer with room for
+    // the overhang of the last point, then keep the points: the output is the same as before, without
+    // writing past the caller's buffer.
+    std::vector<uint8_t> padded(static_cast<size_t>(cloud_size + overhang));
+    decodeImpl(info, compressed_data, BufferView(padded.data(), padded.size()));
+    memcpy(output.data(), padded.data(), static_cast<size_t>(cloud_size));
+    return;
+  }
+
+  // Otherwise (a corrupted or crafted header), such fields are decoded but not stored.
+  EncodingInfo in_bounds_info = info;
+  for (auto& field : in_bounds_info.fields) {
+    if (field.offset != kDecodeButSkipStore &&
+        static_cast<uint64_t>(field.offset) + static_cast<uint64_t>(SizeOf(field.type)) > info.point_step) {
+      field.offset = kDecodeButSkipStore;
+    }
+  }
+  decodeImpl(in_bounds_info, compressed_data, output);
+}
+
+void PointcloudDecoder::decodeImpl(const EncodingInfo& info, ConstBufferView compressed_data, BufferView output) {
   // read the header
   updateDecoders(info);
 

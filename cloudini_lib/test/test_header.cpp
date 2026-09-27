@@ -16,9 +16,16 @@
 
 #include <gtest/gtest.h>
 
+#if defined(__unix__) || defined(__APPLE__)
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
+
+#include <algorithm>
 #include <clocale>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <locale>
 #include <stdexcept>
 #include <string>
@@ -367,4 +374,250 @@ TEST(Cloudini, HeaderLocaleIndependent_CppGlobalLocale) {
   }
   ASSERT_STREQ(std::localeconv()->decimal_point, ",") << locale_guard.name();
   expectHeaderRoundTripUnderCurrentLocale();
+}
+
+namespace {
+
+// Writable buffer that ends exactly where an inaccessible page starts (on POSIX systems): writing even one
+// byte past its end crashes the test instead of silently corrupting the heap.
+class GuardedOutput {
+ public:
+  explicit GuardedOutput(size_t size) : size_(size) {
+#if defined(__unix__) || defined(__APPLE__)
+    const size_t page = static_cast<size_t>(sysconf(_SC_PAGESIZE));
+    const size_t pages = (size + page - 1) / page;
+    mapped_size_ = (pages + 1) * page;
+    void* mem = mmap(nullptr, mapped_size_, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (mem == MAP_FAILED) {
+      throw std::runtime_error("mmap failed");
+    }
+    base_ = static_cast<uint8_t*>(mem);
+    mprotect(base_ + pages * page, page, PROT_NONE);
+    data_ = base_ + pages * page - size;
+#else
+    fallback_.resize(size);
+    data_ = fallback_.data();
+#endif
+  }
+  ~GuardedOutput() {
+#if defined(__unix__) || defined(__APPLE__)
+    munmap(base_, mapped_size_);
+#endif
+  }
+  GuardedOutput(const GuardedOutput&) = delete;
+  GuardedOutput& operator=(const GuardedOutput&) = delete;
+
+  Cloudini::BufferView view() {
+    return {data_, size_};
+  }
+
+ private:
+  size_t size_ = 0;
+  size_t mapped_size_ = 0;
+  uint8_t* base_ = nullptr;
+  uint8_t* data_ = nullptr;
+  std::vector<uint8_t> fallback_;
+};
+
+}  // namespace
+
+// Encoders before 1.3.1 accepted a field that does not fit in point_step, like this 14-byte point whose
+// FLOAT32 `intensity` at offset 12 overhangs it by 2 bytes: the encoder read the 2 bytes of the next point
+// (past its input for the last one). Older decoders wrote the field back the same way, so the bytes inside
+// each point came back exactly, but the last point was written past the output buffer. Such messages must
+// keep decoding to the same bytes, without the overflow.
+TEST(Cloudini, MessageWithFieldOverhangingPointStepDecodesAsBefore) {
+  using namespace Cloudini;
+
+  constexpr uint32_t kStep = 14;
+  constexpr size_t kPoints = 5000;
+  std::vector<uint8_t> cloud(kPoints * kStep);
+  for (size_t i = 0; i < kPoints; ++i) {
+    const float values[3] = {0.01f * float(i % 400), -0.02f * float(i % 300), 0.5f + 0.001f * float(i % 50)};
+    memcpy(cloud.data() + i * kStep, values, sizeof(values));
+    const uint16_t intensity_low_bytes = static_cast<uint16_t>(i * 37);
+    memcpy(cloud.data() + i * kStep + 12, &intensity_low_bytes, sizeof(intensity_low_bytes));
+  }
+
+  for (uint8_t version : {uint8_t(4), uint8_t(5)}) {
+    for (auto compression : {CompressionOption::NONE, CompressionOption::ZSTD}) {
+      // The message an old encoder wrote: its payload is the one of a 16-byte point whose intensity holds the
+      // 4 bytes found at offset 12 (the last 2 of them from the next point), with the 14-byte header.
+      constexpr uint32_t kWideStep = 16;
+      std::vector<uint8_t> wide(kPoints * kWideStep, 0);
+      for (size_t i = 0; i < kPoints; ++i) {
+        const size_t available = std::min<size_t>(16, cloud.size() - i * kStep);
+        memcpy(wide.data() + i * kWideStep, cloud.data() + i * kStep, available);
+      }
+      EncodingInfo info;
+      info.width = kPoints;
+      info.height = 1;
+      info.point_step = kWideStep;
+      info.encoding_opt = EncodingOptions::LOSSLESS;
+      info.compression_opt = compression;
+      info.version = version;
+      info.fields = {
+          {"x", 0, FieldType::FLOAT32, std::nullopt},
+          {"y", 4, FieldType::FLOAT32, std::nullopt},
+          {"z", 8, FieldType::FLOAT32, std::nullopt},
+          {"intensity", 12, FieldType::FLOAT32, std::nullopt}};
+      std::vector<uint8_t> encoded;
+      PointcloudEncoder(info).encode(ConstBufferView(wide.data(), wide.size()), encoded);
+      ConstBufferView payload(encoded.data(), encoded.size());
+      DecodeHeader(payload);
+
+      info.point_step = kStep;
+      std::vector<uint8_t> header;
+      EncodeHeader(info, header);
+      ConstBufferView header_view(header.data(), header.size());
+      const EncodingInfo old_header = DecodeHeader(header_view);
+      ASSERT_EQ(old_header.point_step, kStep);
+
+      GuardedOutput output(cloud.size());
+      BufferView out = output.view();
+      ASSERT_NO_THROW(PointcloudDecoder().decode(old_header, payload, out));
+      EXPECT_EQ(memcmp(out.data(), cloud.data(), cloud.size()), 0)
+          << "version " << int(version) << ", " << ToString(compression);
+    }
+  }
+}
+
+// A corrupted or crafted header may also move a field past point_step: decoding must never write outside
+// the caller's buffer. A small overhang is decoded as older decoders did (above); a field far outside the
+// point is decoded but not stored, and every other field decodes as usual.
+TEST(Cloudini, DecoderNeverWritesOutsideTheOutputForFieldsBeyondPointStep) {
+  using namespace Cloudini;
+
+  struct Point {
+    float x, y, z;
+    float intensity;
+    uint16_t ring;
+    uint16_t padding;
+    uint32_t t;
+  };
+  static_assert(sizeof(Point) == 24);
+  constexpr size_t kPoints = 100;
+  std::vector<Point> points(kPoints);
+  for (size_t i = 0; i < kPoints; ++i) {
+    points[i] = {0.01f * float(i), -0.02f * float(i), 1.0f, float(i % 200), uint16_t(i % 32), 0, uint32_t(i * 1000)};
+  }
+
+  for (uint8_t version : {uint8_t(4), uint8_t(5)}) {
+    EncodingInfo info;
+    info.width = kPoints;
+    info.height = 1;
+    info.point_step = sizeof(Point);
+    info.version = version;
+    info.fields = {
+        {"x", offsetof(Point, x), FieldType::FLOAT32, 0.001f},
+        {"y", offsetof(Point, y), FieldType::FLOAT32, 0.001f},
+        {"z", offsetof(Point, z), FieldType::FLOAT32, 0.001f},
+        {"intensity", offsetof(Point, intensity), FieldType::FLOAT32, 0.01f},
+        {"ring", offsetof(Point, ring), FieldType::UINT16, std::nullopt},
+        {"t", offsetof(Point, t), FieldType::UINT32, std::nullopt}};
+
+    std::vector<uint8_t> encoded;
+    PointcloudEncoder encoder(info);
+    encoder.encode(ConstBufferView(reinterpret_cast<const uint8_t*>(points.data()), kPoints * sizeof(Point)), encoded);
+    ConstBufferView payload(encoded.data(), encoded.size());
+    const EncodingInfo valid = DecodeHeader(payload);
+
+    std::vector<uint8_t> reference;
+    PointcloudDecoder().decode(valid, payload, reference);
+    ASSERT_EQ(reference.size(), kPoints * sizeof(Point));
+
+    struct Tamper {
+      size_t field;
+      uint32_t offset;
+    };
+    // straddling the end of the point, a few points past it, and far outside it
+    for (const Tamper& tamper :
+         {Tamper{3, 21}, Tamper{4, 23}, Tamper{5, 22}, Tamper{0, 64}, Tamper{0, 100000}, Tamper{5, 0xFFFFFF00}}) {
+      EncodingInfo bad = valid;
+      bad.fields[tamper.field].offset = tamper.offset;
+      std::vector<uint8_t> header;
+      EncodeHeader(bad, header);
+      ConstBufferView header_view(header.data(), header.size());
+      const EncodingInfo parsed = DecodeHeader(header_view);
+      ASSERT_EQ(parsed.fields[tamper.field].offset, tamper.offset);
+
+      // the output ends at an inaccessible page: a write past it crashes the test
+      GuardedOutput output(kPoints * sizeof(Point));
+      BufferView out = output.view();
+      memset(out.data(), 0, out.size());
+      ASSERT_NO_THROW(PointcloudDecoder().decode(parsed, payload, out))
+          << "version " << int(version) << ", field " << parsed.fields[tamper.field].name << " at " << tamper.offset;
+
+      if (tamper.offset < 100000) {
+        continue;
+      }
+      // far outside the point: not stored; every other field as with the valid header
+      for (size_t p = 0; p < kPoints; ++p) {
+        for (size_t f = 0; f < valid.fields.size(); ++f) {
+          const auto& field = valid.fields[f];
+          const size_t at = p * sizeof(Point) + field.offset;
+          const size_t size = static_cast<size_t>(SizeOf(field.type));
+          if (f == tamper.field) {
+            for (size_t b = 0; b < size; ++b) {
+              ASSERT_EQ(out.data()[at + b], 0) << "skipped field " << field.name << " was written";
+            }
+          } else {
+            ASSERT_EQ(memcmp(out.data() + at, reference.data() + at, size), 0)
+                << "version " << int(version) << ", point " << p << ", field " << field.name;
+          }
+        }
+      }
+    }
+  }
+}
+
+// A field whose offset is kDecodeButSkipStore is decoded but not stored: the PCL conversion uses it for
+// fields the destination cloud does not have. V5 adaptive integer sections used to ignore it and wrote
+// the values ~4 GB past the output buffer.
+TEST(Cloudini, DecodeButSkipStoreIntegerFieldV5) {
+  using namespace Cloudini;
+
+  struct Point {
+    float x, y, z;
+    uint16_t ring;
+    uint16_t padding;
+    uint32_t t;
+  };
+  constexpr size_t kPoints = 1000;
+  std::vector<Point> points(kPoints);
+  for (size_t i = 0; i < kPoints; ++i) {
+    points[i] = {0.01f * float(i), 2.0f, -1.0f, uint16_t(i % 16), 0, uint32_t(i * 50)};
+  }
+  EncodingInfo info;
+  info.width = kPoints;
+  info.height = 1;
+  info.point_step = sizeof(Point);
+  info.fields = {
+      {"x", offsetof(Point, x), FieldType::FLOAT32, 0.001f},
+      {"y", offsetof(Point, y), FieldType::FLOAT32, 0.001f},
+      {"z", offsetof(Point, z), FieldType::FLOAT32, 0.001f},
+      {"ring", offsetof(Point, ring), FieldType::UINT16, std::nullopt},
+      {"t", offsetof(Point, t), FieldType::UINT32, std::nullopt}};
+  std::vector<uint8_t> encoded;
+  PointcloudEncoder(info).encode(
+      ConstBufferView(reinterpret_cast<const uint8_t*>(points.data()), kPoints * sizeof(Point)), encoded);
+  ConstBufferView payload(encoded.data(), encoded.size());
+  EncodingInfo decode_info = DecodeHeader(payload);
+  ASSERT_EQ(decode_info.version, 5);
+
+  for (size_t skipped : {size_t(3), size_t(4)}) {  // ring, t: both adaptive integer sections in V5
+    EncodingInfo partial = decode_info;
+    partial.fields[skipped].offset = kDecodeButSkipStore;
+    GuardedOutput output(kPoints * sizeof(Point));
+    BufferView out = output.view();
+    memset(out.data(), 0, out.size());
+    ASSERT_NO_THROW(PointcloudDecoder().decode(partial, payload, out)) << partial.fields[skipped].name;
+    for (size_t i = 0; i < kPoints; ++i) {
+      Point decoded;
+      memcpy(&decoded, out.data() + i * sizeof(Point), sizeof(Point));
+      EXPECT_EQ(decoded.ring, skipped == 3 ? 0 : points[i].ring);
+      EXPECT_EQ(decoded.t, skipped == 4 ? 0u : points[i].t);
+      EXPECT_NEAR(decoded.x, points[i].x, 0.001f);
+    }
+  }
 }

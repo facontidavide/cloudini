@@ -815,12 +815,16 @@ std::vector<V5AdaptiveIntField> getV5AdaptiveFields(const EncodingInfo& info) {
   return fields;
 }
 
-template <size_t Bytes>
+// Store = false: the section is decoded (to consume its bytes) but its values are not stored
+// (a field at kDecodeButSkipStore).
+template <size_t Bytes, bool Store>
 void writeValueToPoint(uint64_t value, uint8_t* dst) {
-  std::memcpy(dst, &value, Bytes);
+  if constexpr (Store) {
+    std::memcpy(dst, &value, Bytes);
+  }
 }
 
-template <size_t Bytes>
+template <size_t Bytes, bool Store>
 void decodeV5AdaptiveIntValues(
     const V5AdaptiveIntField& field, AdaptiveIntMode mode, ConstBufferView& input, uint8_t* output_base,
     size_t point_step, size_t expected_points) {
@@ -835,7 +839,7 @@ void decodeV5AdaptiveIntValues(
         int64_t diff = 0;
         ptr += decodeVarintUnchecked(ptr, diff);
         prev += static_cast<uint64_t>(diff);
-        writeValueToPoint<Bytes>(prev, output_base + i * point_step + field.offset);
+        writeValueToPoint<Bytes, Store>(prev, output_base + i * point_step + field.offset);
       }
       input.trim_front(static_cast<size_t>(ptr - input.data()));
       for (; i < expected_points; ++i) {
@@ -843,7 +847,7 @@ void decodeV5AdaptiveIntValues(
         const auto consumed = decodeVarint(input.data(), input.size(), diff);
         input.trim_front(consumed);
         prev += static_cast<uint64_t>(diff);
-        writeValueToPoint<Bytes>(prev, output_base + i * point_step + field.offset);
+        writeValueToPoint<Bytes, Store>(prev, output_base + i * point_step + field.offset);
       }
     } break;
 
@@ -874,7 +878,7 @@ void decodeV5AdaptiveIntValues(
         if (idx >= palette.size()) {
           throw std::runtime_error("V5 adaptive int: palette index out of range");
         }
-        writeValueToPoint<Bytes>(palette[idx], output_base + i * point_step + field.offset);
+        writeValueToPoint<Bytes, Store>(palette[idx], output_base + i * point_step + field.offset);
       }
       input.trim_front(index_bytes);
     } break;
@@ -894,7 +898,7 @@ void decodeV5AdaptiveIntValues(
           throw std::runtime_error("V5 adaptive int: RLE run exceeds point count");
         }
         for (uint64_t k = 0; k < run_len; ++k) {
-          writeValueToPoint<Bytes>(value, output_base + out_index * point_step + field.offset);
+          writeValueToPoint<Bytes, Store>(value, output_base + out_index * point_step + field.offset);
           ++out_index;
         }
       }
@@ -918,7 +922,7 @@ void decodeV5AdaptiveIntValues(
         }
         for (uint64_t k = 0; k < run_len; ++k) {
           prev += static_cast<uint64_t>(diff);
-          writeValueToPoint<Bytes>(prev, output_base + out_index * point_step + field.offset);
+          writeValueToPoint<Bytes, Store>(prev, output_base + out_index * point_step + field.offset);
           ++out_index;
         }
       }
@@ -944,16 +948,29 @@ void decodeV5AdaptiveIntSection(
     throw std::runtime_error("V5 adaptive int: unknown mode byte " + std::to_string(static_cast<int>(mode_byte)));
   }
   const auto mode = static_cast<AdaptiveIntMode>(mode_byte);
+  if (field.offset == kDecodeButSkipStore) {
+    // the offset is not used: decodeV5AdaptiveIntValues<*, false> only consumes the bytes
+    switch (field.bytes_per_value) {
+      case 2:
+        return decodeV5AdaptiveIntValues<2, false>(field, mode, input, output_base, point_step, expected_points);
+      case 4:
+        return decodeV5AdaptiveIntValues<4, false>(field, mode, input, output_base, point_step, expected_points);
+      case 8:
+        return decodeV5AdaptiveIntValues<8, false>(field, mode, input, output_base, point_step, expected_points);
+      default:
+        throw std::runtime_error("V5 adaptive int: unsupported value size");
+    }
+  }
 
   switch (field.bytes_per_value) {
     case 2:
-      decodeV5AdaptiveIntValues<2>(field, mode, input, output_base, point_step, expected_points);
+      decodeV5AdaptiveIntValues<2, true>(field, mode, input, output_base, point_step, expected_points);
       break;
     case 4:
-      decodeV5AdaptiveIntValues<4>(field, mode, input, output_base, point_step, expected_points);
+      decodeV5AdaptiveIntValues<4, true>(field, mode, input, output_base, point_step, expected_points);
       break;
     case 8:
-      decodeV5AdaptiveIntValues<8>(field, mode, input, output_base, point_step, expected_points);
+      decodeV5AdaptiveIntValues<8, true>(field, mode, input, output_base, point_step, expected_points);
       break;
     default:
       throw std::runtime_error("V5 adaptive int: unsupported value size");
