@@ -28,6 +28,10 @@
 // Each topic and variant keeps one encoder across messages (PointcloudEncoderCache), as
 // cloudini_rosbag_converter does; V6 reuses its per-chunk choices between clouds.
 //
+// Every variant refines the resolutions to the data of each message first (RefineResolutionsToData:
+// integer-valued floats such as intensity at resolution 1), counted in the encode time; --no-refine
+// turns it off.
+//
 // For each variant we report bytes out of the codec, ratio vs raw input,
 // encode MB/s, and decode MB/s. A `--zstd` flag runs the same variants through
 // Cloudini's built-in ZSTD chunk compression path.
@@ -262,6 +266,7 @@ int main(int argc, char** argv) {
       ("sample-every", "Process only 1 of every N messages per topic (>=1)",                                  //
        cxxopts::value<uint64_t>()->default_value("1"))                                                        //
       ("zstd", "Use Cloudini ZSTD chunk compression and report compressed sizes")                             //
+      ("no-refine", "Do not refine the resolutions to the data (RefineResolutionsToData, on by default)")     //
       ("mode", "Profile only one mode: V4, V5, V6, V4-viz, V5-viz or V6-viz", cxxopts::value<std::string>())  //
       ("encode-only", "Skip decode timing; useful with --mode for perf profiling")                            //
       ("decode-replay",
@@ -292,6 +297,7 @@ int main(int argc, char** argv) {
   const uint64_t max_per_topic = parse_result["max-messages"].as<uint64_t>();
   const uint64_t sample_every = std::max<uint64_t>(1, parse_result["sample-every"].as<uint64_t>());
   const bool show_zstd = parse_result.count("zstd") > 0;
+  const bool refine = parse_result.count("no-refine") == 0;
   const bool explain_mode = parse_result.count("explain") > 0;
   const bool encode_only = parse_result.count("encode-only") > 0;
   const bool decode_replay = parse_result.count("decode-replay") > 0;
@@ -338,7 +344,7 @@ int main(int argc, char** argv) {
   if (show_zstd) {
     std::cout << "   +zstd";
   }
-  std::cout << "\n";
+  std::cout << (refine ? "   refine" : "   no-refine") << "\n";
 
   std::ifstream input_stream(input_file);
   auto data_source = std::make_shared<mcap::FileStreamReader>(input_stream);
@@ -482,6 +488,9 @@ int main(int argc, char** argv) {
         cloudini_ros::applyVizLossyPreprocessing(pc_info);
         info = cloudini_ros::toEncodingInfo(pc_info);
         configureMode(info, static_cast<Mode>(m), show_zstd);
+      }
+      if (refine) {
+        Cloudini::RefineResolutionsToData(info, Cloudini::ConstBufferView(pc_info.data.data(), pc_info.data.size()));
       }
       const auto t_pre1 = Clock::now();
       st.per_mode[m].enc_ns += elapsedNs(t_pre0, t_pre1);

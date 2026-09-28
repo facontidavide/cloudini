@@ -216,7 +216,35 @@ Implementation: `cloudini_ros::applyVizLossyPreprocessing` in
 # --explain prints field schema + viz-preprocessing effect for the first
 # message of each topic (NaN count, dedup count, FLOAT64 fields quantized)
 ./build_release/tools/mcap_codec_benchmark DATA/my_bag.mcap --explain
+
+# One variant only: --mode V4 | V5 | V6 | V4-viz | V5-viz | V6-viz
+./build_release/tools/mcap_codec_benchmark DATA/my_bag.mcap --mode V6 --zstd
 ```
+Every variant refines the resolutions to each message's data first
+(`RefineResolutionsToData`: integer-valued floats such as intensity at
+resolution 1), counted in the encode time. `--no-refine` turns it off. Each
+topic and variant reuses one encoder across messages (`PointcloudEncoderCache`).
+
+**Comparing released versions on an MCAP** (e.g. "benchmark 1.2.1, 1.3.1 and
+V6"): every version since 1.2.1 ships `mcap_codec_benchmark` with the same
+options, so measure each version with its own tool, built from a worktree of
+the tag. Don't write a separate harness.
+```bash
+git worktree add --detach .worktrees/tag-1.3.1 1.3.1
+cmake -B .worktrees/tag-1.3.1/build_release -S .worktrees/tag-1.3.1/cloudini_lib -DCMAKE_BUILD_TYPE=Release
+cmake --build .worktrees/tag-1.3.1/build_release --target mcap_codec_benchmark
+.worktrees/tag-1.3.1/build_release/tools/mcap_codec_benchmark my.mcap --mode V5 --zstd
+./build_release/tools/mcap_codec_benchmark my.mcap --mode V6 --zstd
+```
+- 1.2.1 and 1.3.1 know only the V4/V5 modes; V5 is their default and already
+  the adaptive-integer V5 of today (not the archived bit-packed "V5", see the
+  naming note below). The current branch writes the same V5 format, with
+  encoder choices tuned for stage 2 and a faster decoder.
+- The tags neither refine nor reuse encoders (a new encoder per message).
+  For a like-for-like comparison of the codecs, also run the current tool
+  with `--no-refine`.
+- Pin timing runs to fixed cores (`taskset -c ...`) and check the machine is
+  idle: other jobs make the numbers vary by 10-30%.
 
 **V5 naming note**: A previous research branch
 (`feat/lossy-v2-bitpacked-default`, git tag `v5-reference-2026-05`) used "V5"
