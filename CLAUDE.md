@@ -8,11 +8,13 @@ Cloudini is a high-performance pointcloud compression library with bindings for 
 
 ## Architecture
 
-The project consists of three main components:
+The project consists of these components:
 
-- **cloudini_lib/**: Core compression library (C++20) with field encoders/decoders
+- **cloudini_lib/**: Core compression library (C++20) with field encoders/decoders, the tools, and the WebAssembly bindings (`src/wasm_functions.cpp`)
 - **cloudini_ros/**: ROS2 integration with point_cloud_transport plugins and conversion utilities
-- **cloudini_web/**: WebAssembly interface for browser-based compression
+- **cloudini_foxglove/**: Foxglove extension (`.foxe`) that decodes CompressedPointCloud2 through the WASM module; published in the Foxglove extension registry
+- **cloudini_py/**: Python decoder that loads the WASM module through wasmtime
+- **cloudini_web/**: browser demo, unmaintained since 2025-07 and no longer hosted; not mentioned in the README
 
 ### Core Library (cloudini_lib)
 
@@ -92,13 +94,6 @@ cmake -B build_wasm -S cloudini_lib -DCMAKE_TOOLCHAIN_FILE=$EMSDK/upstream/emscr
 cmake --build build_wasm
 ```
 
-### Web Interface
-```bash
-cd cloudini_web
-npm install
-npm run dev  # Development server
-npm run build  # Production build
-```
 
 ## Testing
 
@@ -196,17 +191,17 @@ ros2 run cloudini_ros test_direct_publisher --ros-args \
 **Visualization workflow (`--viz`)**:
 
 The `--viz` flag bundles three lossy preprocessing operations applied per
-message before V4 encoding:
+message before encoding:
 1. Drop points whose geometry triple (xyz) contains NaN/inf.
 2. Voxel-dedupe at the xyz resolution (default 1mm). Hash-based,
    order-preserving — first occurrence of each voxel wins.
 3. Quantize FLOAT64 fields without an explicit resolution to 1µs (typically
    per-point timestamps stored as seconds-since-epoch).
 
-The wire format produced is plain V4 — any standard `mcap` / ROS2 consumer
-reads it without changes. The flag is for compression workflows where the
+The wire format is the selected version (V6 by default), so any Cloudini decoder
+of that version reads it without changes. The flag is for compression workflows where the
 original NaN/duplicate/sub-µs-precision data isn't needed by downstream
-visualizers. Empirical results on real LIDAR bags: ratio drops from ~30-40%
+visualizers. Empirical results on real LIDAR bags (measured with V4): ratio drops from ~30-40%
 (V4 lossless) to ~13-30% codec-only, ~15-17% after stage-2 ZSTD.
 
 Implementation: `cloudini_ros::applyVizLossyPreprocessing` in
@@ -580,7 +575,7 @@ void MyNode::init() {
 
 **Cause**: Data race or lost notification in multi-threaded compression worker.
 
-**Fix**: Ensure all modifications to `compression_done_` and `compressed_size_` are protected by mutex. Fixed in recent commit to `cloudini_lib/src/cloudini.cpp`.
+**Fix**: Ensure all modifications to `compression_done_` and `compressed_size_` are protected by mutex (see Threading Safety Guidelines).
 
 ### Issue: Point cloud transport subscriber not receiving messages
 
@@ -622,10 +617,23 @@ Use correct type string:
 
 ## Tools
 
-- **cloudini_rosbag_converter**: Convert MCAP rosbags between compressed/uncompressed pointclouds. Accepts bag directories or bare `.mcap` files; generates a transformed `metadata.yaml` when one is present
+- **cloudini_rosbag_converter**: Convert MCAP rosbags between compressed/uncompressed pointclouds. Accepts bag directories or bare `.mcap` files; generates a transformed `metadata.yaml` when one is present. Released as a Linux AppImage
+- **mcap_codec_benchmark**: Per-topic ratio and speed of V4/V5/V6 on an MCAP (see Benchmarking)
 - **mcap_cutter**: Extract portions of MCAP files
-- **pcd_benchmark**: Benchmark compression on PCD files
-- **run_encoder.sh**: Batch processing script for test data
+- **mcap_header_inspector**: Print the Cloudini headers of the clouds in an MCAP
+- **pcd_to_cloudini_converter**: Encode a PCD file
+- **pcd_benchmark** (`cloudini_lib/benchmarks`): Benchmark compression on PCD files
+- **scripts/regenerate_readme_plots.py**: Regenerate the README charts (see below)
+
+### README charts
+
+`compression_ratio.svg` and `compression_speed.svg` compare Cloudini with the defaults (V6, 1 mm,
+refined, ZSTD) against ZSTD level 1 on the raw cloud, per sensor. Regenerate them with
+`python3 scripts/regenerate_readme_plots.py --cpu 8` after building `build_release`: it builds
+`scripts/readme_bench.cpp`, runs it twice pinned to one core, and writes both SVGs (light/dark via
+`prefers-color-scheme`). The clouds are raw frames in `DATA/v6_bench/<id>/` (`frame_*.bin` + `meta.json`;
+local only, not in git) plus the Hesai sample in `cloudini_lib/samples`. Sensor labels are in the
+script's `ROWS`. If the numbers change, update the ranges quoted in the README text as well.
 
 ## File Structure Reference
 
@@ -641,15 +649,24 @@ include/cloudini_lib/
 └── ros_msg_utils.hpp         # ROS2 message parsing/conversion utilities
 
 src/
-├── cloudini.cpp              # PointcloudEncoder/Decoder implementation
+├── cloudini.cpp              # PointcloudEncoder/Decoder implementation, header
+├── codec_common.cpp          # LZ4/ZSTD stage, shared helpers
+├── chunk_writer.cpp          # Chunked output
+├── v4_codec.cpp              # V4 point-by-point codec
+├── v5_codec.cpp              # V5 adaptive integer sections
+├── v6_codec.cpp              # V6 residual streams (see docs/v6_format.html)
 ├── field_encoder.cpp         # Encoder implementations (FloatN, Int, XOR)
 ├── field_decoder.cpp         # Decoder implementations
 ├── pcl_conversion.cpp        # PCL integration
-└── ros_msg_utils.cpp         # ROS message utilities
+├── ros_msg_utils.cpp         # ROS message utilities
+└── wasm_functions.cpp        # WebAssembly exports (cldn_*)
 
-tools/
-├── cloudini_rosbag_converter # MCAP conversion tool
-└── mcap_cutter              # MCAP slicing utility
+tools/src/
+├── cloudini_rosbag_converter.cpp  # MCAP conversion tool (AppImage)
+├── mcap_codec_benchmark.cpp       # V4/V5/V6 benchmark on MCAP
+├── mcap_cutter.cpp                # MCAP slicing utility
+├── mcap_header_inspector.cpp      # Cloudini headers in an MCAP
+└── pcd_to_cloudini_converter.cpp  # PCD encoder
 ```
 
 ### cloudini_ros/
@@ -696,10 +713,9 @@ test/
 
 ### Typical Compression Ratios
 
-Based on empirical data:
-- **Lossy (1mm resolution)**: 5-10x compression
-- **Lossless**: 2-4x compression
-- **Depends on**: Point cloud structure, field types, data entropy
+With the defaults (V6, 1 mm, refined, ZSTD) on 13 sensors, the output is 2.8-34% of the raw cloud
+(Ouster 5-15%, Velodyne HDL 19%), 1.7-5.2x smaller than ZSTD alone. Numbers per sensor: the README charts.
+Depends on point cloud structure, field types and data entropy.
 
 ### Message Flow Diagram
 
@@ -769,10 +785,19 @@ Alternative (Manual Conversion):
 4. **Use ZSTD for maximum compression** (slower), **LZ4 for real-time** (faster)
 5. **Monitor with** `ros2 topic hz` and `ros2 topic bw` to verify compression gains
 
-## Recent Fixes (as of 2025)
+## Releasing
 
-- **Threading fix in PointcloudEncoder**: Protected `compression_done_` and `compressed_size_` with mutex to prevent data races and deadlocks
-- **Object pool optimization**: Added to CloudiniSubscriberPCL for ~75% allocation reduction
-- **Subscriber-aware processing**: topic_converter now skips processing when no subscribers present
-- **QoS auto-detection**: topic_converter automatically adapts to publisher QoS settings
-- **pcl_conversions linking**: Added to CMakeLists.txt for proper PCL integration
+A release touches several channels; do them in this order.
+1. Bump the version in `cloudini_lib/package.xml`, `cloudini_ros/package.xml`, `cloudini_lib/CMakeLists.txt`
+   (`project(... VERSION)`), `conda/recipe.yaml` and `cloudini_foxglove/package.json` (+ lock), and add the
+   entries to `cloudini_lib/CHANGELOG.rst`, `cloudini_ros/CHANGELOG.rst` and `cloudini_foxglove/CHANGELOG.md`.
+2. Tag on main (lightweight tag, e.g. `1.4.0`). The tag runs `.github/workflows/release-appimage.yaml`: the
+   GitHub release gets the AppImage, the WASM zip and the `.foxe`.
+3. After the tag: put the sha256 of the GitHub tarball in `conda/recipe.yaml` (follow-up PR).
+4. Foxglove extension registry (`foxglove/extension-registry`, entry `facontidavide.cloudini-converter`):
+   version, `.foxe` URL from the release and its sha256.
+5. Conan Center Index (`recipes/cloudini`): add the version to `config.yml` and `all/conandata.yml`.
+6. conda-forge: recipe from `conda/` (staged-recipes until the feedstock exists).
+7. ROS: `bloom-release --rosdistro <distro> --track <distro> cloudini` for humble, jazzy, kilted, lyrical and
+   rolling (release repo `facontidavide/cloudini-release`). Bloom can stop at interactive prompts (e.g. updating
+   old track actions) that need a TTY, so the maintainer runs it.
