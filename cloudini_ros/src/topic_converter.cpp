@@ -111,7 +111,7 @@ CloudiniPointcloudConverter::CloudiniPointcloudConverter(const rclcpp::NodeOptio
   this->declare_parameter<std::string>("topic_output", "");
   this->declare_parameter<double>("resolution", 0.001);
   this->declare_parameter<bool>("log_compression_stats", true);
-  // 5 (default) is read by every released decoder; 6 is smaller but needs a V6-capable decoder
+  // 6 (default); 5 for decoders from 1.3.1 and earlier
   this->declare_parameter<int>("encoding_version", Cloudini::kEncodingVersion);
 
   // read parameters

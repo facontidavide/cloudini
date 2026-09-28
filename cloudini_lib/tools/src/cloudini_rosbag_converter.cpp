@@ -100,9 +100,13 @@ int main(int argc, char** argv) {
       ("m,method", "Compression method to use when writing data back to mcap ('zstd', 'none')",
        cxxopts::value<std::string>()->default_value("zstd"))  //
       ("encoding-version",
-       "Wire version of the encoded clouds (compression only): 4, 5 (default) or 6. Version 6 is smaller "
-       "but needs a V6-capable decoder.",
-       cxxopts::value<int>()->default_value(std::to_string(Cloudini::kEncodingVersion)));
+       "Wire version of the encoded clouds (compression only): 4, 5 or 6 (default). Use 5 for readers on "
+       "cloudini 1.3.1 or earlier, which cannot decode version 6.",
+       cxxopts::value<int>()->default_value(std::to_string(Cloudini::kEncodingVersion)))  //
+      ("no-refine",
+       "Do not refine the resolutions to the data of each cloud (compression only). By default a float field "
+       "whose values lie on a coarser grid, e.g. an integer-valued intensity, is stored at that coarser "
+       "resolution: smaller and faster, with the same error bound.");
 
   auto parse_result = options.parse(argc, argv);
 
@@ -247,6 +251,10 @@ int main(int argc, char** argv) {
     std::cerr << "The option --profile is used only for compression" << std::endl;
     return 1;
   }
+  if (decode && parse_result.count("no-refine")) {
+    std::cerr << "The option --no-refine is used only for compression" << std::endl;
+    return 1;
+  }
 
   // if file exists already, ask the user to confirm overwriting
   if (std::filesystem::exists(output_filename) && !parse_result.count("yes")) {
@@ -312,16 +320,7 @@ int main(int argc, char** argv) {
 
     if (encode) {
       if (parse_result.count("profile")) {
-        std::string profile_str = parse_result["profile"].as<std::string>();
-        // check if it is a file or a string
-        if (std::filesystem::exists(profile_str)) {
-          std::ifstream file(profile_str);
-          std::string profile;
-          file >> profile;
-          converter.addProfile(profile);
-        } else {
-          converter.addProfile(profile_str);
-        }
+        converter.addProfile(parse_result["profile"].as<std::string>());  // a string or a file
         auto profile_resolutions = converter.getProfile();
         std::cout << "\nApplied profile resolutions: \n";
         for (const auto& [field, resolution] : profile_resolutions) {
@@ -333,6 +332,7 @@ int main(int argc, char** argv) {
                   << " m, quantize FLOAT64 to 1us\n";
       }
       converter.setEncodingVersion(parse_result["encoding-version"].as<int>());
+      converter.setRefineResolutions(parse_result.count("no-refine") == 0);
       converter.encodePointClouds(output_filename, resolution, mcap_writer_compression, viz_lossy);
     }
     if (decode) {

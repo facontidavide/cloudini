@@ -195,7 +195,7 @@ TEST(Cloudini, Header) {
   }
 }
 
-TEST(Cloudini, DefaultV5AndExplicitV4RoundTrip) {
+TEST(Cloudini, DefaultVersionAndExplicitV4RoundTrip) {
   using namespace Cloudini;
 
   const size_t kPoints = 4096 + 17;
@@ -205,7 +205,9 @@ TEST(Cloudini, DefaultV5AndExplicitV4RoundTrip) {
   ASSERT_EQ(default_info.version, kEncodingVersion);
   const std::vector<uint8_t> default_encoded = encodeVersionedPoints(default_info, points);
   ASSERT_GE(default_encoded.size(), 12u);
-  EXPECT_EQ(std::string(reinterpret_cast<const char*>(default_encoded.data()), 12), "CLOUDINI_V05");
+  EXPECT_EQ(
+      std::string(reinterpret_cast<const char*>(default_encoded.data()), 12),
+      "CLOUDINI_V0" + std::to_string(int(kEncodingVersion)));
   expectVersionedRoundTrip(default_info, points, default_encoded);
 
   EncodingInfo v4_info = makeVersionedLossyInfo(kPoints);
@@ -592,6 +594,7 @@ TEST(Cloudini, DecodeButSkipStoreIntegerFieldV5) {
   info.width = kPoints;
   info.height = 1;
   info.point_step = sizeof(Point);
+  info.version = 5;  // the V5 path (the default is V6)
   info.fields = {
       {"x", offsetof(Point, x), FieldType::FLOAT32, 0.001f},
       {"y", offsetof(Point, y), FieldType::FLOAT32, 0.001f},

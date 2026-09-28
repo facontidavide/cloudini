@@ -68,6 +68,8 @@ uint32_t cldn_ComputeCompressedSize(uintptr_t dds_msg_ptr, uint32_t dds_msg_size
       }
     }
 
+    Cloudini::RefineResolutionsToData(encoding_info, pc_info.data);
+
     // Don't use static - it causes memory leaks in WASM
     std::vector<uint8_t> compressed_cloud;
     Cloudini::PointcloudEncoder pc_encoder(encoding_info);
@@ -188,6 +190,7 @@ uint32_t cldn_EncodePointcloudMessage(
     if (pc_info.data.size() != expected_size) {
       return 0;
     }
+    Cloudini::RefineResolutionsToData(encoding_info, pc_info.data);
     Cloudini::PointcloudEncoder pc_encoder(encoding_info);
     const size_t points_count = pc_info.data.size() / encoding_info.point_step;
     const size_t max_size = Cloudini::MaxCompressedSize(encoding_info, points_count, true);

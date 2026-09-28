@@ -16,6 +16,7 @@
 
 #include "mcap_converter.hpp"
 
+#include <iterator>
 #include <set>
 #include <stdexcept>
 
@@ -218,7 +219,7 @@ void McapConverter::encodePointClouds(
     }
 
     cloudini_ros::convertPointCloud2ToCompressedCloud(
-        pc_info, encoding_info, compressed_dds_msg, &encoders[msg.channel->id]);
+        pc_info, encoding_info, compressed_dds_msg, &encoders[msg.channel->id], refine_resolutions_);
 
     // copy pointers to compressed_dds_msg
     new_msg.data = reinterpret_cast<const std::byte*>(compressed_dds_msg.data());
@@ -338,9 +339,17 @@ std::string_view trimSpaces(std::string_view str) {
   return str.substr(start, end - start);
 }
 
-void McapConverter::addProfile(const std::string& profile) {
-  auto tokens = split(profile, ';');
-  for (const auto& token : tokens) {
+std::map<std::string, float> ParseResolutionProfile(const std::string& profile_or_path) {
+  std::string profile = profile_or_path;
+  if (std::filesystem::is_regular_file(profile_or_path)) {
+    std::ifstream file(profile_or_path);
+    profile.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+  }
+  std::map<std::string, float> resolutions;
+  for (const auto& token : split(profile, ';')) {
+    if (trimSpaces(token).empty()) {
+      continue;  // a trailing ';' or a final newline
+    }
     auto param_tokens = split(token, ':');
     if (param_tokens.size() != 2) {
       throw std::runtime_error("Invalid profile (wrong number of parameters): " + profile);
@@ -351,20 +360,26 @@ void McapConverter::addProfile(const std::string& profile) {
     if (resolution_str == "remove") {
       resolution = 0.0f;
     } else {
-      // check if resolution_str can be converted to float
       try {
         resolution = std::stof(resolution_str);
-      } catch (const std::invalid_argument& e) {
+      } catch (const std::invalid_argument&) {
         throw std::runtime_error("Invalid profile (failed conversion to float): " + profile);
       }
     }
     if (field_str == "xyz") {
-      profile_resolutions_["x"] = resolution;
-      profile_resolutions_["y"] = resolution;
-      profile_resolutions_["z"] = resolution;
+      resolutions["x"] = resolution;
+      resolutions["y"] = resolution;
+      resolutions["z"] = resolution;
     } else {
-      profile_resolutions_[field_str] = resolution;
+      resolutions[field_str] = resolution;
     }
+  }
+  return resolutions;
+}
+
+void McapConverter::addProfile(const std::string& profile) {
+  for (const auto& [field, resolution] : ParseResolutionProfile(profile)) {
+    profile_resolutions_[field] = resolution;
   }
 }
 

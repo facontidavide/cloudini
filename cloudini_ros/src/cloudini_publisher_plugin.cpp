@@ -40,8 +40,7 @@ void CloudiniPublisher::declareParameters(const std::string& base_topic) {
   encoding_version_descriptor.name = "cloudini_encoding_version";
   encoding_version_descriptor.type = rcl_interfaces::msg::ParameterType::PARAMETER_INTEGER;
   encoding_version_descriptor.description =
-      "Cloudini wire version: 5 (default, read by every released decoder) or 6 (smaller, needs a V6-capable "
-      "decoder)";
+      "Cloudini wire version: 6 (default) or 5 (larger, for decoders from 1.3.1 and earlier)";
   declareParam<int64_t>(encoding_version_descriptor.name, encoding_version_, encoding_version_descriptor);
   // declareParam drops the descriptor, so a range in it would not be enforced: check the value here
   const auto valid_version = [](int64_t v) {
@@ -82,6 +81,7 @@ void CloudiniPublisher::declareParameters(const std::string& base_topic) {
 CloudiniPublisher::TypedEncodeResult CloudiniPublisher::encodeTyped(const sensor_msgs::msg::PointCloud2& raw) const {
   auto info = Cloudini::ConvertToEncodingInfo(raw, resolution_);
   info.version = static_cast<uint8_t>(encoding_version_);
+  Cloudini::RefineResolutionsToData(info, Cloudini::ConstBufferView(raw.data.data(), raw.data.size()));
   std::lock_guard<std::mutex> lock(encoder_mutex_);
   Cloudini::PointcloudEncoder& encoder = encoder_cache_.get(info);
 

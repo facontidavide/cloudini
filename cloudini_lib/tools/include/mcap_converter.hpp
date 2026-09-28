@@ -32,6 +32,10 @@ class McapWriter;
 class FileStreamReader;
 }  // namespace mcap
 
+// Parses a resolution profile (see McapConverter::addProfile), given as a string or as the path of a file
+// that contains it. A resolution of 0 ("remove") removes the field.
+std::map<std::string, float> ParseResolutionProfile(const std::string& profile_or_path);
+
 class McapConverter {
  public:
   // key: topic name, value: topic type
@@ -49,10 +53,16 @@ class McapConverter {
   //   - "intensity" field with resolution of 0.1
   //   - "timestamp" field with resolution of 0.000001
   //   - "ring" field removed
+  // `profile` can also be the path of a file that contains it.
   void addProfile(const std::string& profile);
 
-  // Wire version of the encoded clouds (default: Cloudini::kEncodingVersion). 6 writes V6, which decoders
-  // before V6 support cannot read.
+  // Refine the resolutions to the data of each cloud (RefineResolutionsToData). On by default.
+  void setRefineResolutions(bool refine) {
+    refine_resolutions_ = refine;
+  }
+
+  // Wire version of the encoded clouds (default: Cloudini::kEncodingVersion, 6). Version 5 is read by
+  // decoders from 1.3.1 and earlier, which cannot read version 6.
   void setEncodingVersion(int version);
 
   void encodePointClouds(
@@ -77,6 +87,7 @@ class McapConverter {
   std::map<uint16_t, uint16_t> old_to_new_channel_id_;
   std::map<std::string, float> profile_resolutions_;
   uint8_t encoding_version_ = Cloudini::kEncodingVersion;
+  bool refine_resolutions_ = true;
 
   size_t processed_messages_ = 0;
   size_t total_input_bytes_ = 0;

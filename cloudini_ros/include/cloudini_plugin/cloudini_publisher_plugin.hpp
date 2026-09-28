@@ -48,7 +48,7 @@ class CloudiniPublisher
 
  private:
   double resolution_ = 0.001;
-  // 5 (default) is read by every released decoder; 6 is smaller but needs a V6-capable decoder
+  // 6 (default); 5 for decoders from 1.3.1 and earlier
   int64_t encoding_version_ = Cloudini::kEncodingVersion;
   // one encoder for the topic (V6 reuses its per-chunk choices between clouds); encodeTyped is const
   mutable std::mutex encoder_mutex_;

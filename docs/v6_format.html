@@ -194,7 +194,7 @@
 <body>
 <div class="page">
   <header>
-    <p class="kicker">Cloudini · wire format version 6 · opt-in · PR #150</p>
+    <p class="kicker">Cloudini · wire format version 6 · default · PR #150</p>
     <h1>V6 wire format: changes from V5</h1>
     <p class="lead">V6 changes how quantized FLOAT32 fields are coded inside each 32,768-point chunk. x, y and z are coded as three residual streams against a predictor selected per chunk. Points without a return are excluded by a validity bitmap. Every other FLOAT32 field with a resolution gets one residual stream. The V5 adaptive integer sections are unchanged. Encoders write V6 only when <code>EncodingInfo::version = 6</code>.</p>
     <div class="stats">
@@ -355,7 +355,7 @@
     <div class="rails">
       <div class="rail">
         <h3>Version selection</h3>
-        <p>V6 is written only when <code>EncodingInfo::version = 6</code>. The default is V5. Decoders from 1.3.1 and earlier reject version 6.</p>
+        <p>Encoders write V6 by default (<code>kEncodingVersion = 6</code>). Decoders from 1.3.1 and earlier reject version 6: set <code>EncodingInfo::version = 5</code> (<code>--encoding-version 5</code> in the rosbag converter) to write for them.</p>
       </div>
       <div class="rail">
         <h3>Fallbacks</h3>
@@ -376,8 +376,8 @@
     <h2 id="rollout-title">7. Rollout</h2>
     <div class="timeline">
       <div class="step now"><i class="dot"></i><span class="when">1.3.1</span><h3>Writes V5</h3><p>Reads versions 2–5; rejects version 6.</p></div>
-      <div class="step next"><i class="dot"></i><span class="when">Next minor · #150</span><h3>Reads V6, writes V5</h3><p>V6 on request.</p></div>
-      <div class="step later"><i class="dot"></i><span class="when">Following release</span><h3>Writes V6 by default</h3><p>Once deployed readers support V6.</p></div>
+      <div class="step next"><i class="dot"></i><span class="when">Next minor · #150</span><h3>Writes V6 by default</h3><p>Reads versions 2–6. Resolutions refined to the data by default.</p></div>
+      <div class="step later"><i class="dot"></i><span class="when">Readers on 1.3.1</span><h3>Write V5 for them</h3><p><code>--encoding-version 5</code> until they upgrade.</p></div>
     </div>
   </section>
 

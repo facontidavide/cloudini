@@ -144,7 +144,7 @@ ros2 run cloudini_ros cloudini_topic_converter --ros-args \
   -p topic_output:=/points/compressed \
   -p resolution:=0.001
 
-# Add -p encoding_version:=6 to write V6 (default 5)
+# Writes V6 by default; add -p encoding_version:=5 for readers on 1.3.1 or earlier
 
 # Decompress: CompressedPointCloud2 -> sensor_msgs/PointCloud2
 ros2 run cloudini_ros cloudini_topic_converter --ros-args \
@@ -179,8 +179,15 @@ ros2 run cloudini_ros test_direct_publisher --ros-args \
 # Roughly halves output size on real LIDAR with stage-2 ZSTD.
 ./build_release/tools/cloudini_rosbag_converter -c -y --viz -f DATA/my_bag/
 
-# Write V6 (smaller; needs a V6-capable decoder). Default is version 5.
-./build_release/tools/cloudini_rosbag_converter -c -y --encoding-version 6 -f DATA/my_bag/
+# Default: V6, resolutions refined to the data of each cloud (integer-valued
+# floats such as intensity at resolution 1). For readers on 1.3.1 or earlier:
+./build_release/tools/cloudini_rosbag_converter -c -y --encoding-version 5 -f DATA/my_bag/
+
+# Keep the given resolutions (no refinement)
+./build_release/tools/cloudini_rosbag_converter -c -y --no-refine -f DATA/my_bag/
+
+# Per-field resolutions: a string or a file that contains it
+./build_release/tools/cloudini_rosbag_converter -c -y --profile "xyz:0.001; intensity:0.1; ring:remove" -f DATA/my_bag/
 
 # Decode back to PointCloud2
 ./build_release/tools/cloudini_rosbag_converter -d -y -f DATA/my_bag_encoded/
@@ -219,6 +226,9 @@ Implementation: `cloudini_ros::applyVizLossyPreprocessing` in
 
 # One variant only: --mode V4 | V5 | V6 | V4-viz | V5-viz | V6-viz
 ./build_release/tools/mcap_codec_benchmark DATA/my_bag.mcap --mode V6 --zstd
+
+# Same per-field profile syntax as the converter (string or file)
+./build_release/tools/mcap_codec_benchmark DATA/my_bag.mcap --profile "xyz:0.001; intensity:1"
 ```
 V4, V5 and their viz variants run as in 1.2.1, without the optimizations added
 since: a new encoder per message and the given resolutions. The V6 variants use
@@ -257,8 +267,13 @@ can choose V4 delta-varint, palette indexes, raw-value RLE, or Delta-RLE
 for repeated increments. Use
 `mcap_codec_benchmark` to compare V4/V5 and V4-viz/V5-viz.
 
-**V6 (opt-in)**: `EncodingInfo::version = 6` writes V6; the default stays V5
-and decoders before V6 support cannot read it. V6 keeps the V5 integer
+**V6 (the default)**: encoders write V6 (`kEncodingVersion = 6`); decoders
+from 1.3.1 and earlier cannot read it, so select version 5 to write for them.
+Every encode path that derives the resolutions from the cloud (the ROS
+conversion helpers, the rosbag and topic converters, the point_cloud_transport
+plugin, the PCL conversion and the WebAssembly bindings) also refines them to
+the data first (`RefineResolutionsToData`); the rosbag converter's
+`--no-refine` turns it off. V6 keeps the V5 integer
 sections and codes x, y, z per chunk as three residual streams against a
 predictor chosen per chunk (previous point, point K back, LOCO-I median of
 the two, or second order; K = row width for organized clouds, detected
@@ -271,9 +286,9 @@ encoder caches lag, predictor and mask kind per cloud size (re-probed every
 one SSE pass; the first encode probes a prefix of each chunk, then codes it the
 same way. Keep one encoder per stream to benefit: `Cloudini::PointcloudEncoderCache`
 (used by the rosbag converter, `mcap_codec_benchmark`, the topic converter and
-the point_cloud_transport plugin). Selecting V6: `--encoding-version 6`
-(rosbag converter), `encoding_version:=6` (topic converter),
-`cloudini_encoding_version: 6` (plugin), or the `encoding_version` argument of
+the point_cloud_transport plugin). Selecting V5 instead: `--encoding-version 5`
+(rosbag converter), `encoding_version:=5` (topic converter),
+`cloudini_encoding_version: 5` (plugin), or the `encoding_version` argument of
 `SerializeCompressedPointCloud2`. Code: `cloudini_lib/src/v6_codec.cpp` (uses the
 V5 integer sections through `AdaptiveIntSectionsEncoder` in `v5_codec.hpp`);
 tests in `cloudini_lib/test/test_v6.cpp` (including a mutation test of corrupted

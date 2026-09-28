@@ -768,6 +768,7 @@ TEST(FieldEncoders, PointcloudV5_LossyFloatOnlyRoundTrip) {
   info.encoding_opt = EncodingOptions::LOSSY;
   info.compression_opt = CompressionOption::NONE;
   info.use_threads = false;
+  info.version = 5;  // the V5 path (the default is V6)
   info.fields.push_back({"x", offsetof(PointXYZI, x), FieldType::FLOAT32, 0.001F});
   info.fields.push_back({"y", offsetof(PointXYZI, y), FieldType::FLOAT32, 0.001F});
   info.fields.push_back({"z", offsetof(PointXYZI, z), FieldType::FLOAT32, 0.001F});
@@ -791,7 +792,7 @@ TEST(FieldEncoders, PointcloudV5_LossyFloatOnlyRoundTrip) {
 
   ConstBufferView encoded_view(encoded.data(), encoded.size());
   const EncodingInfo decoded_info = DecodeHeader(encoded_view);
-  ASSERT_EQ(decoded_info.version, kEncodingVersion);
+  ASSERT_EQ(decoded_info.version, 5);
   ASSERT_EQ(decoded_info.encoding_opt, EncodingOptions::LOSSY);
 
   ConstBufferView encoded_v4_view(encoded_v4.data(), encoded_v4.size());

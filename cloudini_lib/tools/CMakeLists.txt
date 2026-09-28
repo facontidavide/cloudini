@@ -66,6 +66,7 @@ add_executable(mcap_codec_benchmark
 target_link_libraries(mcap_codec_benchmark
   PRIVATE
     cloudini_lib
+    mcap_converter
     LZ4::lz4_static
     zstd::libzstd_static
     mcap::mcap

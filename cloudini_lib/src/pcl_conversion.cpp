@@ -212,8 +212,9 @@ size_t PCLPointCloudEncode(
     const pcl::PCLPointCloud2& cloud, std::vector<uint8_t>& serialized_cloud, double resolution_XYZ) {
   // get the encoding info
   EncodingInfo info = ConvertToEncodingInfo(cloud, resolution_XYZ);
-  PointcloudEncoder encoder(info);
   ConstBufferView data_view(cloud.data.data(), cloud.data.size());
+  RefineResolutionsToData(info, data_view);
+  PointcloudEncoder encoder(info);
   return encoder.encode(data_view, serialized_cloud);
 }
 
@@ -233,8 +234,9 @@ size_t PCLPointCloudEncode(
       field.type = pcd_fields_map.at(field.name);
     }
   }
-  PointcloudEncoder encoder(info);
   ConstBufferView data_view(cloud.data.data(), cloud.data.size());
+  RefineResolutionsToData(info, data_view);
+  PointcloudEncoder encoder(info);
   return encoder.encode(data_view, serialized_cloud);
 }
 

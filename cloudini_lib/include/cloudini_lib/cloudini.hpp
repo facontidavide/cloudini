@@ -64,9 +64,10 @@ namespace detail {
 struct V6EncoderState;
 }
 
-constexpr const uint8_t kEncodingVersion = 5;
-// Newest version the decoder reads. Encoders write version 6 only when asked to (EncodingInfo::version = 6):
-// decoders before 1.4 cannot read it.
+// Version encoders write by default: 6. Decoders from 1.3.1 and earlier read up to version 5; set
+// EncodingInfo::version = 5 to write for them.
+constexpr const uint8_t kEncodingVersion = 6;
+// Newest version the decoder reads.
 constexpr const uint8_t kMaxEncodingVersion = 6;
 // Oldest version the tools and the ROS nodes offer. PointcloudEncoder also writes versions 2 and 3, for old
 // readers.

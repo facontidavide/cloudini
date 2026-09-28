@@ -64,8 +64,9 @@
 #include "cloudini_lib/ros_message_definitions.hpp"
 #include "cloudini_lib/ros_msg_utils.hpp"
 #include "cxxopts.hpp"
+#include "mcap_converter.hpp"
 
-#define MCAP_IMPLEMENTATION
+// the MCAP implementation is compiled in mcap_converter, which this tool links
 #include "mcap/reader.hpp"
 #include "mcap/types.hpp"
 
@@ -259,13 +260,17 @@ int main(int argc, char** argv) {
   options.add_options()                                                                            //
       ("h,help", "Print usage")                                                                    //
       ("f,filename", "Input MCAP file (positional also accepted)", cxxopts::value<std::string>())  //
-      ("r,resolution", "XYZ tick size in meters (default 0.001)",
-       cxxopts::value<float>()->default_value(                                     //
-           "0.001"))                                                               //
-      ("max-messages", "Stop after N messages per topic (0 = unlimited)",          //
-       cxxopts::value<uint64_t>()->default_value("0"))                             //
-      ("sample-every", "Process only 1 of every N messages per topic (>=1)",       //
-       cxxopts::value<uint64_t>()->default_value("1"))                             //
+      ("r,resolution", "Resolution of the FLOAT32 fields not in the profile (meters for x, y, z)",
+       cxxopts::value<float>()->default_value(                                //
+           "0.001"))                                                          //
+      ("max-messages", "Stop after N messages per topic (0 = unlimited)",     //
+       cxxopts::value<uint64_t>()->default_value("0"))                        //
+      ("sample-every", "Process only 1 of every N messages per topic (>=1)",  //
+       cxxopts::value<uint64_t>()->default_value("1"))                        //
+      ("profile",
+       "Per-field resolutions, as in cloudini_rosbag_converter: a string such as \"xyz:0.001; intensity:0.1; "
+       "ring:remove\", or a file that contains it",
+       cxxopts::value<std::string>())                                              //
       ("zstd", "Use Cloudini ZSTD chunk compression and report compressed sizes")  //
       ("no-refine",
        "V6 variants: do not refine the resolutions to the data (RefineResolutionsToData, on by default)")     //
@@ -296,6 +301,15 @@ int main(int argc, char** argv) {
 
   const std::filesystem::path input_file = parse_result["filename"].as<std::string>();
   const float default_resolution = parse_result["resolution"].as<float>();
+  cloudini_ros::ResolutionProfile profile;
+  if (parse_result.count("profile")) {
+    try {
+      profile = ParseResolutionProfile(parse_result["profile"].as<std::string>());
+    } catch (const std::exception& e) {
+      std::cerr << "Error: " << e.what() << "\n";
+      return 1;
+    }
+  }
   const uint64_t max_per_topic = parse_result["max-messages"].as<uint64_t>();
   const uint64_t sample_every = std::max<uint64_t>(1, parse_result["sample-every"].as<uint64_t>());
   const bool show_zstd = parse_result.count("zstd") > 0;
@@ -336,7 +350,11 @@ int main(int argc, char** argv) {
   }
 
   std::cout << "File: " << input_file << "\n";
-  std::cout << "Resolution: " << default_resolution << " m   max-messages/topic: ";
+  std::cout << "Resolution: " << default_resolution << " m";
+  for (const auto& [field, resolution] : profile) {
+    std::cout << "   " << field << ":" << (resolution == 0.0f ? std::string("remove") : std::to_string(resolution));
+  }
+  std::cout << "   max-messages/topic: ";
   if (max_per_topic == 0) {
     std::cout << "unlimited";
   } else {
@@ -403,7 +421,7 @@ int main(int argc, char** argv) {
         std::cerr << "  [warn] " << topic << " parse failed: " << e.what() << "\n";
         continue;
       }
-      cloudini_ros::applyResolutionProfile({}, pc_info.fields, default_resolution);
+      cloudini_ros::applyResolutionProfile(profile, pc_info.fields, default_resolution);
       Cloudini::EncodingInfo base = cloudini_ros::toEncodingInfo(pc_info);
       explainOneMessage(topic, pc_info, base);
 
@@ -455,7 +473,7 @@ int main(int argc, char** argv) {
       std::cerr << "  [warn] " << topic << " msg #" << this_seen << ": parse failed (" << e.what() << "), skipping\n";
       continue;
     }
-    cloudini_ros::applyResolutionProfile({}, pc_info_orig.fields, default_resolution);
+    cloudini_ros::applyResolutionProfile(profile, pc_info_orig.fields, default_resolution);
     Cloudini::EncodingInfo base = cloudini_ros::toEncodingInfo(pc_info_orig);
 
     Cloudini::ConstBufferView raw_points(pc_info_orig.data.data(), pc_info_orig.data.size());
