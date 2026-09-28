@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="622" viewBox="0 0 880 622">
+<style>
+  text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: #1f2328; }
+  .src { font-size: 11px; fill: #6b7480; }
+  .model { font-size: 13px; font-weight: 600; }
+  .val, .tick { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; fill: #4a5360; }
+  .tick { fill: #6b7480; }
+  .fac { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; font-weight: 600; fill: #148a60; }
+  .title { font-size: 15px; font-weight: 600; }
+  .sub, .key { font-size: 12.5px; fill: #4a5360; }
+  .grid { stroke: #e6eaee; } .axis { stroke: #b9c1ca; } .sep { stroke: #d9dee3; }
+  .z { fill: #2a78d6; } .c { fill: #1baf7a; }
+  @media (prefers-color-scheme: dark) {
+    text { fill: #e6edf3; } .src, .tick { fill: #8b949e; } .val, .sub, .key { fill: #c3c9d0; }
+    .fac { fill: #3ccf98; }
+    .grid { stroke: #21262d; } .axis { stroke: #3d444d; } .sep { stroke: #30363d; }
+    .z { fill: #3987e5; } .c { fill: #199e70; }
+  }
+</style>
+<text class="title" x="0" y="18">Compressed size, % of the original cloud (smaller is better)</text>
+<text class="sub" x="0" y="37">Cloudini: V6, 1 mm resolution on float fields, refined to the data, then ZSTD. ZSTD alone: level 1 on the raw cloud.</text>
+<rect class="z" x="0" y="50" width="12" height="12" rx="3"/>
+<text class="key" x="18" y="60">ZSTD alone</text>
+<rect class="c" x="150" y="50" width="12" height="12" rx="3"/>
+<text class="key" x="168" y="60">Cloudini + ZSTD</text>
+<text class="model" x="156" y="91" text-anchor="end">Ouster OS0-32</text>
+<text class="src" x="156" y="105" text-anchor="end">Ouster SDK sample</text>
+<text class="model" x="156" y="131" text-anchor="end">Ouster OS0-128</text>
+<text class="src" x="156" y="145" text-anchor="end">Ouster SDK sample</text>
+<text class="model" x="156" y="171" text-anchor="end">Ouster OS1-32</text>
+<text class="src" x="156" y="185" text-anchor="end">Ouster SDK sample</text>
+<text class="model" x="156" y="211" text-anchor="end">Ouster OS1-64</text>
+<text class="src" x="156" y="225" text-anchor="end">Ouster SDK sample</text>
+<text class="model" x="156" y="251" text-anchor="end">Ouster OS1-128</text>
+<text class="src" x="156" y="265" text-anchor="end">Ouster SDK sample</text>
+<text class="model" x="156" y="291" text-anchor="end">Ouster OS2-32</text>
+<text class="src" x="156" y="305" text-anchor="end">Ouster SDK sample</text>
+<text class="model" x="156" y="331" text-anchor="end">Ouster OS2-128</text>
+<text class="src" x="156" y="345" text-anchor="end">Ouster SDK sample</text>
+<line class="sep" x1="0" x2="156" y1="354" y2="354"/>
+<text class="model" x="156" y="371" text-anchor="end">Velodyne HDL-64E</text>
+<text class="src" x="156" y="385" text-anchor="end">KITTI</text>
+<text class="model" x="156" y="411" text-anchor="end">Velodyne HDL-32E</text>
+<text class="src" x="156" y="425" text-anchor="end">nuScenes</text>
+<text class="model" x="156" y="451" text-anchor="end">2× Velodyne VLP-32C</text>
+<text class="src" x="156" y="465" text-anchor="end">Argoverse 2</text>
+<line class="sep" x1="0" x2="156" y1="474" y2="474"/>
+<text class="model" x="156" y="491" text-anchor="end">Hesai, 32 channels</text>
+<text class="src" x="156" y="505" text-anchor="end">cloudini sample</text>
+<line class="sep" x1="0" x2="156" y1="514" y2="514"/>
+<text class="model" x="156" y="531" text-anchor="end">LiDAR, xyz + intensity</text>
+<text class="src" x="156" y="545" text-anchor="end">cloudini PCD sample</text>
+<line class="sep" x1="0" x2="156" y1="554" y2="554"/>
+<text class="model" x="156" y="571" text-anchor="end">Stereo camera, RGB</text>
+<text class="src" x="156" y="585" text-anchor="end">PCL test data</text>
+<line class="axis" x1="170.0" x2="170.0" y1="72" y2="598"/>
+<text class="tick" x="170.0" y="614" text-anchor="middle">0</text>
+<line class="grid" x1="319.0" x2="319.0" y1="72" y2="598"/>
+<text class="tick" x="319.0" y="614" text-anchor="middle">20</text>
+<line class="grid" x1="468.0" x2="468.0" y1="72" y2="598"/>
+<text class="tick" x="468.0" y="614" text-anchor="middle">40</text>
+<line class="grid" x1="617.0" x2="617.0" y1="72" y2="598"/>
+<text class="tick" x="617.0" y="614" text-anchor="middle">60</text>
+<line class="grid" x1="766.0" x2="766.0" y1="72" y2="598"/>
+<text class="tick" x="766.0" y="614" text-anchor="end">80 %</text>
+<path class="z" d="M170.0,83.5H433.0Q436.0,83.5 436.0,86.5V89.5Q436.0,92.5 433.0,92.5H170.0Z"/>
+<text class="val" x="441.0" y="91.5">35.7</text>
+<path class="c" d="M170.0,95.5H236.9Q239.9,95.5 239.9,98.5V101.5Q239.9,104.5 236.9,104.5H170.0Z"/>
+<text class="val" x="244.9" y="103.5">9.4</text>
+<path class="z" d="M170.0,123.5H412.2Q415.2,123.5 415.2,126.5V129.5Q415.2,132.5 412.2,132.5H170.0Z"/>
+<text class="val" x="420.2" y="131.5">32.9</text>
+<path class="c" d="M170.0,135.5H230.8Q233.8,135.5 233.8,138.5V141.5Q233.8,144.5 230.8,144.5H170.0Z"/>
+<text class="val" x="238.8" y="143.5">8.6</text>
+<path class="z" d="M170.0,163.5H503.7Q506.7,163.5 506.7,166.5V169.5Q506.7,172.5 503.7,172.5H170.0Z"/>
+<text class="val" x="511.7" y="171.5">45.2</text>
+<path class="c" d="M170.0,175.5H277.0Q280.0,175.5 280.0,178.5V181.5Q280.0,184.5 277.0,184.5H170.0Z"/>
+<text class="val" x="285.0" y="183.5">14.8</text>
+<path class="z" d="M170.0,203.5H317.1Q320.1,203.5 320.1,206.5V209.5Q320.1,212.5 317.1,212.5H170.0Z"/>
+<text class="val" x="325.1" y="211.5">20.1</text>
+<path class="c" d="M170.0,215.5H206.8Q209.8,215.5 209.8,218.5V221.5Q209.8,224.5 206.8,224.5H170.0Z"/>
+<text class="val" x="214.8" y="223.5">5.3</text>
+<path class="z" d="M170.0,243.5H431.1Q434.1,243.5 434.1,246.5V249.5Q434.1,252.5 431.1,252.5H170.0Z"/>
+<text class="val" x="439.1" y="251.5">35.5</text>
+<path class="c" d="M170.0,255.5H233.4Q236.4,255.5 236.4,258.5V261.5Q236.4,264.5 233.4,264.5H170.0Z"/>
+<text class="val" x="241.4" y="263.5">8.9</text>
+<path class="z" d="M170.0,283.5H492.0Q495.0,283.5 495.0,286.5V289.5Q495.0,292.5 492.0,292.5H170.0Z"/>
+<text class="val" x="500.0" y="291.5">43.6</text>
+<path class="c" d="M170.0,295.5H274.6Q277.6,295.5 277.6,298.5V301.5Q277.6,304.5 274.6,304.5H170.0Z"/>
+<text class="val" x="282.6" y="303.5">14.4</text>
+<path class="z" d="M170.0,323.5H525.4Q528.4,323.5 528.4,326.5V329.5Q528.4,332.5 525.4,332.5H170.0Z"/>
+<text class="val" x="533.4" y="331.5">48.1</text>
+<path class="c" d="M170.0,335.5H278.0Q281.0,335.5 281.0,338.5V341.5Q281.0,344.5 278.0,344.5H170.0Z"/>
+<text class="val" x="286.0" y="343.5">14.9</text>
+<path class="z" d="M170.0,363.5H742.4Q745.4,363.5 745.4,366.5V369.5Q745.4,372.5 742.4,372.5H170.0Z"/>
+<text class="val" x="750.4" y="371.5">77.2</text>
+<path class="c" d="M170.0,375.5H309.0Q312.0,375.5 312.0,378.5V381.5Q312.0,384.5 309.0,384.5H170.0Z"/>
+<text class="val" x="317.0" y="383.5">19.1</text>
+<path class="z" d="M170.0,403.5H605.8Q608.8,403.5 608.8,406.5V409.5Q608.8,412.5 605.8,412.5H170.0Z"/>
+<text class="val" x="613.8" y="411.5">58.9</text>
+<path class="c" d="M170.0,415.5H306.9Q309.9,415.5 309.9,418.5V421.5Q309.9,424.5 306.9,424.5H170.0Z"/>
+<text class="val" x="314.9" y="423.5">18.8</text>
+<path class="z" d="M170.0,443.5H604.7Q607.7,443.5 607.7,446.5V449.5Q607.7,452.5 604.7,452.5H170.0Z"/>
+<text class="val" x="612.7" y="451.5">58.8</text>
+<path class="c" d="M170.0,455.5H422.9Q425.9,455.5 425.9,458.5V461.5Q425.9,464.5 422.9,464.5H170.0Z"/>
+<text class="val" x="430.9" y="463.5">34.3</text>
+<path class="z" d="M170.0,483.5H350.7Q353.7,483.5 353.7,486.5V489.5Q353.7,492.5 350.7,492.5H170.0Z"/>
+<text class="val" x="358.7" y="491.5">24.7</text>
+<path class="c" d="M170.0,495.5H214.5Q217.5,495.5 217.5,498.5V501.5Q217.5,504.5 214.5,504.5H170.0Z"/>
+<text class="val" x="222.5" y="503.5">6.4</text>
+<path class="z" d="M170.0,523.5H753.9Q756.9,523.5 756.9,526.5V529.5Q756.9,532.5 753.9,532.5H170.0Z"/>
+<text class="val" x="761.9" y="531.5">78.8</text>
+<path class="c" d="M170.0,535.5H327.1Q330.1,535.5 330.1,538.5V541.5Q330.1,544.5 327.1,544.5H170.0Z"/>
+<text class="val" x="335.1" y="543.5">21.5</text>
+<path class="z" d="M170.0,563.5H274.5Q277.5,563.5 277.5,566.5V569.5Q277.5,572.5 274.5,572.5H170.0Z"/>
+<text class="val" x="282.5" y="571.5">14.4</text>
+<path class="c" d="M170.0,575.5H187.9Q190.9,575.5 190.9,578.5V581.5Q190.9,584.5 187.9,584.5H170.0Z"/>
+<text class="val" x="195.9" y="583.5">2.8</text>
+<text class="tick" x="880" y="68" text-anchor="end">vs ZSTD</text>
+<text class="fac" x="880" y="97" text-anchor="end">3.8× smaller</text>
+<text class="fac" x="880" y="137" text-anchor="end">3.8× smaller</text>
+<text class="fac" x="880" y="177" text-anchor="end">3.1× smaller</text>
+<text class="fac" x="880" y="217" text-anchor="end">3.8× smaller</text>
+<text class="fac" x="880" y="257" text-anchor="end">4.0× smaller</text>
+<text class="fac" x="880" y="297" text-anchor="end">3.0× smaller</text>
+<text class="fac" x="880" y="337" text-anchor="end">3.2× smaller</text>
+<text class="fac" x="880" y="377" text-anchor="end">4.1× smaller</text>
+<text class="fac" x="880" y="417" text-anchor="end">3.1× smaller</text>
+<text class="fac" x="880" y="457" text-anchor="end">1.7× smaller</text>
+<text class="fac" x="880" y="497" text-anchor="end">3.9× smaller</text>
+<text class="fac" x="880" y="537" text-anchor="end">3.7× smaller</text>
+<text class="fac" x="880" y="577" text-anchor="end">5.2× smaller</text>
+</svg>

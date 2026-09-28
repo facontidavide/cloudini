@@ -1,0 +1,186 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="644" viewBox="0 0 880 644">
+<style>
+  text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: #1f2328; }
+  .src { font-size: 11px; fill: #6b7480; }
+  .model { font-size: 13px; font-weight: 600; }
+  .val, .tick { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; fill: #4a5360; }
+  .tick { fill: #6b7480; }
+  .fac { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; font-weight: 600; fill: #148a60; }
+  .title { font-size: 15px; font-weight: 600; }
+  .sub, .key { font-size: 12.5px; fill: #4a5360; }
+  .grid { stroke: #e6eaee; } .axis { stroke: #b9c1ca; } .sep { stroke: #d9dee3; }
+  .z { fill: #2a78d6; } .c { fill: #1baf7a; }
+  @media (prefers-color-scheme: dark) {
+    text { fill: #e6edf3; } .src, .tick { fill: #8b949e; } .val, .sub, .key { fill: #c3c9d0; }
+    .fac { fill: #3ccf98; }
+    .grid { stroke: #21262d; } .axis { stroke: #3d444d; } .sep { stroke: #30363d; }
+    .z { fill: #3987e5; } .c { fill: #199e70; }
+  }
+</style>
+<text class="title" x="0" y="18">Throughput, MB/s of original cloud (larger is faster)</text>
+<text class="sub" x="0" y="37">One core (pinned), same clouds as above; Cloudini includes its ZSTD stage.</text>
+<rect class="z" x="0" y="50" width="12" height="12" rx="3"/>
+<text class="key" x="18" y="60">ZSTD alone</text>
+<rect class="c" x="150" y="50" width="12" height="12" rx="3"/>
+<text class="key" x="168" y="60">Cloudini + ZSTD</text>
+<text class="model" x="156" y="113" text-anchor="end">Ouster OS0-32</text>
+<text class="src" x="156" y="127" text-anchor="end">Ouster SDK sample</text>
+<text class="model" x="156" y="153" text-anchor="end">Ouster OS0-128</text>
+<text class="src" x="156" y="167" text-anchor="end">Ouster SDK sample</text>
+<text class="model" x="156" y="193" text-anchor="end">Ouster OS1-32</text>
+<text class="src" x="156" y="207" text-anchor="end">Ouster SDK sample</text>
+<text class="model" x="156" y="233" text-anchor="end">Ouster OS1-64</text>
+<text class="src" x="156" y="247" text-anchor="end">Ouster SDK sample</text>
+<text class="model" x="156" y="273" text-anchor="end">Ouster OS1-128</text>
+<text class="src" x="156" y="287" text-anchor="end">Ouster SDK sample</text>
+<text class="model" x="156" y="313" text-anchor="end">Ouster OS2-32</text>
+<text class="src" x="156" y="327" text-anchor="end">Ouster SDK sample</text>
+<text class="model" x="156" y="353" text-anchor="end">Ouster OS2-128</text>
+<text class="src" x="156" y="367" text-anchor="end">Ouster SDK sample</text>
+<line class="sep" x1="0" x2="156" y1="376" y2="376"/>
+<text class="model" x="156" y="393" text-anchor="end">Velodyne HDL-64E</text>
+<text class="src" x="156" y="407" text-anchor="end">KITTI</text>
+<text class="model" x="156" y="433" text-anchor="end">Velodyne HDL-32E</text>
+<text class="src" x="156" y="447" text-anchor="end">nuScenes</text>
+<text class="model" x="156" y="473" text-anchor="end">2× Velodyne VLP-32C</text>
+<text class="src" x="156" y="487" text-anchor="end">Argoverse 2</text>
+<line class="sep" x1="0" x2="156" y1="496" y2="496"/>
+<text class="model" x="156" y="513" text-anchor="end">Hesai, 32 channels</text>
+<text class="src" x="156" y="527" text-anchor="end">cloudini sample</text>
+<line class="sep" x1="0" x2="156" y1="536" y2="536"/>
+<text class="model" x="156" y="553" text-anchor="end">LiDAR, xyz + intensity</text>
+<text class="src" x="156" y="567" text-anchor="end">cloudini PCD sample</text>
+<line class="sep" x1="0" x2="156" y1="576" y2="576"/>
+<text class="model" x="156" y="593" text-anchor="end">Stereo camera, RGB</text>
+<text class="src" x="156" y="607" text-anchor="end">PCL test data</text>
+<text class="model" x="170.0" y="86">Encode, MB/s</text>
+<line class="axis" x1="170.0" x2="170.0" y1="94" y2="620"/>
+<text class="tick" x="170.0" y="636" text-anchor="middle">0</text>
+<line class="grid" x1="228.2" x2="228.2" y1="94" y2="620"/>
+<text class="tick" x="228.2" y="636" text-anchor="middle">200</text>
+<line class="grid" x1="286.4" x2="286.4" y1="94" y2="620"/>
+<text class="tick" x="286.4" y="636" text-anchor="middle">400</text>
+<line class="grid" x1="344.6" x2="344.6" y1="94" y2="620"/>
+<text class="tick" x="344.6" y="636" text-anchor="middle">600</text>
+<line class="grid" x1="402.8" x2="402.8" y1="94" y2="620"/>
+<text class="tick" x="402.8" y="636" text-anchor="middle">800</text>
+<line class="grid" x1="461.0" x2="461.0" y1="94" y2="620"/>
+<text class="tick" x="461.0" y="636" text-anchor="end">1000</text>
+<path class="z" d="M170.0,105.5H278.2Q281.2,105.5 281.2,108.5V111.5Q281.2,114.5 278.2,114.5H170.0Z"/>
+<text class="val" x="286.2" y="113.5">382</text>
+<path class="c" d="M170.0,117.5H283.9Q286.9,117.5 286.9,120.5V123.5Q286.9,126.5 283.9,126.5H170.0Z"/>
+<text class="val" x="291.9" y="125.5">402</text>
+<path class="z" d="M170.0,145.5H285.3Q288.3,145.5 288.3,148.5V151.5Q288.3,154.5 285.3,154.5H170.0Z"/>
+<text class="val" x="293.3" y="153.5">407</text>
+<path class="c" d="M170.0,157.5H281.8Q284.8,157.5 284.8,160.5V163.5Q284.8,166.5 281.8,166.5H170.0Z"/>
+<text class="val" x="289.8" y="165.5">394</text>
+<path class="z" d="M170.0,185.5H269.3Q272.3,185.5 272.3,188.5V191.5Q272.3,194.5 269.3,194.5H170.0Z"/>
+<text class="val" x="277.3" y="193.5">352</text>
+<path class="c" d="M170.0,197.5H262.8Q265.8,197.5 265.8,200.5V203.5Q265.8,206.5 262.8,206.5H170.0Z"/>
+<text class="val" x="270.8" y="205.5">329</text>
+<path class="z" d="M170.0,225.5H318.8Q321.8,225.5 321.8,228.5V231.5Q321.8,234.5 318.8,234.5H170.0Z"/>
+<text class="val" x="326.8" y="233.5">522</text>
+<path class="c" d="M170.0,237.5H299.7Q302.7,237.5 302.7,240.5V243.5Q302.7,246.5 299.7,246.5H170.0Z"/>
+<text class="val" x="307.7" y="245.5">456</text>
+<path class="z" d="M170.0,265.5H279.8Q282.8,265.5 282.8,268.5V271.5Q282.8,274.5 279.8,274.5H170.0Z"/>
+<text class="val" x="287.8" y="273.5">388</text>
+<path class="c" d="M170.0,277.5H277.7Q280.7,277.5 280.7,280.5V283.5Q280.7,286.5 277.7,286.5H170.0Z"/>
+<text class="val" x="285.7" y="285.5">381</text>
+<path class="z" d="M170.0,305.5H271.1Q274.1,305.5 274.1,308.5V311.5Q274.1,314.5 271.1,314.5H170.0Z"/>
+<text class="val" x="279.1" y="313.5">358</text>
+<path class="c" d="M170.0,317.5H258.3Q261.3,317.5 261.3,320.5V323.5Q261.3,326.5 258.3,326.5H170.0Z"/>
+<text class="val" x="266.3" y="325.5">314</text>
+<path class="z" d="M170.0,345.5H267.8Q270.8,345.5 270.8,348.5V351.5Q270.8,354.5 267.8,354.5H170.0Z"/>
+<text class="val" x="275.8" y="353.5">347</text>
+<path class="c" d="M170.0,357.5H266.7Q269.7,357.5 269.7,360.5V363.5Q269.7,366.5 266.7,366.5H170.0Z"/>
+<text class="val" x="274.7" y="365.5">342</text>
+<path class="z" d="M170.0,385.5H243.4Q246.4,385.5 246.4,388.5V391.5Q246.4,394.5 243.4,394.5H170.0Z"/>
+<text class="val" x="251.4" y="393.5">262</text>
+<path class="c" d="M170.0,397.5H317.5Q320.5,397.5 320.5,400.5V403.5Q320.5,406.5 317.5,406.5H170.0Z"/>
+<text class="val" x="325.5" y="405.5">517</text>
+<path class="z" d="M170.0,425.5H243.3Q246.3,425.5 246.3,428.5V431.5Q246.3,434.5 243.3,434.5H170.0Z"/>
+<text class="val" x="251.3" y="433.5">262</text>
+<path class="c" d="M170.0,437.5H275.3Q278.3,437.5 278.3,440.5V443.5Q278.3,446.5 275.3,446.5H170.0Z"/>
+<text class="val" x="283.3" y="445.5">372</text>
+<path class="z" d="M170.0,465.5H238.0Q241.0,465.5 241.0,468.5V471.5Q241.0,474.5 238.0,474.5H170.0Z"/>
+<text class="val" x="246.0" y="473.5">244</text>
+<path class="c" d="M170.0,477.5H265.6Q268.6,477.5 268.6,480.5V483.5Q268.6,486.5 265.6,486.5H170.0Z"/>
+<text class="val" x="273.6" y="485.5">339</text>
+<path class="z" d="M170.0,505.5H327.9Q330.9,505.5 330.9,508.5V511.5Q330.9,514.5 327.9,514.5H170.0Z"/>
+<text class="val" x="335.9" y="513.5">553</text>
+<path class="c" d="M170.0,517.5H319.4Q322.4,517.5 322.4,520.5V523.5Q322.4,526.5 319.4,526.5H170.0Z"/>
+<text class="val" x="327.4" y="525.5">524</text>
+<path class="z" d="M170.0,545.5H242.9Q245.9,545.5 245.9,548.5V551.5Q245.9,554.5 242.9,554.5H170.0Z"/>
+<text class="val" x="250.9" y="553.5">261</text>
+<path class="c" d="M170.0,557.5H308.2Q311.2,557.5 311.2,560.5V563.5Q311.2,566.5 308.2,566.5H170.0Z"/>
+<text class="val" x="316.2" y="565.5">485</text>
+<path class="z" d="M170.0,585.5H331.6Q334.6,585.5 334.6,588.5V591.5Q334.6,594.5 331.6,594.5H170.0Z"/>
+<text class="val" x="339.6" y="593.5">566</text>
+<path class="c" d="M170.0,597.5H419.0Q422.0,597.5 422.0,600.5V603.5Q422.0,606.5 419.0,606.5H170.0Z"/>
+<text class="val" x="427.0" y="605.5">866</text>
+<text class="model" x="545.0" y="86">Decode, MB/s</text>
+<line class="axis" x1="545.0" x2="545.0" y1="94" y2="620"/>
+<text class="tick" x="545.0" y="636" text-anchor="middle">0</text>
+<line class="grid" x1="603.2" x2="603.2" y1="94" y2="620"/>
+<text class="tick" x="603.2" y="636" text-anchor="middle">500</text>
+<line class="grid" x1="661.4" x2="661.4" y1="94" y2="620"/>
+<text class="tick" x="661.4" y="636" text-anchor="middle">1000</text>
+<line class="grid" x1="719.6" x2="719.6" y1="94" y2="620"/>
+<text class="tick" x="719.6" y="636" text-anchor="middle">1500</text>
+<line class="grid" x1="777.8" x2="777.8" y1="94" y2="620"/>
+<text class="tick" x="777.8" y="636" text-anchor="middle">2000</text>
+<line class="grid" x1="836.0" x2="836.0" y1="94" y2="620"/>
+<text class="tick" x="836.0" y="636" text-anchor="end">2500</text>
+<path class="z" d="M545.0,105.5H653.7Q656.7,105.5 656.7,108.5V111.5Q656.7,114.5 653.7,114.5H545.0Z"/>
+<text class="val" x="661.7" y="113.5">959</text>
+<path class="c" d="M545.0,117.5H688.7Q691.7,117.5 691.7,120.5V123.5Q691.7,126.5 688.7,126.5H545.0Z"/>
+<text class="val" x="696.7" y="125.5">1260</text>
+<path class="z" d="M545.0,145.5H656.6Q659.6,145.5 659.6,148.5V151.5Q659.6,154.5 656.6,154.5H545.0Z"/>
+<text class="val" x="664.6" y="153.5">985</text>
+<path class="c" d="M545.0,157.5H667.7Q670.7,157.5 670.7,160.5V163.5Q670.7,166.5 667.7,166.5H545.0Z"/>
+<text class="val" x="675.7" y="165.5">1080</text>
+<path class="z" d="M545.0,185.5H643.1Q646.1,185.5 646.1,188.5V191.5Q646.1,194.5 643.1,194.5H545.0Z"/>
+<text class="val" x="651.1" y="193.5">869</text>
+<path class="c" d="M545.0,197.5H650.2Q653.2,197.5 653.2,200.5V203.5Q653.2,206.5 650.2,206.5H545.0Z"/>
+<text class="val" x="658.2" y="205.5">930</text>
+<path class="z" d="M545.0,225.5H697.1Q700.1,225.5 700.1,228.5V231.5Q700.1,234.5 697.1,234.5H545.0Z"/>
+<text class="val" x="705.1" y="233.5">1332</text>
+<path class="c" d="M545.0,237.5H703.2Q706.2,237.5 706.2,240.5V243.5Q706.2,246.5 703.2,246.5H545.0Z"/>
+<text class="val" x="711.2" y="245.5">1385</text>
+<path class="z" d="M545.0,265.5H652.1Q655.1,265.5 655.1,268.5V271.5Q655.1,274.5 652.1,274.5H545.0Z"/>
+<text class="val" x="660.1" y="273.5">946</text>
+<path class="c" d="M545.0,277.5H658.1Q661.1,277.5 661.1,280.5V283.5Q661.1,286.5 658.1,286.5H545.0Z"/>
+<text class="val" x="666.1" y="285.5">997</text>
+<path class="z" d="M545.0,305.5H649.5Q652.5,305.5 652.5,308.5V311.5Q652.5,314.5 649.5,314.5H545.0Z"/>
+<text class="val" x="657.5" y="313.5">923</text>
+<path class="c" d="M545.0,317.5H629.4Q632.4,317.5 632.4,320.5V323.5Q632.4,326.5 629.4,326.5H545.0Z"/>
+<text class="val" x="637.4" y="325.5">751</text>
+<path class="z" d="M545.0,345.5H639.9Q642.9,345.5 642.9,348.5V351.5Q642.9,354.5 639.9,354.5H545.0Z"/>
+<text class="val" x="647.9" y="353.5">841</text>
+<path class="c" d="M545.0,357.5H634.3Q637.3,357.5 637.3,360.5V363.5Q637.3,366.5 634.3,366.5H545.0Z"/>
+<text class="val" x="642.3" y="365.5">793</text>
+<path class="z" d="M545.0,385.5H617.7Q620.7,385.5 620.7,388.5V391.5Q620.7,394.5 617.7,394.5H545.0Z"/>
+<text class="val" x="625.7" y="393.5">651</text>
+<path class="c" d="M545.0,397.5H649.4Q652.4,397.5 652.4,400.5V403.5Q652.4,406.5 649.4,406.5H545.0Z"/>
+<text class="val" x="657.4" y="405.5">923</text>
+<path class="z" d="M545.0,425.5H625.9Q628.9,425.5 628.9,428.5V431.5Q628.9,434.5 625.9,434.5H545.0Z"/>
+<text class="val" x="633.9" y="433.5">721</text>
+<path class="c" d="M545.0,437.5H604.9Q607.9,437.5 607.9,440.5V443.5Q607.9,446.5 604.9,446.5H545.0Z"/>
+<text class="val" x="612.9" y="445.5">540</text>
+<path class="z" d="M545.0,465.5H614.0Q617.0,465.5 617.0,468.5V471.5Q617.0,474.5 614.0,474.5H545.0Z"/>
+<text class="val" x="622.0" y="473.5">618</text>
+<path class="c" d="M545.0,477.5H615.5Q618.5,477.5 618.5,480.5V483.5Q618.5,486.5 615.5,486.5H545.0Z"/>
+<text class="val" x="623.5" y="485.5">632</text>
+<path class="z" d="M545.0,505.5H704.5Q707.5,505.5 707.5,508.5V511.5Q707.5,514.5 704.5,514.5H545.0Z"/>
+<text class="val" x="712.5" y="513.5">1396</text>
+<path class="c" d="M545.0,517.5H650.9Q653.9,517.5 653.9,520.5V523.5Q653.9,526.5 650.9,526.5H545.0Z"/>
+<text class="val" x="658.9" y="525.5">936</text>
+<path class="z" d="M545.0,545.5H619.8Q622.8,545.5 622.8,548.5V551.5Q622.8,554.5 619.8,554.5H545.0Z"/>
+<text class="val" x="627.8" y="553.5">668</text>
+<path class="c" d="M545.0,557.5H642.6Q645.6,557.5 645.6,560.5V563.5Q645.6,566.5 642.6,566.5H545.0Z"/>
+<text class="val" x="650.6" y="565.5">865</text>
+<path class="z" d="M545.0,585.5H754.0Q757.0,585.5 757.0,588.5V591.5Q757.0,594.5 754.0,594.5H545.0Z"/>
+<text class="val" x="762.0" y="593.5">1821</text>
+<path class="c" d="M545.0,597.5H819.4Q822.4,597.5 822.4,600.5V603.5Q822.4,606.5 819.4,606.5H545.0Z"/>
+<text class="val" x="827.4" y="605.5">2383</text>
+</svg>

@@ -31,17 +31,20 @@ they include some "padding" in the message that, in extreme cases, may reach up 
 
 (Yes, you heard correctly, almost 50% of that 10 Gb rosbag is useless padding).
 
-But, in general, you may expect considerably **better compression and faster encoding/decoding**  than ZSTD or LZ4 alone.
+But, in general, you may expect considerably **better compression**, at a similar or higher speed, than ZSTD or LZ4 alone.
 
-These are some examples using real-world data from LiDARs.
+These are measurements on real-world clouds from 13 sensors (public datasets and the samples in this repository), with the 1.4.0 defaults:
+V6 at 1 mm resolution, refined to the data, followed by ZSTD. "ZSTD alone" is ZSTD level 1, the level Cloudini uses, on the same raw cloud.
 
-Below, you can see the compression ratio (normalized to original pointcloud size)
+![Compressed size per sensor](compression_ratio.svg)
 
-![compression_ratio.png](compression_ratio.png)
+Cloudini adds little or no time on top of ZSTD, because ZSTD has much less data left to compress:
+encoding is 1.4–2× faster than ZSTD alone on the Velodyne clouds, the PCD sample and the stereo cloud, and 0.87–1.05× its speed on Ouster and Hesai.
+Decoding runs at 0.67× (Hesai) to 1.42× (KITTI) the speed of ZSTD alone.
 
-Interestingly, Cloudini has a negative overhead, i.e. Cloudini + ZSTD is **faster** than ZSTD alone.
+![Encode and decode throughput per sensor](compression_speed.svg)
 
-![compression_time.png](compression_time.png)
+Measured on one pinned core of an i7-13700H laptop, best of 5 runs.
 
 If you are a ROS user, you can test the compression ratio and speed yourself,
 running the application `rosbag_benchmark` on any rosbag containing a `sensor_msgs::msg::PointCloud2` topic.
