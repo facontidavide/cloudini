@@ -995,8 +995,9 @@ void BuildV6Decoders(
 namespace {
 
 // Reads one residual; returns false for the NaN marker. Unchecked: at least kMaxVarintBytes are readable.
+// Not forced inline: with its long-varint fallback inlined too, the geometry loop decodes 1-3% slower.
 template <bool Checked>
-CLOUDINI_V6_INLINE bool v6ReadResidual(const uint8_t*& ptr, const uint8_t* end, int64_t& residual) {
+inline bool v6ReadResidual(const uint8_t*& ptr, const uint8_t* end, int64_t& residual) {
   if constexpr (Checked) {
     if (ptr == end) {
       throw std::runtime_error("V6: truncated geometry stream");
@@ -1026,8 +1027,31 @@ CLOUDINI_V6_INLINE bool v6ReadResidual(const uint8_t*& ptr, const uint8_t* end, 
   return true;
 }
 
-// One residual stream being decoded (an axis of the geometry, or a float column): where it is, the
-// values the predictors read, and where the floats go.
+// Value i of a valid point: the prediction plus the residual, NaN for the NaN marker (the history then keeps
+// the prediction). The Previous predictor reads and updates only `previous`, the others `history`.
+template <V6Predictor P, bool Checked, bool Interior>
+CLOUDINI_V6_INLINE float decodeV6Value(
+    const uint8_t*& ptr, const uint8_t* end, int64_t* history, int64_t& previous, double resolution, size_t i,
+    size_t lag) {
+  int64_t& slot = P == V6Predictor::Previous ? previous : history[i];
+  const int64_t prediction = P == V6Predictor::Previous ? previous : v6Predict<P, Interior>(history, i, lag);
+  int64_t residual = 0;
+  if (!v6ReadResidual<Checked>(ptr, end, residual)) {
+    slot = prediction;
+    return std::numeric_limits<float>::quiet_NaN();
+  }
+  slot = wrapV6(uint64_t(prediction) + uint64_t(residual));
+  return v6Reconstruct(slot, resolution);
+}
+
+CLOUDINI_V6_INLINE void storeV6Value(uint8_t* out, size_t i, size_t point_step, float value) {
+  if (out) {
+    std::memcpy(out + i * point_step, &value, sizeof(float));
+  }
+}
+
+// One axis of the geometry being decoded: where its stream is, the values the predictors read, and where
+// the floats go.
 struct V6StreamReader {
   const uint8_t* ptr = nullptr;
   const uint8_t* end = nullptr;
@@ -1036,19 +1060,9 @@ struct V6StreamReader {
   uint8_t* out = nullptr;      // null: kDecodeButSkipStore
   double resolution = 0.0;
 
-  // Value i of a valid point: the prediction plus the residual, NaN for the NaN marker (the history then
-  // keeps the prediction).
   template <V6Predictor P, bool Checked, bool Interior>
   CLOUDINI_V6_INLINE float decode(size_t i, size_t lag) {
-    int64_t& slot = P == V6Predictor::Previous ? previous : history[i];
-    const int64_t prediction = P == V6Predictor::Previous ? previous : v6Predict<P, Interior>(history, i, lag);
-    int64_t residual = 0;
-    if (!v6ReadResidual<Checked>(ptr, end, residual)) {
-      slot = prediction;
-      return std::numeric_limits<float>::quiet_NaN();
-    }
-    slot = wrapV6(uint64_t(prediction) + uint64_t(residual));
-    return v6Reconstruct(slot, resolution);
+    return decodeV6Value<P, Checked, Interior>(ptr, end, history, previous, resolution, i, lag);
   }
 
   // Point i is invalid (not in the stream): it repeats the previous value.
@@ -1060,9 +1074,7 @@ struct V6StreamReader {
   }
 
   CLOUDINI_V6_INLINE void store(size_t i, size_t point_step, float value) const {
-    if (out) {
-      std::memcpy(out + i * point_step, &value, sizeof(float));
-    }
+    storeV6Value(out, i, point_step, value);
   }
 };
 
@@ -1091,7 +1103,13 @@ CLOUDINI_V6_INLINE void decodeV6GeometryBlock(
     y.store(i, point_step, vy);
     z.store(i, point_step, vz);
   }
-  readers = {x, y, z};
+  // only the stream positions and the Previous values change
+  readers[0].ptr = x.ptr;
+  readers[1].ptr = y.ptr;
+  readers[2].ptr = z.ptr;
+  readers[0].previous = x.previous;
+  readers[1].previous = y.previous;
+  readers[2].previous = z.previous;
 }
 
 // Decodes x, y and z together, 64 points at a time: one word of the validity mask per block, and a block
@@ -1165,19 +1183,21 @@ void decodeV6GeometrySection(
 // A float column with the Previous predictor, after its mode byte.
 void decodeV6FloatColumn(
     ConstBufferView& input, uint8_t* points, size_t point_step, uint32_t offset, float resolution, size_t n) {
-  V6StreamReader reader;
-  reader.ptr = input.data();
-  reader.end = input.data() + input.size();
-  reader.out = offset == kDecodeButSkipStore ? nullptr : points + offset;
-  reader.resolution = static_cast<double>(resolution);
+  const uint8_t* ptr = input.data();
+  const uint8_t* const end = input.data() + input.size();
+  uint8_t* const out = offset == kDecodeButSkipStore ? nullptr : points + offset;
+  const double res = static_cast<double>(resolution);
+  int64_t previous = 0;
   size_t i = 0;
-  for (; i < n && static_cast<size_t>(reader.end - reader.ptr) >= kMaxVarintBytes; ++i) {
-    reader.store(i, point_step, reader.decode<V6Predictor::Previous, false, false>(i, 0));
+  for (; i < n && static_cast<size_t>(end - ptr) >= kMaxVarintBytes; ++i) {
+    storeV6Value(
+        out, i, point_step, decodeV6Value<V6Predictor::Previous, false, false>(ptr, end, nullptr, previous, res, i, 0));
   }
   for (; i < n; ++i) {
-    reader.store(i, point_step, reader.decode<V6Predictor::Previous, true, false>(i, 0));
+    storeV6Value(
+        out, i, point_step, decodeV6Value<V6Predictor::Previous, true, false>(ptr, end, nullptr, previous, res, i, 0));
   }
-  input.trim_front(static_cast<size_t>(reader.ptr - input.data()));
+  input.trim_front(static_cast<size_t>(ptr - input.data()));
 }
 
 // The float columns and the V4-coded fields after x, y, z, in field order.
