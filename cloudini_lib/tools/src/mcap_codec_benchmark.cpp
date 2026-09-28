@@ -25,12 +25,12 @@
 //                  message before encoding: drop NaN points, voxel-dedupe at
 //                  the xyz resolution, quantize FLOAT64 fields to 1µs.
 //
-// Each topic and variant keeps one encoder across messages (PointcloudEncoderCache), as
-// cloudini_rosbag_converter does; V6 reuses its per-chunk choices between clouds.
-//
-// Every variant refines the resolutions to the data of each message first (RefineResolutionsToData:
-// integer-valued floats such as intensity at resolution 1), counted in the encode time; --no-refine
-// turns it off.
+// V4, V5 and their viz variants run as in 1.2.1, without the optimizations added since: a new encoder
+// per message (constructed outside the timed region) and the given resolutions. The V6 variants use
+// them: one encoder per topic across messages (PointcloudEncoderCache, so V6 reuses its per-chunk
+// choices between clouds), and resolutions refined to each message's data first
+// (RefineResolutionsToData: integer-valued floats such as intensity at resolution 1), counted in the
+// encode time; --no-refine turns the refinement off.
 //
 // For each variant we report bytes out of the codec, ratio vs raw input,
 // encode MB/s, and decode MB/s. A `--zstd` flag runs the same variants through
@@ -54,6 +54,7 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -259,14 +260,15 @@ int main(int argc, char** argv) {
       ("h,help", "Print usage")                                                                    //
       ("f,filename", "Input MCAP file (positional also accepted)", cxxopts::value<std::string>())  //
       ("r,resolution", "XYZ tick size in meters (default 0.001)",
-       cxxopts::value<float>()->default_value(                                                                //
-           "0.001"))                                                                                          //
-      ("max-messages", "Stop after N messages per topic (0 = unlimited)",                                     //
-       cxxopts::value<uint64_t>()->default_value("0"))                                                        //
-      ("sample-every", "Process only 1 of every N messages per topic (>=1)",                                  //
-       cxxopts::value<uint64_t>()->default_value("1"))                                                        //
-      ("zstd", "Use Cloudini ZSTD chunk compression and report compressed sizes")                             //
-      ("no-refine", "Do not refine the resolutions to the data (RefineResolutionsToData, on by default)")     //
+       cxxopts::value<float>()->default_value(                                     //
+           "0.001"))                                                               //
+      ("max-messages", "Stop after N messages per topic (0 = unlimited)",          //
+       cxxopts::value<uint64_t>()->default_value("0"))                             //
+      ("sample-every", "Process only 1 of every N messages per topic (>=1)",       //
+       cxxopts::value<uint64_t>()->default_value("1"))                             //
+      ("zstd", "Use Cloudini ZSTD chunk compression and report compressed sizes")  //
+      ("no-refine",
+       "V6 variants: do not refine the resolutions to the data (RefineResolutionsToData, on by default)")     //
       ("mode", "Profile only one mode: V4, V5, V6, V4-viz, V5-viz or V6-viz", cxxopts::value<std::string>())  //
       ("encode-only", "Skip decode timing; useful with --mode for perf profiling")                            //
       ("decode-replay",
@@ -489,7 +491,8 @@ int main(int argc, char** argv) {
         info = cloudini_ros::toEncodingInfo(pc_info);
         configureMode(info, static_cast<Mode>(m), show_zstd);
       }
-      if (refine) {
+      const bool v6_mode = modeVersion(static_cast<Mode>(m)) == 6;  // the others run as in 1.2.1
+      if (refine && v6_mode) {
         Cloudini::RefineResolutionsToData(info, Cloudini::ConstBufferView(pc_info.data.data(), pc_info.data.size()));
       }
       const auto t_pre1 = Clock::now();
@@ -497,8 +500,11 @@ int main(int argc, char** argv) {
 
       Cloudini::ConstBufferView enc_in(pc_info.data.data(), pc_info.data.size());
       try {
-        // one encoder per topic and mode, reused across messages as cloudini_rosbag_converter does
-        Cloudini::PointcloudEncoder& encoder = encoder_caches[topic][m].get(info);
+        // V6: one encoder per topic, reused across messages as cloudini_rosbag_converter does;
+        // the others: a new encoder per message, as in 1.2.1
+        std::optional<Cloudini::PointcloudEncoder> fresh_encoder;
+        Cloudini::PointcloudEncoder& encoder =
+            v6_mode ? encoder_caches[topic][m].get(info) : fresh_encoder.emplace(info);
         const size_t points_to_encode = pc_info.data.size() / info.point_step;
         const size_t max_encoded_size = Cloudini::MaxCompressedSize(info, points_to_encode, true);
         if (enc_buf[m].size() < max_encoded_size) {

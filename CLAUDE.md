@@ -220,10 +220,12 @@ Implementation: `cloudini_ros::applyVizLossyPreprocessing` in
 # One variant only: --mode V4 | V5 | V6 | V4-viz | V5-viz | V6-viz
 ./build_release/tools/mcap_codec_benchmark DATA/my_bag.mcap --mode V6 --zstd
 ```
-Every variant refines the resolutions to each message's data first
-(`RefineResolutionsToData`: integer-valued floats such as intensity at
-resolution 1), counted in the encode time. `--no-refine` turns it off. Each
-topic and variant reuses one encoder across messages (`PointcloudEncoderCache`).
+V4, V5 and their viz variants run as in 1.2.1, without the optimizations added
+since: a new encoder per message and the given resolutions. The V6 variants use
+them: one encoder per topic across messages (`PointcloudEncoderCache`), and
+resolutions refined to each message's data first (`RefineResolutionsToData`:
+integer-valued floats such as intensity at resolution 1), counted in the encode
+time; `--no-refine` turns the refinement off.
 
 **Comparing released versions on an MCAP** (e.g. "benchmark 1.2.1, 1.3.1 and
 V6"): every version since 1.2.1 ships `mcap_codec_benchmark` with the same
@@ -240,9 +242,9 @@ cmake --build .worktrees/tag-1.3.1/build_release --target mcap_codec_benchmark
   the adaptive-integer V5 of today (not the archived bit-packed "V5", see the
   naming note below). The current branch writes the same V5 format, with
   encoder choices tuned for stage 2 and a faster decoder.
-- The tags neither refine nor reuse encoders (a new encoder per message).
-  For a like-for-like comparison of the codecs, also run the current tool
-  with `--no-refine`.
+- The tags neither refine nor reuse encoders (a new encoder per message), like
+  the V4/V5 modes of the current tool. For a like-for-like comparison of the
+  codecs, also run V6 with `--no-refine`.
 - Pin timing runs to fixed cores (`taskset -c ...`) and check the machine is
   idle: other jobs make the numbers vary by 10-30%.
 
