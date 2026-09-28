@@ -2,6 +2,31 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.4.0 (2026-09-28)
+------------------
+* feat: V6 wire format, now the default (`#150 <https://github.com/facontidavide/cloudini/issues/150>`_)
+
+  * The topic converter and the point_cloud_transport plugin write V6 and refine the
+    resolutions to the data by default. Subscribers on cloudini 1.3.1 or earlier cannot
+    decode V6: set ``encoding_version:=5`` (topic converter) or
+    ``cloudini_encoding_version: 5`` (plugin) for them.
+  * One encoder per topic (``PointcloudEncoderCache``), so V6 reuses its per-chunk
+    choices between clouds.
+  * The plugin validates ``cloudini_encoding_version`` (point_cloud_transport ignores the
+    parameter's range) and no longer zero-fills a raw-sized buffer per cloud.
+* fix: keep packed rgb/rgba FLOAT32 fields lossless (`#135 <https://github.com/facontidavide/cloudini/issues/135>`_) (`#146 <https://github.com/facontidavide/cloudini/issues/146>`_)
+  Some ROS drivers pack RGB(A) as uint32 bits reinterpreted into a FLOAT32
+  field named "rgb"/"rgba". Every path that assigned a default resolution
+  to FLOAT32 fields quantized these bits, destroying the colors.
+  Add Cloudini::isPackedColorField() / defaultFieldResolution() in
+  basic_types.hpp and use them in applyResolutionProfile, the PCL
+  ConvertToEncodingInfo, the WASM encode helpers and the ROS
+  ConvertToEncodingInfo. An explicit resolution profile entry still wins.
+  Decoding needs no change: resolution is stored in the header.
+  Claude-Session: https://claude.ai/code/session_01EAorWbhzp56yxAVUF7M3Dd
+  Co-authored-by: Claude <noreply@anthropic.com>
+* Contributors: Davide Faconti
+
 1.3.1 (2026-09-20)
 ------------------
 * No changes; released together with cloudini_lib 1.3.1

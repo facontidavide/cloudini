@@ -560,10 +560,13 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
   const uint8_t version = char_to_num(input.data()[0]) * 10 + char_to_num(input.data()[1]);
   input.trim_front(2);
 
-  if (version < 2 || version > kMaxEncodingVersion) {
+  if (version > kMaxEncodingVersion) {
     throw std::runtime_error(
-        "Unsupported encoding version. Current is:" + std::to_string(kMaxEncodingVersion) +
-        ", got: " + std::to_string(version));
+        "Cloudini encoding version " + std::to_string(version) + " is newer than this build reads (up to " +
+        std::to_string(kMaxEncodingVersion) + "): update Cloudini (library, ROS package or Foxglove extension)");
+  }
+  if (version < 2) {
+    throw std::runtime_error("Unsupported encoding version: " + std::to_string(version));
   }
   // Note: version 4 adds Gorilla bit-packing for lossless FLOAT32/FLOAT64 XOR residuals.
   // Versions 2 and 3 keep the raw-XOR path (8 bytes per double, 4 bytes per float).
