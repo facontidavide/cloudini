@@ -38,8 +38,9 @@ bool UsesV6Codec(const EncodingInfo& info);
 struct V6EncoderScratch;  // buffers reused across calls, defined in v6_codec.cpp
 struct V6EncoderState {
   struct ChunkChoice {
-    uint8_t predictor = 0xFF;  // 0xFF: not probed yet
-    uint8_t mask = 0xFF;
+    static constexpr uint8_t kNotProbed = 0xFF;
+    uint8_t predictor = kNotProbed;
+    uint8_t mask = kNotProbed;
   };
   std::optional<size_t> lag;  // the row width for organized clouds, detected otherwise
   uint32_t encodes = 0;
