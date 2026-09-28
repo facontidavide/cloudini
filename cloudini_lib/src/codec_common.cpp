@@ -253,9 +253,10 @@ void ResetEncoders(std::vector<std::unique_ptr<FieldEncoder>>& encoders) {
 
 namespace {
 // The unchecked part of DecodePoints(). Kept out of line: inlined into DecodePoints() it compiled to a
-// slower loop (V4 decode -6% on Ouster, -10% on nuScenes). Returns the number of points decoded.
+// slower loop (V4 decode -6% on Ouster, -10% on nuScenes). Aligned so that its speed does not depend on
+// where unrelated code moves it (up to -6% on nuScenes otherwise). Returns the number of points decoded.
 #if defined(__GNUC__)
-__attribute__((noinline))
+__attribute__((noinline, aligned(64)))
 #elif defined(_MSC_VER)
 __declspec(noinline)
 #endif
