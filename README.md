@@ -101,24 +101,14 @@ For more information, see the [cloudini_ros/README.md](cloudini_ros/README.md)
 
 ## Compiling the WASM module
 
-The WebAssembly module is used by the [Foxglove extension](cloudini_foxglove/README.md), the
-[Python decoder](cloudini_py/README.md) and `cloudini_web`. The following instructions assume that you have
+The WebAssembly module is used by the [Foxglove extension](cloudini_foxglove/README.md) and the
+[Python decoder](cloudini_py/README.md). The following instructions assume that you have
 [Emscripten installed](https://emscripten.org/docs/getting_started/downloads.html).
 
 ```
 emcmake cmake -B build/wasm -S ./cloudini_lib -DCLOUDINI_BUILD_TOOLS=OFF
 cd build/wasm
 emmake make
-```
-
-To run **cloudini_web** locally, move back to the `cloudini` main folder and do:
-
-```
-cp -r cloudini_web build/web_deploy
-cp build/wasm/cloudini_wasm.js build/web_deploy/public/
-cd build/web_deploy
-npm install
-npm run dev
 ```
 
 # Frequently Asked Questions
