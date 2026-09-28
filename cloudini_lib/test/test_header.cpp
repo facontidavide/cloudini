@@ -228,6 +228,20 @@ TEST(Cloudini, HeaderTruncatedInput) {
   EXPECT_THROW(DecodeHeader(input), std::runtime_error);
 }
 
+TEST(Cloudini, HeaderNewerVersionAsksToUpdate) {
+  using namespace Cloudini;
+
+  const int newer = kMaxEncodingVersion + 1;
+  const std::string magic = "CLOUDINI_V" + std::to_string(newer / 10) + std::to_string(newer % 10) + "\n";
+  ConstBufferView input(reinterpret_cast<const uint8_t*>(magic.data()), magic.size());
+  try {
+    DecodeHeader(input);
+    FAIL() << "expected an exception";
+  } catch (const std::runtime_error& e) {
+    EXPECT_NE(std::string(e.what()).find("update Cloudini"), std::string::npos) << e.what();
+  }
+}
+
 TEST(Cloudini, DecodeV3_FromLegacyEncoder) {
   using namespace Cloudini;
 
