@@ -1,0 +1,35 @@
+name: macOS Build & Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install dependencies
+        run: brew install ninja googletest
+
+      # Same scope as the Windows job: the library and its tests, with AppleClang.
+      - name: Configure
+        run: >
+          cmake -S cloudini_lib -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=ON -DCLOUDINI_BUILD_TOOLS=OFF -DCLOUDINI_BUILD_BENCHMARKS=OFF
+          -DCMAKE_DISABLE_FIND_PACKAGE_PCL=TRUE
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
