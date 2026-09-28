@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -659,7 +660,7 @@ size_t estimateV6Axis(
     history[i] = quantized[i];
     const int64_t residual = quantized[i] - prediction;
     const uint64_t zigzag = (static_cast<uint64_t>(residual) << 1) ^ static_cast<uint64_t>(residual >> 63);
-    bytes += kV6VarintBytes[__builtin_clzll(zigzag + 1)];  // encodeVarint64 codes zigzag + 1
+    bytes += kV6VarintBytes[std::countl_zero(zigzag + 1)];  // encodeVarint64 codes zigzag + 1
   }
   return bytes;
 }
