@@ -24,6 +24,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 
 #include "cloudini_lib/encoding_utils.hpp"
 #include "cloudini_lib/field_encoder.hpp"
@@ -220,8 +221,20 @@ V6MaskKind scanV6MaskKind(const V6Geometry& g, const uint8_t* points, size_t poi
   return nan_points >= zero_points ? V6MaskKind::NaN : V6MaskKind::Zero;
 }
 
+// Quantized value of v, 0 for NaN: in float precision while it stays below kV6FloatQuantized, in double
+// precision beyond.
+inline double quantizeV6Value(float v, float inv_f, double inv) {
+  if (std::isnan(v)) {
+    return 0.0;
+  }
+  const float scaled_f = std::nearbyint(v * inv_f);
+  return std::fabs(scaled_f) < kV6FloatQuantized ? static_cast<double>(scaled_f)
+                                                 : std::nearbyint(static_cast<double>(v) * inv);
+}
+
 // Quantizes the first n points of a chunk. The mask kind is the one of these n points, unless `mask` gives
 // the kind of the whole chunk (scanV6MaskKind), when only a prefix of the chunk is quantized for probing.
+// Stops at the first value the integer streams cannot hold (infinite or too large): the chunk is raw.
 void quantizeV6Chunk(
     const V6Geometry& g, const uint8_t* points, size_t point_step, size_t n, V6ChunkGeometry& out,
     std::optional<V6MaskKind> mask = std::nullopt) {
@@ -238,7 +251,7 @@ void quantizeV6Chunk(
     if (quantizeV6Point(g, p, pq)) {  // the same values as the per-axis code below
       for (size_t a = 0; a < 3; ++a) {
         out.nan[a * n + i] = (pq.nan >> a) & 1;
-        out.quantized[a * n + i] = out.raw ? 0 : pq.q[a];
+        out.quantized[a * n + i] = pq.q[a];
       }
       nan_points += (pq.nan == 7);
       zero_points += (pq.zero == 7);
@@ -251,21 +264,15 @@ void quantizeV6Chunk(
       out.nan[a * n + i] = is_nan;
       nan_axes += is_nan;
       zero_axes += (v == 0.0f);
-      const float scaled_f = std::nearbyint(v * g.inv_resolution_f[a]);
-      const double scaled = is_nan ? 0.0
-                            : std::fabs(scaled_f) < kV6FloatQuantized
-                                ? static_cast<double>(scaled_f)
-                                : std::nearbyint(static_cast<double>(v) * g.inv_resolution[a]);
+      const double scaled = quantizeV6Value(v, g.inv_resolution_f[a], g.inv_resolution[a]);
       if (!(std::fabs(scaled) < kV6MaxQuantized)) {
-        out.raw = true;  // infinite or too large for the integer streams
+        out.raw = true;
+        return;
       }
-      out.quantized[a * n + i] = out.raw ? 0 : static_cast<int64_t>(scaled);
+      out.quantized[a * n + i] = static_cast<int64_t>(scaled);
     }
     nan_points += (nan_axes == 3);
     zero_points += (zero_axes == 3);
-  }
-  if (out.raw) {
-    return;
   }
   if (mask) {
     out.mask = *mask;
@@ -284,6 +291,21 @@ void quantizeV6Chunk(
                                                 readF32(points + i * point_step + g.offset[a]) == 0.0f);
     }
     out.valid[i] = !invalid;
+  }
+}
+
+// Calls f(std::integral_constant<V6Predictor, P>{}) with the predictor known at run time.
+template <typename F>
+decltype(auto) withV6Predictor(V6Predictor predictor, F&& f) {
+  switch (predictor) {
+    case V6Predictor::Previous:
+      return f(std::integral_constant<V6Predictor, V6Predictor::Previous>{});
+    case V6Predictor::LagK:
+      return f(std::integral_constant<V6Predictor, V6Predictor::LagK>{});
+    case V6Predictor::Median:
+      return f(std::integral_constant<V6Predictor, V6Predictor::Median>{});
+    default:
+      return f(std::integral_constant<V6Predictor, V6Predictor::SecondOrder>{});
   }
 }
 
@@ -319,9 +341,9 @@ constexpr std::array<uint8_t, 64> kV6VarintBytes = [] {
   return t;
 }();
 
-// Size of the residual stream of one axis for predictor P, without writing it.
+// Size of the residual stream of one axis for predictor P, without writing it. Stops early, returning at
+// least `budget`, once the size reaches `budget`.
 template <V6Predictor P>
-// Stops early, returning at least `budget`, once the size reaches `budget`.
 size_t estimateV6Axis(
     const int64_t* q, const uint8_t* nan, const uint8_t* valid, size_t n, size_t K, int64_t* f, size_t budget) {
   size_t bytes = 0;
@@ -355,9 +377,6 @@ class ScratchArray {
   T* data() {
     return data_.get();
   }
-  size_t size() const {
-    return size_;
-  }
   void ensure(size_t count) {
     if (count > size_) {
       data_ = std::make_unique_for_overwrite<T[]>(count);
@@ -375,38 +394,6 @@ struct V6Streams {
   std::array<size_t, 3> size{0, 0, 0};
   ScratchArray<int64_t> filled;
 };
-
-// The three residual streams of the first `count` points in one pass over the points.
-template <V6Predictor P>
-void encodeV6Geometry(const V6ChunkGeometry& c, size_t count, size_t K, V6Streams& s) {
-  const size_t n = c.points;
-  const uint8_t* valid = c.mask == V6MaskKind::None ? nullptr : c.valid.data();
-  const int64_t* q[3] = {c.quantized.data(), c.quantized.data() + n, c.quantized.data() + 2 * n};
-  const uint8_t* nan[3] = {c.nan.data(), c.nan.data() + n, c.nan.data() + 2 * n};
-  int64_t* f[3] = {s.filled.data(), s.filled.data() + count, s.filled.data() + 2 * count};
-  uint8_t* o[3] = {s.data[0].data(), s.data[1].data(), s.data[2].data()};
-  for (size_t i = 0; i < count; ++i) {
-    if (valid && !valid[i]) {
-      for (size_t a = 0; a < 3; ++a) {
-        f[a][i] = i >= 1 ? f[a][i - 1] : 0;
-      }
-      continue;
-    }
-    for (size_t a = 0; a < 3; ++a) {
-      const int64_t pred = v6Predict<P>(f[a], i, K);
-      if (nan[a][i]) {
-        f[a][i] = pred;
-        *o[a]++ = 0;  // NaN marker
-      } else {
-        f[a][i] = q[a][i];
-        o[a] += encodeVarint64(q[a][i] - pred, o[a]);
-      }
-    }
-  }
-  for (size_t a = 0; a < 3; ++a) {
-    s.size[a] = static_cast<size_t>(o[a] - s.data[a].data());
-  }
-}
 
 // Quantizes and codes the chunk in one pass, for a predictor and a mask kind already known. With a
 // mask, sets the validity bit of each valid point in `valid_bits` (zeroed by the caller). Returns false
@@ -474,35 +461,22 @@ bool buildV6StreamsFused(
     const V6Geometry& g, const uint8_t* points, size_t point_step, size_t n, V6Predictor predictor, size_t K,
     V6MaskKind mask, V6Streams& s, uint8_t* valid_bits) {
   reserveV6Streams(s, n);
-  switch (predictor) {
-    case V6Predictor::Previous:
-      return encodeV6GeometryFused<V6Predictor::Previous>(g, points, point_step, n, K, mask, s, valid_bits);
-    case V6Predictor::LagK:
-      return encodeV6GeometryFused<V6Predictor::LagK>(g, points, point_step, n, K, mask, s, valid_bits);
-    case V6Predictor::Median:
-      return encodeV6GeometryFused<V6Predictor::Median>(g, points, point_step, n, K, mask, s, valid_bits);
-    default:
-      return encodeV6GeometryFused<V6Predictor::SecondOrder>(g, points, point_step, n, K, mask, s, valid_bits);
-  }
+  return withV6Predictor(predictor, [&](auto P) {
+    return encodeV6GeometryFused<decltype(P)::value>(g, points, point_step, n, K, mask, s, valid_bits);
+  });
 }
 
-// Residual streams of the first `count` points of the chunk for a predictor.
+// Residual streams of the first `count` points of the chunk for a predictor, one axis at a time.
 void buildV6Streams(const V6ChunkGeometry& c, size_t count, V6Predictor predictor, size_t K, V6Streams& s) {
   reserveV6Streams(s, count);
-  switch (predictor) {
-    case V6Predictor::Previous:
-      encodeV6Geometry<V6Predictor::Previous>(c, count, K, s);
-      break;
-    case V6Predictor::LagK:
-      encodeV6Geometry<V6Predictor::LagK>(c, count, K, s);
-      break;
-    case V6Predictor::Median:
-      encodeV6Geometry<V6Predictor::Median>(c, count, K, s);
-      break;
-    case V6Predictor::SecondOrder:
-      encodeV6Geometry<V6Predictor::SecondOrder>(c, count, K, s);
-      break;
-  }
+  const uint8_t* valid = c.mask == V6MaskKind::None ? nullptr : c.valid.data();
+  withV6Predictor(predictor, [&](auto P) {
+    for (size_t a = 0; a < 3; ++a) {
+      s.size[a] = encodeV6Axis<decltype(P)::value>(
+          c.quantized.data() + a * c.points, c.nan.data() + a * c.points, valid, count, K, s.filled.data() + a * count,
+          s.data[a].data());
+    }
+  });
 }
 
 // Lag between a point and "the same laser one firing earlier", from the first chunk: the K with the
@@ -554,20 +528,9 @@ size_t estimateV6Streams(
   for (size_t a = 0; a < 3 && bytes < budget; ++a) {
     const int64_t* q = c.quantized.data() + a * c.points;
     const uint8_t* nan = c.nan.data() + a * c.points;
-    switch (predictor) {
-      case V6Predictor::Previous:
-        bytes += estimateV6Axis<V6Predictor::Previous>(q, nan, valid, count, K, s.filled.data(), budget - bytes);
-        break;
-      case V6Predictor::LagK:
-        bytes += estimateV6Axis<V6Predictor::LagK>(q, nan, valid, count, K, s.filled.data(), budget - bytes);
-        break;
-      case V6Predictor::Median:
-        bytes += estimateV6Axis<V6Predictor::Median>(q, nan, valid, count, K, s.filled.data(), budget - bytes);
-        break;
-      case V6Predictor::SecondOrder:
-        bytes += estimateV6Axis<V6Predictor::SecondOrder>(q, nan, valid, count, K, s.filled.data(), budget - bytes);
-        break;
-    }
+    bytes += withV6Predictor(predictor, [&](auto P) {
+      return estimateV6Axis<decltype(P)::value>(q, nan, valid, count, K, s.filled.data(), budget - bytes);
+    });
   }
   return bytes;
 }
@@ -596,6 +559,17 @@ void appendBytes(BufferView& out, const uint8_t* data, size_t size) {
   }
   std::memcpy(out.data(), data, size);
   out.trim_front(size);
+}
+
+// n FLOAT32 values of a field, copied bit-exact.
+void appendRawFloatColumn(BufferView& out, const uint8_t* base, size_t step, size_t offset, size_t n) {
+  if (out.size() < n * sizeof(float)) {
+    throw std::runtime_error("V6: output buffer full");
+  }
+  for (size_t i = 0; i < n; ++i) {
+    std::memcpy(out.data() + i * sizeof(float), base + i * step + offset, sizeof(float));
+  }
+  out.trim_front(n * sizeof(float));
 }
 
 bool isV6RegularField(const EncodingInfo& info, size_t index) {
@@ -644,23 +618,16 @@ void encodeV6FloatColumn(
   quantized.resize(n);
   nan.resize(n);
   const double inv = 1.0 / static_cast<double>(resolution);
-  bool raw = false;
   for (size_t i = 0; i < n; ++i) {
     const float v = readF32(base + i * step + offset);
     nan[i] = std::isnan(v);
-    const float scaled_f = std::nearbyint(v * inv_f);
-    const double scaled = nan[i]                                    ? 0.0
-                          : std::fabs(scaled_f) < kV6FloatQuantized ? static_cast<double>(scaled_f)
-                                                                    : std::nearbyint(static_cast<double>(v) * inv);
-    raw |= !(std::fabs(scaled) < kV6MaxQuantized);
-    quantized[i] = raw ? 0 : static_cast<int64_t>(scaled);
-  }
-  if (raw) {
-    appendByte(out, static_cast<uint8_t>(V6GeometryMode::Raw));
-    for (size_t i = 0; i < n; ++i) {
-      appendBytes(out, base + i * step + offset, sizeof(float));
+    const double scaled = quantizeV6Value(v, inv_f, inv);
+    if (!(std::fabs(scaled) < kV6MaxQuantized)) {  // infinite or too large: the column is stored raw
+      appendByte(out, static_cast<uint8_t>(V6GeometryMode::Raw));
+      appendRawFloatColumn(out, base, step, offset, n);
+      return;
     }
-    return;
+    quantized[i] = static_cast<int64_t>(scaled);
   }
   appendByte(out, static_cast<uint8_t>(V6GeometryMode::Predicted));
   const size_t bytes = encodeV6Axis<V6Predictor::Previous>(
@@ -690,7 +657,9 @@ size_t V6StageBufferSize(const EncodingInfo& info, size_t points_per_chunk) {
   return V5StageBufferSize(info, points_per_chunk) + points_per_chunk / 8 + 1024;
 }
 
-namespace {
+// Probe the lag, the predictors and the mask kind again every kV6ReprobeInterval clouds.
+constexpr uint32_t kV6ReprobeInterval = 16;
+
 struct V6EncoderScratch {
   V6ChunkGeometry chunk;
   V6Streams streams;
@@ -699,7 +668,6 @@ struct V6EncoderScratch {
   std::vector<int64_t> column_quantized;
   std::vector<uint8_t> column_nan;
 };
-}  // namespace
 
 void EncodeV6Stage1(
     const EncodingInfo& info, V6EncoderState& state, ConstBufferView cloud_data, size_t points_count,
@@ -723,31 +691,23 @@ void EncodeV6Stage1(
   if (!state.scratch) {
     state.scratch = std::make_shared<V6EncoderScratch>();
   }
-  auto& scratch = *static_cast<V6EncoderScratch*>(state.scratch.get());
-  auto& column_quantized = scratch.column_quantized;
-  auto& column_nan = scratch.column_nan;
+  V6EncoderScratch& scratch = *state.scratch;
   auto& chunk = scratch.chunk;
   auto& streams = scratch.streams;
   auto& mask_bits = scratch.mask_bits;
-  auto& section_starts = scratch.section_starts;
 
   // Lag, predictor and mask kind of each chunk: reused from the previous clouds of the stream (their size
   // may differ: unorganized scans vary from cloud to cloud), probed again every kV6ReprobeInterval clouds.
   // A chunk the previous clouds did not have is probed now.
   const size_t chunks_count = (points_count + points_per_chunk - 1) / points_per_chunk;
-  if (state.encodes % kV6ReprobeInterval == 0) {
-    state.lag_known = false;
-    state.predictors.assign(chunks_count, 0xFF);
-    state.masks.assign(chunks_count, 0xFF);
-    state.encodes = 0;
-  } else if (state.predictors.size() != chunks_count) {
-    state.predictors.resize(chunks_count, 0xFF);
-    state.masks.resize(chunks_count, 0xFF);
+  if (state.encodes++ % kV6ReprobeInterval == 0) {
+    state.lag.reset();
+    state.chunks.assign(chunks_count, {});
+  } else {
+    state.chunks.resize(chunks_count);
   }
-  state.encodes++;
   if (info.height > 1) {  // organized clouds: the point one row up
     state.lag = info.width;
-    state.lag_known = true;
   }
 
   size_t chunk_index = 0;
@@ -760,56 +720,47 @@ void EncodeV6Stage1(
 
     BufferView stage_buffer = get_stage_buffer();
     BufferView out(stage_buffer.data(), stage_buffer.size());
-    section_starts.clear();
+    scratch.section_starts.clear();
     // stage 2 starts a new ZSTD block at each section
-    auto mark_section = [&] { section_starts.push_back(stage_buffer.size() - out.size()); };
+    auto mark_section = [&] { scratch.section_starts.push_back(stage_buffer.size() - out.size()); };
 
-    uint8_t& cached = state.predictors[chunk_index];
-    uint8_t& cached_mask = state.masks[chunk_index];
+    V6EncoderState::ChunkChoice& cached = state.chunks[chunk_index];
     auto usable_predictor = [&] {
-      const auto predictor = static_cast<V6Predictor>(cached);
+      const auto predictor = static_cast<V6Predictor>(cached.predictor);
       if ((predictor == V6Predictor::LagK || predictor == V6Predictor::Median) &&
-          (state.lag < 2 || state.lag + 1 >= n)) {
+          (*state.lag < 2 || *state.lag + 1 >= n)) {
         return V6Predictor::Previous;  // the lag does not fit this chunk
       }
       return predictor;
     };
 
-    // Steady state (lag, predictor and mask kind known from an earlier cloud): quantize and code the
-    // geometry in one pass. Otherwise, or when a value needs double precision, the two-pass path.
+    // First encode of this chunk (or a re-probe): the lag and the predictor are chosen on the first points
+    // only, so quantize those. The mask kind is counted over the whole chunk, so every choice is the one
+    // the two-pass path would make. A chunk whose first points are raw stays unprobed: it is raw.
+    if (cached.predictor == 0xFF) {
+      const V6MaskKind chunk_mask = scanV6MaskKind(geometry, base, info.point_step, n);
+      const size_t prefix = std::min(n, state.lag ? kV6ProbePoints : kV6LagDetectPoints);
+      quantizeV6Chunk(geometry, base, info.point_step, prefix, chunk, chunk_mask);
+      if (!chunk.raw) {
+        if (!state.lag) {
+          state.lag = detectV6Lag(chunk);
+        }
+        cached.predictor = static_cast<uint8_t>(chooseV6Predictor(chunk, *state.lag, streams));
+        cached.mask = static_cast<uint8_t>(chunk_mask);
+      }
+    }
+
+    // Quantize and code the geometry in one pass. When a value needs double precision (or the chunk is
+    // raw), the two-pass path: quantize the whole chunk, then code it.
     bool coded = false;
     V6Predictor predictor = V6Predictor::Previous;
     V6MaskKind mask = V6MaskKind::None;
-    const bool chunk_probe_done = state.lag_known && cached != 0xFF && cached_mask != 0xFF;
-    if (chunk_probe_done) {
+    if (cached.predictor != 0xFF) {
       predictor = usable_predictor();
-      mask = static_cast<V6MaskKind>(cached_mask);
+      mask = static_cast<V6MaskKind>(cached.mask);
       mask_bits.assign(mask == V6MaskKind::None ? 0 : (n + 7) / 8, 0);
       coded = buildV6StreamsFused(
-          geometry, base, info.point_step, n, predictor, state.lag, mask, streams, mask_bits.data());
-    }
-    if (!coded && !chunk_probe_done) {
-      // First encode of this cloud size (or a re-probe): the lag and the predictor are chosen on the first
-      // points only, so quantize those, then code the chunk in one pass like the steady state. The mask
-      // kind is counted over the whole chunk, so every choice is the one the two-pass path would make.
-      const V6MaskKind chunk_mask = scanV6MaskKind(geometry, base, info.point_step, n);
-      const size_t prefix = std::min(n, state.lag_known ? kV6ProbePoints : kV6LagDetectPoints);
-      quantizeV6Chunk(geometry, base, info.point_step, prefix, chunk, chunk_mask);
-      if (!chunk.raw) {
-        if (!state.lag_known) {
-          state.lag = detectV6Lag(chunk);
-          state.lag_known = true;
-        }
-        if (cached == 0xFF) {
-          cached = static_cast<uint8_t>(chooseV6Predictor(chunk, state.lag, streams));
-        }
-        cached_mask = static_cast<uint8_t>(chunk_mask);
-        predictor = usable_predictor();
-        mask = chunk_mask;
-        mask_bits.assign(mask == V6MaskKind::None ? 0 : (n + 7) / 8, 0);
-        coded = buildV6StreamsFused(
-            geometry, base, info.point_step, n, predictor, state.lag, mask, streams, mask_bits.data());
-      }
+          geometry, base, info.point_step, n, predictor, *state.lag, mask, streams, mask_bits.data());
     }
     if (!coded) {
       quantizeV6Chunk(geometry, base, info.point_step, n, chunk);
@@ -818,23 +769,15 @@ void EncodeV6Stage1(
       appendByte(out, static_cast<uint8_t>(V6GeometryMode::Raw));
       for (size_t a = 0; a < kV6GeometryFields; ++a) {
         mark_section();
-        for (size_t i = 0; i < n; ++i) {
-          appendBytes(out, base + i * info.point_step + geometry.offset[a], sizeof(float));
-        }
+        appendRawFloatColumn(out, base, info.point_step, geometry.offset[a], n);
       }
     } else {
       if (!coded) {
-        if (!state.lag_known) {
-          state.lag = detectV6Lag(chunk);
-          state.lag_known = true;
-        }
-        if (cached == 0xFF) {
-          cached = static_cast<uint8_t>(chooseV6Predictor(chunk, state.lag, streams));
-        }
-        cached_mask = static_cast<uint8_t>(chunk.mask);
+        // the chunk was probed (it is not raw); the mask kind is the one of this cloud
+        cached.mask = static_cast<uint8_t>(chunk.mask);
         predictor = usable_predictor();
         mask = chunk.mask;
-        buildV6Streams(chunk, n, predictor, state.lag, streams);
+        buildV6Streams(chunk, n, predictor, *state.lag, streams);
         if (mask != V6MaskKind::None) {
           mask_bits.assign((n + 7) / 8, 0);
           for (size_t i = 0; i < n; ++i) {
@@ -844,7 +787,7 @@ void EncodeV6Stage1(
       }
       appendByte(out, static_cast<uint8_t>(V6GeometryMode::Predicted));
       appendByte(out, static_cast<uint8_t>(predictor));
-      appendUVarint(state.lag, out);
+      appendUVarint(*state.lag, out);
       appendByte(out, static_cast<uint8_t>(mask));
       if (mask != V6MaskKind::None) {
         appendBytes(out, mask_bits.data(), mask_bits.size());
@@ -863,7 +806,8 @@ void EncodeV6Stage1(
       if (!encoder) {
         const auto& field = info.fields[index];
         encodeV6FloatColumn(
-            base, info.point_step, field.offset, *field.resolution, n, streams, column_quantized, column_nan, out);
+            base, info.point_step, field.offset, *field.resolution, n, streams, scratch.column_quantized,
+            scratch.column_nan, out);
         continue;
       }
       encoder->reset();
@@ -876,7 +820,7 @@ void EncodeV6Stage1(
     // integer fields: the V5 adaptive sections
     adaptive.encodeChunk(base, info.point_step, n, info.compression_opt, out, mark_section);
 
-    write_stage1_chunk(stage_buffer.size() - out.size(), section_starts);
+    write_stage1_chunk(stage_buffer.size() - out.size(), scratch.section_starts);
     point_offset += n;
     points_left -= n;
     ++chunk_index;

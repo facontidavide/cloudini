@@ -68,6 +68,9 @@ constexpr const uint8_t kEncodingVersion = 5;
 // Newest version the decoder reads. Encoders write version 6 only when asked to (EncodingInfo::version = 6):
 // decoders before 1.4 cannot read it.
 constexpr const uint8_t kMaxEncodingVersion = 6;
+// Oldest version the tools and the ROS nodes offer. PointcloudEncoder also writes versions 2 and 3, for old
+// readers.
+constexpr const uint8_t kMinEncodingVersion = 4;
 
 struct EncodingInfo {
   // Fields in the point cloud
@@ -119,7 +122,6 @@ struct EncodingInfo {
 
 constexpr const char* kMagicHeader = "CLOUDINI_V";
 
-class PointcloudEncoder;
 constexpr int kMagicHeaderLength = 10;
 
 enum class HeaderEncoding { BINARY, YAML };

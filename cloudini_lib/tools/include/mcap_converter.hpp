@@ -53,7 +53,7 @@ class McapConverter {
 
   // Wire version of the encoded clouds (default: Cloudini::kEncodingVersion). 6 writes V6, which decoders
   // before V6 support cannot read.
-  void setEncodingVersion(uint8_t version);
+  void setEncodingVersion(int version);
 
   void encodePointClouds(
       std::filesystem::path file_out, std::optional<float> default_resolution,

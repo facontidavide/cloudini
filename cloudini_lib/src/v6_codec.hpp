@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -33,16 +34,17 @@ namespace Cloudini::detail {
 bool UsesV6Codec(const EncodingInfo& info);
 
 // State a PointcloudEncoder keeps between encode() calls with V6: the detected lag and the predictor and
-// mask kind chosen for each chunk are reused for the next clouds, and probed again every
-// kV6ReprobeInterval clouds.
-constexpr uint32_t kV6ReprobeInterval = 16;
+// mask kind chosen for each chunk are reused for the next clouds, and probed again every few clouds.
+struct V6EncoderScratch;  // buffers reused across calls, defined in v6_codec.cpp
 struct V6EncoderState {
-  size_t lag = 0;
-  bool lag_known = false;
+  struct ChunkChoice {
+    uint8_t predictor = 0xFF;  // 0xFF: not probed yet
+    uint8_t mask = 0xFF;
+  };
+  std::optional<size_t> lag;  // the row width for organized clouds, detected otherwise
   uint32_t encodes = 0;
-  std::vector<uint8_t> predictors;  // per chunk; 0xFF = not chosen yet
-  std::vector<uint8_t> masks;       // per chunk mask kind; 0xFF = not known yet
-  std::shared_ptr<void> scratch;    // buffers reused across calls
+  std::vector<ChunkChoice> chunks;
+  std::shared_ptr<V6EncoderScratch> scratch;
 };
 
 size_t V6StageBufferSize(const EncodingInfo& info, size_t points_per_chunk);
