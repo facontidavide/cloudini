@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.1] - 2026-09-29
+
+Follows Cloudini 1.4.1 (an MSVC build fix); no changes in the extension.
+
 ## [1.4.0] - 2026-09-28
 
 The extension version now follows the Cloudini release it is built from.
