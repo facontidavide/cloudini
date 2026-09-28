@@ -163,8 +163,8 @@ size_t MaxCompressedSize(const EncodingInfo& info, size_t points_count, bool inc
  * stored as FLOAT32) gets resolution 1, and is then stored exactly, with much smaller deltas. Otherwise,
  * if every value is a multiple of `k * r` for an integer k > 1 (e.g. a reflectance with 0.01 steps
  * quantized at 0.001), the resolution becomes `k * r`. Every value is checked: the new resolution is kept
- * only if no decoded value ends up more than 0.1% of `r` further from the original than it would have
- * with `r` (or than r / 2). For large values the float rounding of `k * r` usually rules it out.
+ * only if every value still decodes within r / 2 (plus 0.1% of `r`) of the original. For large values
+ * the float rounding of `k * r` usually rules it out.
  *
  * Only EncodingOptions::LOSSY is affected. The result depends on the data: call it on every cloud,
  * before creating the PointcloudEncoder. Readers need nothing new: the resolution is in the header.

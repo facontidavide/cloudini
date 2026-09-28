@@ -1423,6 +1423,38 @@ TEST(FieldEncoders, CorruptedPayloadNeverReadsPastTheEnd) {
 // by (value / resolution) * |R - g * r|. For large values that can exceed the original error bound.
 // Realistic case: the odometer reading of a vehicle in meters (FLOAT64, ~100 km), logged in 1 cm steps
 // and stored with a 1 mm resolution. Refining must never make the decoded values worse than before.
+// Beyond 2^22 steps V6 quantizes in double precision and decodes within r / 2, where the float path of
+// V4 does not: a refined grid must not be accepted just because it is no worse than V4 there.
+TEST(FieldEncoders, RefineResolutionsToDataKeepsV6BoundBeyond2e22Steps) {
+  using namespace Cloudini;
+  struct Point {
+    float x, y, z;
+  };
+  const std::vector<Point> input = {{10825.5400390625f, 0.0f, 0.0f}, {4506.31005859375f, 0.0f, 0.0f}};
+  EncodingInfo info;
+  info.width = static_cast<uint32_t>(input.size());
+  info.point_step = sizeof(Point);
+  info.version = 6;
+  info.compression_opt = CompressionOption::NONE;
+  info.fields = {
+      {"x", offsetof(Point, x), FieldType::FLOAT32, 0.001f},
+      {"y", offsetof(Point, y), FieldType::FLOAT32, 0.001f},
+      {"z", offsetof(Point, z), FieldType::FLOAT32, 0.001f}};
+  const ConstBufferView in(reinterpret_cast<const uint8_t*>(input.data()), input.size() * sizeof(Point));
+  RefineResolutionsToData(info, in);
+
+  std::vector<uint8_t> encoded;
+  PointcloudEncoder(info).encode(in, encoded);
+  ConstBufferView view(encoded.data(), encoded.size());
+  const EncodingInfo decoded_info = DecodeHeader(view);
+  std::vector<Point> output(input.size());
+  PointcloudDecoder().decode(
+      decoded_info, view, BufferView(reinterpret_cast<uint8_t*>(output.data()), output.size() * sizeof(Point)));
+  for (size_t i = 0; i < input.size(); ++i) {
+    EXPECT_LE(std::abs(static_cast<double>(output[i].x) - input[i].x), 0.0005 * 1.001) << i;
+  }
+}
+
 TEST(FieldEncoders, RefineResolutionsToDataKeepsErrorBoundForLargeValues) {
   using namespace Cloudini;
 

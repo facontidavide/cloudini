@@ -380,7 +380,9 @@ float refinedResolution(const PointField& field, float resolution, ConstBufferVi
   // The header stores the new resolution as a float R, which is not exactly g * r, and the decoder
   // multiplies in the precision of the field: for large values k * R can land further from v than
   // the original q * r. Decode every value both ways, as the decoder does, and keep R only if no
-  // value gets worse by more than kRefinementTolerance * r (beyond the original bound r / 2).
+  // value decodes further than r / 2 + kRefinementTolerance * r from the original. The bound is absolute:
+  // for large values the float path of V4 is itself further than r / 2, but V6 quantizes those in double
+  // precision and stays within r / 2, so "no worse than the float path" would loosen V6's bound.
   const double exact = static_cast<double>(resolution) * static_cast<double>(gcd);
   const float refined = static_cast<float>(exact);
   const double tolerance = kRefinementTolerance * static_cast<double>(resolution);
@@ -426,9 +428,8 @@ float refinedResolution(const PointField& field, float resolution, ConstBufferVi
     if (std::isnan(value)) {
       continue;
     }
-    const double plain_error = decode_error(value, resolution);
     const double refined_error = decode_error(value, refined);
-    if (refined_error > std::max(half_resolution, plain_error) + tolerance) {
+    if (refined_error > half_resolution + tolerance) {
       return resolution;
     }
   }

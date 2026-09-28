@@ -343,7 +343,13 @@ std::map<std::string, float> ParseResolutionProfile(const std::string& profile_o
   std::string profile = profile_or_path;
   if (std::filesystem::is_regular_file(profile_or_path)) {
     std::ifstream file(profile_or_path);
+    if (!file) {
+      throw std::runtime_error("Cannot read the profile file: " + profile_or_path);
+    }
     profile.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    if (file.bad()) {
+      throw std::runtime_error("Cannot read the profile file: " + profile_or_path);
+    }
   }
   std::map<std::string, float> resolutions;
   for (const auto& token : split(profile, ';')) {
@@ -373,6 +379,9 @@ std::map<std::string, float> ParseResolutionProfile(const std::string& profile_o
     } else {
       resolutions[field_str] = resolution;
     }
+  }
+  if (resolutions.empty()) {
+    throw std::runtime_error("Invalid profile (no field:resolution entry): " + profile);
   }
   return resolutions;
 }
