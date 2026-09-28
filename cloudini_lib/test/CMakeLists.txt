@@ -3,6 +3,7 @@ set(SRC_FILES
   test_intrinsics.cpp
   test_header.cpp
   test_ros_msg.cpp
+  test_v6.cpp
 )
 
 if(PCL_FOUND)

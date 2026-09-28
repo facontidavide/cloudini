@@ -27,6 +27,11 @@
 #include <random>
 #include <stdexcept>
 
+#if defined(__unix__) || defined(__APPLE__)
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
+
 #include "cloudini_lib/cloudini.hpp"
 #include "cloudini_lib/field_decoder.hpp"
 #include "cloudini_lib/field_encoder.hpp"
@@ -763,6 +768,7 @@ TEST(FieldEncoders, PointcloudV5_LossyFloatOnlyRoundTrip) {
   info.encoding_opt = EncodingOptions::LOSSY;
   info.compression_opt = CompressionOption::NONE;
   info.use_threads = false;
+  info.version = 5;  // the V5 path (the default is V6)
   info.fields.push_back({"x", offsetof(PointXYZI, x), FieldType::FLOAT32, 0.001F});
   info.fields.push_back({"y", offsetof(PointXYZI, y), FieldType::FLOAT32, 0.001F});
   info.fields.push_back({"z", offsetof(PointXYZI, z), FieldType::FLOAT32, 0.001F});
@@ -786,7 +792,7 @@ TEST(FieldEncoders, PointcloudV5_LossyFloatOnlyRoundTrip) {
 
   ConstBufferView encoded_view(encoded.data(), encoded.size());
   const EncodingInfo decoded_info = DecodeHeader(encoded_view);
-  ASSERT_EQ(decoded_info.version, kEncodingVersion);
+  ASSERT_EQ(decoded_info.version, 5);
   ASSERT_EQ(decoded_info.encoding_opt, EncodingOptions::LOSSY);
 
   ConstBufferView encoded_v4_view(encoded_v4.data(), encoded_v4.size());
@@ -968,4 +974,552 @@ TEST(FieldEncoders, Gorilla_DoesNotActivateForV3) {
       ASSERT_EQ(a, b) << "Bit mismatch at " << i << " (version " << static_cast<int>(info_dec.version) << ")";
     }
   }
+}
+
+TEST(FieldEncoders, FloatNDecodePointsMatchesPerPointDecode) {
+  using namespace Cloudini;
+
+  struct Point {
+    float v[4];
+    uint32_t pad = 0xDEADBEEF;
+  };
+  constexpr size_t kPoints = 3000;
+  std::mt19937 rng(42);
+  std::uniform_real_distribution<float> step(-0.05f, 0.05f);
+  std::uniform_real_distribution<float> jump(-300.0f, 300.0f);
+  std::vector<Point> input(kPoints);
+  float walk[4] = {1.0f, -2.0f, 3.0f, 10.0f};
+  for (size_t i = 0; i < kPoints; ++i) {
+    for (int k = 0; k < 4; ++k) {
+      walk[k] += (rng() % 50 == 0) ? jump(rng) : step(rng);  // mostly 1-2 byte varints, some long ones
+      input[i].v[k] = (rng() % 40 == 0) ? std::numeric_limits<float>::quiet_NaN() : walk[k];
+    }
+  }
+
+  for (size_t fields = 2; fields <= 4; ++fields) {
+    for (bool skip_one : {false, true}) {
+      std::vector<FieldEncoderFloatN_Lossy::FieldData> enc_fields;
+      std::vector<FieldDecoderFloatN_Lossy::FieldData> dec_fields;
+      for (size_t k = 0; k < fields; ++k) {
+        enc_fields.emplace_back(k * sizeof(float), 0.001f);
+        const size_t dec_offset = (skip_one && k == 1) ? kDecodeButSkipStore : k * sizeof(float);
+        dec_fields.emplace_back(dec_offset, 0.001f);
+      }
+      FieldEncoderFloatN_Lossy encoder(enc_fields);
+      std::vector<uint8_t> encoded(kPoints * fields * kMaxVarintBytes);
+      BufferView enc_view(encoded.data(), encoded.size());
+      size_t encoded_size = 0;
+      for (const auto& p : input) {
+        encoded_size += encoder.encode(ConstBufferView(reinterpret_cast<const uint8_t*>(&p), sizeof(Point)), enc_view);
+      }
+
+      std::vector<Point> per_point(kPoints), batch(kPoints);
+      FieldDecoderFloatN_Lossy decoder_a(dec_fields);
+      ConstBufferView in_a(encoded.data(), encoded_size);
+      for (size_t i = 0; i < kPoints; ++i) {
+        decoder_a.decode(in_a, BufferView(reinterpret_cast<uint8_t*>(&per_point[i]), sizeof(Point)));
+      }
+      FieldDecoderFloatN_Lossy decoder_b(dec_fields);
+      ConstBufferView in_b(encoded.data(), encoded_size);
+      decoder_b.decodePoints(in_b, reinterpret_cast<uint8_t*>(batch.data()), sizeof(Point), kPoints);
+
+      EXPECT_TRUE(in_a.empty());
+      EXPECT_TRUE(in_b.empty());
+      ASSERT_EQ(0, std::memcmp(per_point.data(), batch.data(), kPoints * sizeof(Point)))
+          << "fields=" << fields << " skip_one=" << skip_one;
+
+      // Truncated input must throw, not read past the end
+      FieldDecoderFloatN_Lossy decoder_c(dec_fields);
+      ConstBufferView truncated(encoded.data(), encoded_size - 1);
+      EXPECT_THROW(
+          decoder_c.decodePoints(truncated, reinterpret_cast<uint8_t*>(batch.data()), sizeof(Point), kPoints),
+          std::runtime_error);
+    }
+  }
+}
+
+TEST(FieldEncoders, EncodeToVectorMatchesPreallocatedBuffer) {
+  using namespace Cloudini;
+
+  constexpr size_t kPoints = 3 * 32 * 1024 + 11;  // several chunks
+  std::vector<float> cloud(kPoints * 4);
+  for (size_t i = 0; i < kPoints; ++i) {
+    cloud[4 * i + 0] = std::sin(0.001f * i) * 10.0f;
+    cloud[4 * i + 1] = std::cos(0.001f * i) * 10.0f;
+    cloud[4 * i + 2] = 0.0001f * i;
+    cloud[4 * i + 3] = static_cast<float>(i % 256);
+  }
+  EncodingInfo info;
+  info.width = kPoints;
+  info.point_step = 4 * sizeof(float);
+  for (int k = 0; k < 4; ++k) {
+    info.fields.push_back({std::string(1, "xyzi"[k]), static_cast<uint32_t>(4 * k), FieldType::FLOAT32, 0.001f});
+  }
+  const ConstBufferView in(reinterpret_cast<const uint8_t*>(cloud.data()), cloud.size() * sizeof(float));
+  for (auto compression : {CompressionOption::NONE, CompressionOption::LZ4, CompressionOption::ZSTD}) {
+    info.compression_opt = compression;
+    PointcloudEncoder encoder(info);
+    std::vector<uint8_t> as_vector;
+    // twice: the second call reuses the scratch buffer
+    encoder.encode(in, as_vector);
+    const size_t size = encoder.encode(in, as_vector);
+    ASSERT_EQ(size, as_vector.size());
+
+    std::vector<uint8_t> prealloc(MaxCompressedSize(info, kPoints, true));
+    BufferView view(prealloc.data(), prealloc.size());
+    const size_t prealloc_size = encoder.encode(in, view, true);
+    ASSERT_EQ(prealloc_size, size);
+    ASSERT_EQ(0, std::memcmp(prealloc.data(), as_vector.data(), size));
+  }
+}
+
+namespace {
+
+// Encode `values` as a single-field cloud with the given version and compression, return the payload size.
+template <typename IntType>
+size_t encodedIntFieldSize(
+    const std::vector<IntType>& values, Cloudini::FieldType type, uint8_t version,
+    Cloudini::CompressionOption compression) {
+  using namespace Cloudini;
+  EncodingInfo info = makeV5IntOnlyInfo(values.size(), type, compression);
+  info.version = version;
+  PointcloudEncoder encoder(info);
+  std::vector<uint8_t> encoded;
+  encoder.encode(
+      ConstBufferView(reinterpret_cast<const uint8_t*>(values.data()), values.size() * sizeof(IntType)), encoded);
+  if (version == 5) {
+    expectV5IntOnlyRoundTrip(values, type, encoded);
+  }
+  return encoded.size() - encoder.getHeader().size();
+}
+
+}  // namespace
+
+TEST(FieldEncoders, PointcloudV5_ModeSelectionAccountsForStage2) {
+  using namespace Cloudini;
+  constexpr uint8_t kPaletteMode = 1;
+
+  // Per-column timestamps of an organized scan (like Ouster's `t`): every row repeats the same 1024 values.
+  // Before stage 2, the palette (10-bit indexes plus a table of the 1024 raw values) beats delta-varint
+  // (3 bytes per value); after it, the raw table barely compresses while the repeated deltas do, so V5
+  // must not end up larger than plain V4 deltas.
+  std::vector<uint32_t> column_time(1024);
+  std::mt19937 rng(7);
+  for (size_t col = 0; col < column_time.size(); ++col) {
+    column_time[col] = static_cast<uint32_t>(col * 97656 + rng() % 64);
+  }
+  const auto t = makeIntSequence<uint32_t>(64 * 1024, [&](size_t i) { return column_time[i % 1024]; });
+  EXPECT_EQ(
+      v5UncompressedChunkModes(encodeV5IntOnly(t, FieldType::UINT32, CompressionOption::NONE)),
+      std::vector<uint8_t>({kPaletteMode, kPaletteMode}));
+  for (auto compression : {CompressionOption::ZSTD, CompressionOption::LZ4}) {
+    const size_t v4 = encodedIntFieldSize(t, FieldType::UINT32, 4, compression);
+    const size_t v5 = encodedIntFieldSize(t, FieldType::UINT32, 5, compression);
+    EXPECT_LE(v5, v4 + 64) << "compression " << ToString(compression);
+  }
+
+  // Random choice among 16 values: the palette stays the better choice after compression too.
+  std::vector<uint32_t> levels(16);
+  for (auto& level : levels) {
+    level = static_cast<uint32_t>(rng());
+  }
+  const auto labels = makeIntSequence<uint32_t>(64 * 1024, [&](size_t) { return levels[rng() % 16]; });
+  const size_t v4 = encodedIntFieldSize(labels, FieldType::UINT32, 4, CompressionOption::ZSTD);
+  const size_t v5 = encodedIntFieldSize(labels, FieldType::UINT32, 5, CompressionOption::ZSTD);
+  EXPECT_LT(v5, v4);
+}
+
+TEST(FieldEncoders, PointcloudV5_MixedFieldsRoundTripWithStage2) {
+  using namespace Cloudini;
+
+  // xyzi floats followed by several adaptive integer sections, over multiple chunks, with and without the
+  // compression thread: the ZSTD blocks are split where the sections start.
+  struct Point {
+    float x, y, z, intensity;
+    uint32_t t;
+    uint16_t reflectivity, ring, ambient;
+    uint16_t pad;
+    uint32_t range;
+  };
+  constexpr size_t kWidth = 1024;
+  constexpr size_t kRows = 80;  // 81920 points: 3 chunks
+  std::vector<Point> input(kWidth * kRows);
+  std::mt19937 rng(3);
+  for (size_t r = 0; r < kRows; ++r) {
+    for (size_t c = 0; c < kWidth; ++c) {
+      Point& p = input[r * kWidth + c];
+      const float range = 5.0f + 0.001f * static_cast<float>(rng() % 20000);
+      const float az = 6.2831853f * static_cast<float>(c) / kWidth;
+      p.x = range * std::cos(az);
+      p.y = range * std::sin(az);
+      p.z = 0.01f * static_cast<float>(r);
+      p.intensity = static_cast<float>(rng() % 300);
+      p.t = static_cast<uint32_t>(c * 48828);
+      p.reflectivity = static_cast<uint16_t>(rng() % 256);
+      p.ring = static_cast<uint16_t>(r);
+      p.ambient = static_cast<uint16_t>(500 + rng() % 40);
+      p.pad = 0;
+      p.range = static_cast<uint32_t>(range * 1000.0f);
+    }
+  }
+  EncodingInfo info;
+  info.width = kWidth;
+  info.height = kRows;
+  info.point_step = sizeof(Point);
+  info.fields = {
+      {"x", 0, FieldType::FLOAT32, 0.001f}, {"y", 4, FieldType::FLOAT32, 0.001f},
+      {"z", 8, FieldType::FLOAT32, 0.001f}, {"intensity", 12, FieldType::FLOAT32, 0.001f},
+      {"t", 16, FieldType::UINT32, {}},     {"reflectivity", 20, FieldType::UINT16, {}},
+      {"ring", 22, FieldType::UINT16, {}},  {"ambient", 24, FieldType::UINT16, {}},
+      {"range", 28, FieldType::UINT32, {}},
+  };
+  const ConstBufferView in(reinterpret_cast<const uint8_t*>(input.data()), input.size() * sizeof(Point));
+
+  std::vector<uint8_t> reference;
+  for (auto compression : {CompressionOption::NONE, CompressionOption::LZ4, CompressionOption::ZSTD}) {
+    for (bool threads : {false, true}) {
+      info.compression_opt = compression;
+      info.use_threads = threads;
+      PointcloudEncoder encoder(info);
+      std::vector<uint8_t> encoded;
+      encoder.encode(in, encoded);
+
+      ConstBufferView view(encoded.data(), encoded.size());
+      const EncodingInfo header = DecodeHeader(view);
+      std::vector<uint8_t> decoded(input.size() * sizeof(Point), 0);
+      PointcloudDecoder decoder;
+      decoder.decode(header, view, decoded);
+      if (reference.empty()) {
+        reference = decoded;
+      }
+      ASSERT_EQ(decoded, reference) << ToString(compression) << " threads=" << threads;
+    }
+  }
+  // integer fields are lossless
+  const auto* decoded_points = reinterpret_cast<const Point*>(reference.data());
+  for (size_t i = 0; i < input.size(); ++i) {
+    ASSERT_EQ(decoded_points[i].t, input[i].t);
+    ASSERT_EQ(decoded_points[i].reflectivity, input[i].reflectivity);
+    ASSERT_EQ(decoded_points[i].ring, input[i].ring);
+    ASSERT_EQ(decoded_points[i].ambient, input[i].ambient);
+    ASSERT_EQ(decoded_points[i].range, input[i].range);
+    ASSERT_NEAR(decoded_points[i].x, input[i].x, 0.0006f);
+  }
+}
+
+TEST(FieldEncoders, RefineResolutionsToData) {
+  using namespace Cloudini;
+
+  struct Point {
+    float x, y, z;
+    float intensity;    // integer values
+    float reflectance;  // 0.01 steps
+    float noise;        // no grid
+  };
+  constexpr size_t kPoints = 5000;
+  std::mt19937 rng(11);
+  std::uniform_real_distribution<float> uniform(-1.0f, 1.0f);
+  std::vector<Point> input(kPoints);
+  float walk = 0.0f;
+  for (auto& p : input) {
+    walk += 0.01f * uniform(rng);
+    p.x = 10.0f + walk;
+    p.y = -3.0f + 2.0f * walk;
+    p.z = 0.5f * walk;
+    p.intensity = static_cast<float>(rng() % 256);
+    p.reflectance = static_cast<float>(rng() % 100) * 0.01f;
+    p.noise = uniform(rng);
+  }
+  input[17].intensity = std::numeric_limits<float>::quiet_NaN();  // NaN does not prevent the refinement
+
+  EncodingInfo info;
+  info.width = kPoints;
+  info.point_step = sizeof(Point);
+  const char* names[] = {"x", "y", "z", "intensity", "reflectance", "noise"};
+  for (uint32_t k = 0; k < 6; ++k) {
+    info.fields.push_back({names[k], k * 4, FieldType::FLOAT32, 0.001f});
+  }
+  const ConstBufferView in(reinterpret_cast<const uint8_t*>(input.data()), input.size() * sizeof(Point));
+
+  EncodingInfo refined = info;
+  RefineResolutionsToData(refined, in);
+  for (size_t k : {0, 1, 2, 5}) {
+    EXPECT_EQ(refined.fields[k].resolution, 0.001f) << names[k];
+  }
+  EXPECT_EQ(refined.fields[3].resolution, 1.0f);
+  ASSERT_TRUE(refined.fields[4].resolution.has_value());
+  EXPECT_NEAR(*refined.fields[4].resolution, 0.01f, 1e-7f);
+
+  auto encode = [&](const EncodingInfo& encoding) {
+    PointcloudEncoder encoder(encoding);
+    std::vector<uint8_t> out;
+    encoder.encode(in, out);
+    return out;
+  };
+  const std::vector<uint8_t> plain = encode(info);
+  const std::vector<uint8_t> compact = encode(refined);
+  EXPECT_LT(compact.size(), plain.size());
+
+  ConstBufferView view(compact.data(), compact.size());
+  const EncodingInfo header = DecodeHeader(view);
+  EXPECT_EQ(header.fields[3].resolution, 1.0f);
+  std::vector<Point> output(kPoints);
+  PointcloudDecoder decoder;
+  decoder.decode(header, view, BufferView(reinterpret_cast<uint8_t*>(output.data()), output.size() * sizeof(Point)));
+  for (size_t i = 0; i < kPoints; ++i) {
+    if (i == 17) {
+      EXPECT_TRUE(std::isnan(output[i].intensity));
+    } else {
+      ASSERT_EQ(output[i].intensity, input[i].intensity) << i;  // lossless
+    }
+    // half the requested resolution, plus float rounding
+    ASSERT_NEAR(output[i].reflectance, input[i].reflectance, 0.0006f) << i;
+    ASSERT_NEAR(output[i].noise, input[i].noise, 0.0006f) << i;
+    ASSERT_NEAR(output[i].x, input[i].x, 0.0006f) << i;
+  }
+
+  // A half-integer value: the values still lie on a 0.5 grid
+  input[123].intensity = 3.5f;
+  EncodingInfo halves = info;
+  RefineResolutionsToData(halves, in);
+  EXPECT_EQ(halves.fields[3].resolution, 0.5f);
+
+  // Values on no coarser grid keep the requested resolution
+  input[123].intensity = 3.1234f;
+  input[456].reflectance = 0.123f;
+  EncodingInfo unchanged = info;
+  RefineResolutionsToData(unchanged, in);
+  EXPECT_EQ(unchanged.fields[3].resolution, 0.001f);
+  EXPECT_EQ(unchanged.fields[4].resolution, 0.001f);
+}
+
+namespace {
+
+// Copy of `data` placed so that it ends exactly where an unreadable page starts (on POSIX systems), so
+// that reading even one byte past its end crashes the test instead of going unnoticed.
+class GuardedBuffer {
+ public:
+  explicit GuardedBuffer(const std::vector<uint8_t>& data) {
+#if defined(__unix__) || defined(__APPLE__)
+    const size_t page = static_cast<size_t>(sysconf(_SC_PAGESIZE));
+    const size_t data_pages = (data.size() + page - 1) / page;
+    size_ = (data_pages + 1) * page;
+    void* mem = mmap(nullptr, size_, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (mem == MAP_FAILED) {
+      throw std::runtime_error("mmap failed");
+    }
+    base_ = static_cast<uint8_t*>(mem);
+    mprotect(base_ + data_pages * page, page, PROT_NONE);
+    data_ = base_ + data_pages * page - data.size();
+    size_data_ = data.size();
+    memcpy(data_, data.data(), data.size());
+#else
+    fallback_ = data;
+    data_ = fallback_.data();
+    size_data_ = fallback_.size();
+#endif
+  }
+  ~GuardedBuffer() {
+#if defined(__unix__) || defined(__APPLE__)
+    munmap(base_, size_);
+#endif
+  }
+  GuardedBuffer(const GuardedBuffer&) = delete;
+  GuardedBuffer& operator=(const GuardedBuffer&) = delete;
+
+  Cloudini::ConstBufferView view() const {
+    return {data_, size_data_};
+  }
+
+ private:
+  uint8_t* base_ = nullptr;
+  size_t size_ = 0;
+  uint8_t* data_ = nullptr;
+  size_t size_data_ = 0;
+  std::vector<uint8_t> fallback_;
+};
+
+}  // namespace
+
+// A corrupted or malicious message must make the decoder throw, never read past the payload. The
+// per-point size check counts the minimum size of every field (1 byte per varint), so a chunk whose
+// last point has a 2-byte varint and is one byte short passes it. Before the fix, the decoder of the
+// next field (copy, XOR or single lossy float) then read past the end of the chunk. With NONE
+// compression the chunk is read in place, i.e. past the end of the caller's buffer.
+TEST(FieldEncoders, CorruptedPayloadNeverReadsPastTheEnd) {
+  using namespace Cloudini;
+
+  struct Case {
+    const char* name;
+    std::vector<PointField> fields;
+    uint32_t point_step;
+    EncodingOptions encoding;
+    std::vector<uint8_t> good_point;  // stage-1 bytes of one well-formed point
+    std::vector<uint8_t> last_point;  // stage-1 bytes of the damaged last point
+    std::vector<uint8_t> versions;
+  };
+  const std::vector<Case> cases = {
+      // x, y, z, intensity as one vector of four varints, then a uint8 label stored as is
+      {"copy",
+       {{"x", 0, FieldType::FLOAT32, 0.001f},
+        {"y", 4, FieldType::FLOAT32, 0.001f},
+        {"z", 8, FieldType::FLOAT32, 0.001f},
+        {"intensity", 12, FieldType::FLOAT32, 0.001f},
+        {"label", 16, FieldType::UINT8, std::nullopt}},
+       17,
+       EncodingOptions::LOSSY,
+       {0x81, 0x01, 0x81, 0x01, 0x81, 0x01, 0x81, 0x01, 0x07},
+       {0x81, 0x01, 0x81, 0x01, 0x81, 0x01, 0x81, 0x01},
+       {4, 5}},
+      // lossless: an int32 varint, then a float stored as a 4-byte XOR residual
+      {"xor",
+       {{"t", 0, FieldType::INT32, std::nullopt}, {"intensity", 4, FieldType::FLOAT32, std::nullopt}},
+       8,
+       EncodingOptions::LOSSLESS,
+       {0x81, 0x01, 0x00, 0x00, 0x20, 0x41},
+       {0x81, 0x01, 0x00, 0x00, 0x20},
+       {4, 5}},
+      // lossy: an int32 varint, then a float that is not part of the leading xyz vector
+      {"lossy float",
+       {{"t", 0, FieldType::INT32, std::nullopt}, {"intensity", 4, FieldType::FLOAT32, 0.01f}},
+       8,
+       EncodingOptions::LOSSY,
+       {0x81, 0x01, 0x03},
+       {0x81, 0x01},
+       {4}},  // in V5 the int32 field is an adaptive section, not a per-point varint
+  };
+
+  constexpr size_t kGoodPoints = 50;
+  for (const auto& c : cases) {
+    std::vector<uint8_t> payload(sizeof(uint32_t));
+    for (size_t i = 0; i < kGoodPoints; ++i) {
+      payload.insert(payload.end(), c.good_point.begin(), c.good_point.end());
+    }
+    payload.insert(payload.end(), c.last_point.begin(), c.last_point.end());
+    const uint32_t chunk_size = static_cast<uint32_t>(payload.size() - sizeof(uint32_t));
+    memcpy(payload.data(), &chunk_size, sizeof(chunk_size));
+    // the payload ends where an unreadable page begins: a read past its end crashes
+    GuardedBuffer guarded(payload);
+
+    for (uint8_t version : c.versions) {
+      EncodingInfo info;
+      info.width = kGoodPoints + 1;
+      info.height = 1;
+      info.point_step = c.point_step;
+      info.fields = c.fields;
+      info.encoding_opt = c.encoding;
+      info.compression_opt = CompressionOption::NONE;
+      info.version = version;
+
+      std::vector<uint8_t> output(info.width * info.point_step);
+      PointcloudDecoder decoder;
+      EXPECT_THROW(decoder.decode(info, guarded.view(), BufferView(output.data(), output.size())), std::runtime_error)
+          << c.name << ", version " << int(version);
+    }
+  }
+}
+
+// The refined resolution is stored as a float, so it is not exactly g * r: each decoded value moves
+// by (value / resolution) * |R - g * r|. For large values that can exceed the original error bound.
+// Realistic case: the odometer reading of a vehicle in meters (FLOAT64, ~100 km), logged in 1 cm steps
+// and stored with a 1 mm resolution. Refining must never make the decoded values worse than before.
+// Beyond 2^22 steps V6 quantizes in double precision and decodes within r / 2, where the float path of
+// V4 does not: a refined grid must not be accepted just because it is no worse than V4 there.
+TEST(FieldEncoders, RefineResolutionsToDataKeepsV6BoundBeyond2e22Steps) {
+  using namespace Cloudini;
+  struct Point {
+    float x, y, z;
+  };
+  const std::vector<Point> input = {{10825.5400390625f, 0.0f, 0.0f}, {4506.31005859375f, 0.0f, 0.0f}};
+  EncodingInfo info;
+  info.width = static_cast<uint32_t>(input.size());
+  info.point_step = sizeof(Point);
+  info.version = 6;
+  info.compression_opt = CompressionOption::NONE;
+  info.fields = {
+      {"x", offsetof(Point, x), FieldType::FLOAT32, 0.001f},
+      {"y", offsetof(Point, y), FieldType::FLOAT32, 0.001f},
+      {"z", offsetof(Point, z), FieldType::FLOAT32, 0.001f}};
+  const ConstBufferView in(reinterpret_cast<const uint8_t*>(input.data()), input.size() * sizeof(Point));
+  RefineResolutionsToData(info, in);
+
+  std::vector<uint8_t> encoded;
+  PointcloudEncoder(info).encode(in, encoded);
+  ConstBufferView view(encoded.data(), encoded.size());
+  const EncodingInfo decoded_info = DecodeHeader(view);
+  std::vector<Point> output(input.size());
+  PointcloudDecoder().decode(
+      decoded_info, view, BufferView(reinterpret_cast<uint8_t*>(output.data()), output.size() * sizeof(Point)));
+  for (size_t i = 0; i < input.size(); ++i) {
+    EXPECT_LE(std::abs(static_cast<double>(output[i].x) - input[i].x), 0.0005 * 1.001) << i;
+  }
+}
+
+TEST(FieldEncoders, RefineResolutionsToDataKeepsErrorBoundForLargeValues) {
+  using namespace Cloudini;
+
+  struct Point {
+    float x, y, z;
+    float ring;         // integer values: refined to resolution 1
+    double odometer;    // meters, on a 1 cm grid
+    float temperature;  // ~9000-10000 on a 0.01 grid: float precision is ~0.001 there
+  };
+  constexpr size_t kPoints = 20000;
+  std::vector<Point> input(kPoints);
+  for (size_t i = 0; i < kPoints; ++i) {
+    auto& p = input[i];
+    p.x = 0.001f * static_cast<float>(i % 700);
+    p.y = -0.002f * static_cast<float>(i % 300);
+    p.z = 1.5f;
+    p.ring = static_cast<float>(i % 64);
+    p.odometer = 100000.0 - static_cast<double>(i) * 0.01;
+    p.temperature = 9000.0f + static_cast<float>(i % 100000) * 0.05f;
+  }
+
+  EncodingInfo info;
+  info.width = kPoints;
+  info.point_step = sizeof(Point);
+  info.fields = {
+      {"x", offsetof(Point, x), FieldType::FLOAT32, 0.001f},
+      {"y", offsetof(Point, y), FieldType::FLOAT32, 0.001f},
+      {"z", offsetof(Point, z), FieldType::FLOAT32, 0.001f},
+      {"ring", offsetof(Point, ring), FieldType::FLOAT32, 0.001f},
+      {"odometer", offsetof(Point, odometer), FieldType::FLOAT64, 0.001f},
+      {"temperature", offsetof(Point, temperature), FieldType::FLOAT32, 0.001f}};
+
+  const ConstBufferView in(reinterpret_cast<const uint8_t*>(input.data()), kPoints * sizeof(Point));
+  auto round_trip = [&](const EncodingInfo& encoding) {
+    std::vector<uint8_t> encoded;
+    PointcloudEncoder encoder(encoding);
+    encoder.encode(in, encoded);
+    ConstBufferView view(encoded.data(), encoded.size());
+    const EncodingInfo decoded_info = DecodeHeader(view);
+    std::vector<Point> output(kPoints);
+    PointcloudDecoder decoder;
+    decoder.decode(decoded_info, view, BufferView(reinterpret_cast<uint8_t*>(output.data()), kPoints * sizeof(Point)));
+    return output;
+  };
+
+  const std::vector<Point> plain = round_trip(info);
+  EncodingInfo refined_info = info;
+  RefineResolutionsToData(refined_info, in);
+  EXPECT_EQ(refined_info.fields[3].resolution, 1.0f);  // ring
+  const std::vector<Point> refined = round_trip(refined_info);
+
+  double max_error_odometer = 0.0;
+  for (size_t i = 0; i < kPoints; ++i) {
+    EXPECT_EQ(refined[i].ring, input[i].ring);
+    const double odometer_error = std::abs(refined[i].odometer - input[i].odometer);
+    max_error_odometer = std::max(max_error_odometer, odometer_error);
+    // never worse than without the refinement (for float fields near 1e4, the original error is
+    // already above resolution / 2: float has ~0.001 precision there)
+    // at most 0.1% of the resolution worse than without the refinement
+    ASSERT_LE(odometer_error, std::max(0.0005, std::abs(plain[i].odometer - input[i].odometer)) + 1e-6)
+        << "odometer of point " << i << " (" << input[i].odometer << ")";
+    ASSERT_LE(
+        std::abs(refined[i].temperature - input[i].temperature),
+        std::max(0.0005f, std::abs(plain[i].temperature - input[i].temperature)) + 1e-6f)
+        << "temperature of point " << i << " (" << input[i].temperature << ")";
+  }
+  EXPECT_LE(max_error_odometer, 0.0005 + 1e-6);
 }

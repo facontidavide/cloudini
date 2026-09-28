@@ -65,7 +65,8 @@ void FieldDecoderFloatN_Lossy::decode(ConstBufferView& input, BufferView dest_po
       int64_t diff = 0;
       const auto remaining = static_cast<size_t>((input.data() + input.size()) - ptr_in);
       const auto count = decodeVarint(ptr_in, remaining, diff);
-      new_vect[i] = static_cast<int32_t>(diff) + prev_vect_[i];
+      // int32 wrap-around addition of the truncated delta (no signed overflow on corrupted input)
+      new_vect[i] = static_cast<int32_t>(static_cast<uint32_t>(prev_vect_[i]) + static_cast<uint32_t>(diff));
       float_vect[i] = static_cast<float>(new_vect[i]) * multiplier_[i];
       ptr_in += count;
     }
@@ -83,6 +84,95 @@ void FieldDecoderFloatN_Lossy::decode(ConstBufferView& input, BufferView dest_po
   // Update input buffer to point past consumed data
   const auto consumed = static_cast<size_t>(ptr_in - input.data());
   input.trim_front(consumed);
+}
+
+// One point of N lossy floats, for a caller that guarantees N * kMaxVarintBytes readable bytes at `ptr`.
+// `prev` is the int32 history: decodePointsImpl passes a local copy (kept in registers), decodeUnchecked
+// the member.
+template <size_t N, class Prev, class Multiplier, class Offset>
+static inline void decodeFloatNPoint(
+    const uint8_t*& ptr_ref, uint8_t* point, Prev& prev, const Multiplier& multiplier, const Offset& offset) {
+  // a local pointer: the float stores through uint8_t* would otherwise force `ptr_ref` back to memory
+  const uint8_t* ptr = ptr_ref;
+  for (size_t k = 0; k < N; ++k) {
+    float value;
+    if (*ptr == 0) {
+      // NaN marker
+      ++ptr;
+      prev[k] = 0;
+      value = std::numeric_limits<float>::quiet_NaN();
+    } else {
+      int64_t diff = 0;
+      ptr += decodeVarintUnchecked(ptr, diff);
+      // same wrap-around as decode(): int32 addition of the truncated delta
+      prev[k] = static_cast<int32_t>(static_cast<uint32_t>(prev[k]) + static_cast<uint32_t>(diff));
+      value = static_cast<float>(prev[k]) * multiplier[k];
+    }
+    if (offset[k] != kDecodeButSkipStore) {
+      memcpy(point + offset[k], &value, sizeof(float));
+    }
+  }
+  ptr_ref = ptr;
+}
+
+void FieldDecoderFloatN_Lossy::decodeUnchecked(const uint8_t*& ptr, uint8_t* point) {
+  switch (fields_count_) {
+    case 2:
+      decodeFloatNPoint<2>(ptr, point, prev_vect_, multiplier_, offset_);
+      break;
+    case 3:
+      decodeFloatNPoint<3>(ptr, point, prev_vect_, multiplier_, offset_);
+      break;
+    default:
+      decodeFloatNPoint<4>(ptr, point, prev_vect_, multiplier_, offset_);
+      break;
+  }
+}
+
+void FieldDecoderFloatN_Lossy::decodePoints(ConstBufferView& input, uint8_t* output, size_t point_step, size_t count) {
+  switch (fields_count_) {
+    case 2:
+      decodePointsImpl<2>(input, output, point_step, count);
+      break;
+    case 3:
+      decodePointsImpl<3>(input, output, point_step, count);
+      break;
+    default:
+      decodePointsImpl<4>(input, output, point_step, count);
+      break;
+  }
+}
+
+template <size_t N>
+void FieldDecoderFloatN_Lossy::decodePointsImpl(
+    ConstBufferView& input, uint8_t* output, size_t point_step, size_t count) {
+  // A point takes at most N * kMaxVarintBytes bytes: while that many are left, its varints are read
+  // without per-byte bounds checks. The last few points go through the checked decode().
+  constexpr size_t kMaxPointBytes = N * kMaxVarintBytes;
+  const uint8_t* ptr = input.data();
+  const uint8_t* const end = input.data() + input.size();
+
+  int32_t prev[N];
+  float multiplier[N];
+  size_t offset[N];
+  for (size_t k = 0; k < N; ++k) {
+    prev[k] = prev_vect_[k];
+    multiplier[k] = multiplier_[k];
+    offset[k] = offset_[k];
+  }
+
+  size_t i = 0;
+  for (; i < count && static_cast<size_t>(end - ptr) >= kMaxPointBytes; ++i) {
+    decodeFloatNPoint<N>(ptr, output + i * point_step, prev, multiplier, offset);
+  }
+
+  for (size_t k = 0; k < N; ++k) {
+    prev_vect_[k] = prev[k];
+  }
+  input.trim_front(static_cast<size_t>(ptr - input.data()));
+
+  // the last few points, through the checked per-point decode()
+  FieldDecoder::decodePoints(input, output + i * point_step, point_step, count - i);
 }
 
 }  // namespace Cloudini

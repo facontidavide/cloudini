@@ -16,10 +16,14 @@
 
 #pragma once
 
+#include <span>
+
 #include "cloudini_lib/cloudini.hpp"
 
 namespace Cloudini::detail {
 
-size_t WriteStage1Chunk(const EncodingInfo& info, ConstBufferView stage1_data, BufferView& output);
+size_t WriteStage1Chunk(
+    const EncodingInfo& info, ConstBufferView stage1_data, BufferView& output,
+    std::span<const size_t> block_starts = {});
 
 }  // namespace Cloudini::detail

@@ -341,7 +341,8 @@ class FieldEncoderFloatN_Lossy : public FieldEncoder {
 //------------------------------------------------------------------------------------------
 template <typename FloatType>
 inline size_t FieldEncoderFloat_Lossy<FloatType>::encode(const ConstBufferView& point_view, BufferView& output) {
-  FloatType value_real = *(reinterpret_cast<const FloatType*>(point_view.data() + offset_));
+  FloatType value_real;
+  memcpy(&value_real, point_view.data() + offset_, sizeof(FloatType));  // may not be aligned
   if (std::isnan(value_real)) {
     output.data()[0] = 0;  // value 0 is reserved for NaN
     prev_value_ = 0;

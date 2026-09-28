@@ -16,6 +16,7 @@
 
 #include "mcap_converter.hpp"
 
+#include <iterator>
 #include <set>
 #include <stdexcept>
 
@@ -139,6 +140,16 @@ mcap::Compression toMcapCompression(Cloudini::CompressionOption compression) {
   }
 }
 //------------------------------------------------------
+void McapConverter::setEncodingVersion(int version) {
+  if (version < Cloudini::kMinEncodingVersion || version > Cloudini::kMaxEncodingVersion) {
+    throw std::runtime_error(
+        "Unsupported encoding version " + std::to_string(version) + " (" +
+        std::to_string(Cloudini::kMinEncodingVersion) + " to " + std::to_string(Cloudini::kMaxEncodingVersion) + ")");
+  }
+  encoding_version_ = static_cast<uint8_t>(version);
+}
+
+//------------------------------------------------------
 void McapConverter::encodePointClouds(
     std::filesystem::path file_out, std::optional<float> default_resolution,
     Cloudini::CompressionOption mcap_writer_compression, bool viz_lossy) {
@@ -168,6 +179,8 @@ void McapConverter::encodePointClouds(
   mcap::ProblemCallback problem = [](const mcap::Status&) {};
 
   std::vector<uint8_t> compressed_dds_msg;
+  // one encoder per channel, reused across its messages
+  std::map<uint16_t, Cloudini::PointcloudEncoderCache> encoders;
 
   for (const auto& msg : reader_->readMessages(problem, reader_options)) {
     mcap::Message new_msg = msg.message;
@@ -199,12 +212,14 @@ void McapConverter::encodePointClouds(
     }
 
     auto encoding_info = cloudini_ros::toEncodingInfo(pc_info);
+    encoding_info.version = encoding_version_;
     // no need to do ZSTD compression twice
     if (mcap_writer_compression == Cloudini::CompressionOption::ZSTD) {
       encoding_info.compression_opt = Cloudini::CompressionOption::NONE;
     }
 
-    cloudini_ros::convertPointCloud2ToCompressedCloud(pc_info, encoding_info, compressed_dds_msg);
+    cloudini_ros::convertPointCloud2ToCompressedCloud(
+        pc_info, encoding_info, compressed_dds_msg, &encoders[msg.channel->id], refine_resolutions_);
 
     // copy pointers to compressed_dds_msg
     new_msg.data = reinterpret_cast<const std::byte*>(compressed_dds_msg.data());
@@ -324,9 +339,23 @@ std::string_view trimSpaces(std::string_view str) {
   return str.substr(start, end - start);
 }
 
-void McapConverter::addProfile(const std::string& profile) {
-  auto tokens = split(profile, ';');
-  for (const auto& token : tokens) {
+std::map<std::string, float> ParseResolutionProfile(const std::string& profile_or_path) {
+  std::string profile = profile_or_path;
+  if (std::filesystem::is_regular_file(profile_or_path)) {
+    std::ifstream file(profile_or_path);
+    if (!file) {
+      throw std::runtime_error("Cannot read the profile file: " + profile_or_path);
+    }
+    profile.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    if (file.bad()) {
+      throw std::runtime_error("Cannot read the profile file: " + profile_or_path);
+    }
+  }
+  std::map<std::string, float> resolutions;
+  for (const auto& token : split(profile, ';')) {
+    if (trimSpaces(token).empty()) {
+      continue;  // a trailing ';' or a final newline
+    }
     auto param_tokens = split(token, ':');
     if (param_tokens.size() != 2) {
       throw std::runtime_error("Invalid profile (wrong number of parameters): " + profile);
@@ -337,20 +366,29 @@ void McapConverter::addProfile(const std::string& profile) {
     if (resolution_str == "remove") {
       resolution = 0.0f;
     } else {
-      // check if resolution_str can be converted to float
       try {
         resolution = std::stof(resolution_str);
-      } catch (const std::invalid_argument& e) {
+      } catch (const std::invalid_argument&) {
         throw std::runtime_error("Invalid profile (failed conversion to float): " + profile);
       }
     }
     if (field_str == "xyz") {
-      profile_resolutions_["x"] = resolution;
-      profile_resolutions_["y"] = resolution;
-      profile_resolutions_["z"] = resolution;
+      resolutions["x"] = resolution;
+      resolutions["y"] = resolution;
+      resolutions["z"] = resolution;
     } else {
-      profile_resolutions_[field_str] = resolution;
+      resolutions[field_str] = resolution;
     }
+  }
+  if (resolutions.empty()) {
+    throw std::runtime_error("Invalid profile (no field:resolution entry): " + profile);
+  }
+  return resolutions;
+}
+
+void McapConverter::addProfile(const std::string& profile) {
+  for (const auto& [field, resolution] : ParseResolutionProfile(profile)) {
+    profile_resolutions_[field] = resolution;
   }
 }
 

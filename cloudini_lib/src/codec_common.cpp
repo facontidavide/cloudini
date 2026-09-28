@@ -19,12 +19,62 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 
 #include "lz4.h"
 #include "zstd.h"
 
 namespace Cloudini::detail {
+
+namespace {
+
+// ZSTD_compress / ZSTD_decompress allocate and initialize a fresh context on every call, which
+// costs more than compressing a small input. Contexts are reused per thread instead: the output
+// is identical, and no context is ever shared between threads.
+struct ZstdContexts {
+  struct CCtxDeleter {
+    void operator()(ZSTD_CCtx* ctx) const {
+      ZSTD_freeCCtx(ctx);
+    }
+  };
+  struct DCtxDeleter {
+    void operator()(ZSTD_DCtx* ctx) const {
+      ZSTD_freeDCtx(ctx);
+    }
+  };
+  std::unique_ptr<ZSTD_CCtx, CCtxDeleter> cctx;
+  std::unique_ptr<ZSTD_DCtx, DCtxDeleter> dctx;
+};
+
+ZstdContexts& threadZstdContexts() {
+  thread_local ZstdContexts contexts;
+  return contexts;
+}
+
+ZSTD_CCtx* threadCCtx() {
+  auto& contexts = threadZstdContexts();
+  if (!contexts.cctx) {
+    contexts.cctx.reset(ZSTD_createCCtx());
+    if (!contexts.cctx) {
+      throw std::runtime_error("ZSTD_createCCtx failed");
+    }
+  }
+  return contexts.cctx.get();
+}
+
+ZSTD_DCtx* threadDCtx() {
+  auto& contexts = threadZstdContexts();
+  if (!contexts.dctx) {
+    contexts.dctx.reset(ZSTD_createDCtx());
+    if (!contexts.dctx) {
+      throw std::runtime_error("ZSTD_createDCtx failed");
+    }
+  }
+  return contexts.dctx.get();
+}
+
+}  // namespace
 
 size_t MaxSerializedFieldSize(const PointField& field, EncodingOptions encoding_opt) {
   switch (field.type) {
@@ -201,6 +251,60 @@ void ResetEncoders(std::vector<std::unique_ptr<FieldEncoder>>& encoders) {
   }
 }
 
+namespace {
+// The unchecked part of DecodePoints(). Kept out of line: inlined into DecodePoints() it compiled to a
+// slower loop (V4 decode -6% on Ouster, -10% on nuScenes). Aligned so that its speed does not depend on
+// where unrelated code moves it (up to -6% on nuScenes otherwise). Returns the number of points decoded.
+#if defined(__GNUC__)
+__attribute__((noinline, aligned(64)))
+#elif defined(_MSC_VER)
+__declspec(noinline)
+#endif
+size_t
+decodePointsUnchecked(
+    std::vector<std::unique_ptr<FieldDecoder>>& decoders, ConstBufferView& input, uint8_t* output, size_t point_step,
+    size_t count, size_t max_point_bytes) {
+  const uint8_t* ptr = input.data();
+  const uint8_t* const end = input.data() + input.size();
+  size_t p = 0;
+  for (; p < count && static_cast<size_t>(end - ptr) >= max_point_bytes; ++p) {
+    uint8_t* point = output + p * point_step;
+    for (auto& decoder : decoders) {
+      decoder->decodeUnchecked(ptr, point);
+    }
+  }
+  input.trim_front(static_cast<size_t>(ptr - input.data()));
+  return p;
+}
+}  // namespace
+
+void DecodePoints(
+    std::vector<std::unique_ptr<FieldDecoder>>& decoders, ConstBufferView& input, uint8_t* output, size_t point_step,
+    size_t count) {
+  if (decoders.size() == 1) {
+    decoders.front()->decodePoints(input, output, point_step, count);
+    return;
+  }
+  size_t min_point_bytes = 0;
+  size_t max_point_bytes = 0;
+  bool unchecked = true;
+  for (const auto& decoder : decoders) {
+    min_point_bytes += decoder->minInputBytes();
+    max_point_bytes += decoder->maxInputBytes();
+    unchecked = unchecked && decoder->maxInputBytes() != 0;
+  }
+  size_t p = unchecked ? decodePointsUnchecked(decoders, input, output, point_step, count, max_point_bytes) : 0;
+  for (; p < count; ++p) {
+    if (input.size() < min_point_bytes) {
+      throw std::runtime_error("Truncated encoded data: not enough bytes for a complete point");
+    }
+    BufferView point_view(output + p * point_step, point_step);
+    for (auto& decoder : decoders) {
+      decoder->decode(input, point_view);
+    }
+  }
+}
+
 void ResetDecoders(std::vector<std::unique_ptr<FieldDecoder>>& decoders) {
   for (auto& decoder : decoders) {
     decoder->reset();
@@ -215,7 +319,67 @@ size_t FlushEncoders(std::vector<std::unique_ptr<FieldEncoder>>& encoders, Buffe
   return serialized_size;
 }
 
-uint32_t CompressChunk(CompressionOption compression, ConstBufferView input, BufferView& output) {
+size_t CompressBound(CompressionOption compression, size_t input_size) {
+  switch (compression) {
+    case CompressionOption::NONE:
+      return input_size;
+    case CompressionOption::LZ4:
+      if (input_size > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        throw std::runtime_error("Chunk size too large for LZ4");
+      }
+      return static_cast<size_t>(LZ4_compressBound(static_cast<int>(input_size)));
+    case CompressionOption::ZSTD:
+      return ZSTD_compressBound(input_size);
+    default:
+      throw std::runtime_error("Unsupported compression option in CompressBound");
+  }
+}
+
+namespace {
+
+// One ZSTD frame, ending a block at every offset in `block_starts`. ZSTD entropy-codes literals with one
+// set of statistics per block: starting a block where the data changes nature (e.g. a V5 adaptive
+// section after the per-point stream) keeps the statistics of the two regions apart.
+size_t compressZstdWithBlockStarts(ConstBufferView input, BufferView output, std::span<const size_t> block_starts) {
+  ZSTD_CCtx* cctx = threadCCtx();
+  auto check = [](size_t ret) {
+    if (ZSTD_isError(ret)) {
+      throw std::runtime_error(std::string("ZSTD compression failed: ") + ZSTD_getErrorName(ret));
+    }
+    return ret;
+  };
+  check(ZSTD_CCtx_reset(cctx, ZSTD_reset_session_and_parameters));
+  check(ZSTD_CCtx_setParameter(cctx, ZSTD_c_compressionLevel, 1));
+  check(ZSTD_CCtx_setPledgedSrcSize(cctx, input.size()));
+
+  ZSTD_outBuffer out = {output.data(), output.size(), 0};
+  auto compress_until = [&](size_t start, size_t end, ZSTD_EndDirective directive) {
+    ZSTD_inBuffer in = {input.data() + start, end - start, 0};
+    while (true) {
+      const size_t remaining = check(ZSTD_compressStream2(cctx, &out, &in, directive));
+      if (remaining == 0 && in.pos == in.size) {
+        return;
+      }
+      if (out.pos == out.size) {
+        throw std::runtime_error("ZSTD compression failed: output buffer too small");
+      }
+    }
+  };
+  size_t start = 0;
+  for (const size_t block_start : block_starts) {
+    if (block_start > start && block_start < input.size()) {
+      compress_until(start, block_start, ZSTD_e_flush);
+      start = block_start;
+    }
+  }
+  compress_until(start, input.size(), ZSTD_e_end);
+  return out.pos;
+}
+
+}  // namespace
+
+uint32_t CompressChunk(
+    CompressionOption compression, ConstBufferView input, BufferView& output, std::span<const size_t> block_starts) {
   if (input.size() > std::numeric_limits<uint32_t>::max()) {
     throw std::runtime_error("Chunk too large");
   }
@@ -237,7 +401,10 @@ uint32_t CompressChunk(CompressionOption compression, ConstBufferView input, Buf
     } break;
 
     case CompressionOption::ZSTD: {
-      const size_t cs = ZSTD_compress(output.data(), output.size(), input.data(), input.size(), 1);
+      const size_t cs =
+          !block_starts.empty()
+              ? compressZstdWithBlockStarts(input, output, block_starts)
+              : ZSTD_compressCCtx(threadCCtx(), output.data(), output.size(), input.data(), input.size(), 1);
       if (ZSTD_isError(cs)) {
         throw std::runtime_error("ZSTD compression failed");
       }
@@ -283,8 +450,8 @@ ConstBufferView DecompressChunk(
       if (decompressed_buffer.size() < max_decompressed_size) {
         decompressed_buffer.resize(max_decompressed_size);
       }
-      const size_t decompressed_size =
-          ZSTD_decompress(decompressed_buffer.data(), max_decompressed_size, chunk_data.data(), chunk_data.size());
+      const size_t decompressed_size = ZSTD_decompressDCtx(
+          threadDCtx(), decompressed_buffer.data(), max_decompressed_size, chunk_data.data(), chunk_data.size());
       if (ZSTD_isError(decompressed_size)) {
         throw std::runtime_error("ZSTD decompression failed: " + std::string(ZSTD_getErrorName(decompressed_size)));
       }

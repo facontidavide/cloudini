@@ -11,7 +11,7 @@
 // mcap_codec_benchmark
 //
 // Stream a single MCAP file, and per PointCloud2 topic measure compression
-// ratio + encode/decode wall time for four variants:
+// ratio + encode/decode wall time for six variants:
 //
 //   * V4         — V4 lossy codec, every field preserved (lossless on integer
 //                  fields, FieldEncoderFloat_Lossy on FLOAT32-with-resolution,
@@ -19,9 +19,18 @@
 //   * V5         — V5 adaptive-integer codec. FLOAT fields use the V4 paths;
 //                  integer fields can switch per chunk between V4 delta-varint,
 //                  palette indexes, and RLE.
-//   * V4/V5 + viz — same codec, with `applyVizLossyPreprocessing` run per
+//   * V6         — V5 integer sections; x, y, z as residual streams against a
+//                  per-chunk predictor, validity mask for no-return points.
+//   * V4/V5/V6 + viz — same codec, with `applyVizLossyPreprocessing` run per
 //                  message before encoding: drop NaN points, voxel-dedupe at
 //                  the xyz resolution, quantize FLOAT64 fields to 1µs.
+//
+// V4, V5 and their viz variants run as in 1.2.1, without the optimizations added since: a new encoder
+// per message (constructed outside the timed region) and the given resolutions. The V6 variants use
+// them: one encoder per topic across messages (PointcloudEncoderCache, so V6 reuses its per-chunk
+// choices between clouds), and resolutions refined to each message's data first
+// (RefineResolutionsToData: integer-valued floats such as intensity at resolution 1), counted in the
+// encode time; --no-refine turns the refinement off.
 //
 // For each variant we report bytes out of the codec, ratio vs raw input,
 // encode MB/s, and decode MB/s. A `--zstd` flag runs the same variants through
@@ -35,6 +44,7 @@
 // Streams the file message-by-message; safe on bags larger than RAM.
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -44,6 +54,7 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -53,16 +64,34 @@
 #include "cloudini_lib/ros_message_definitions.hpp"
 #include "cloudini_lib/ros_msg_utils.hpp"
 #include "cxxopts.hpp"
+#include "mcap_converter.hpp"
 
-#define MCAP_IMPLEMENTATION
+// the MCAP implementation is compiled in mcap_converter, which this tool links
 #include "mcap/reader.hpp"
 #include "mcap/types.hpp"
 
 namespace {
 
-enum class Mode { V4 = 0, V5 = 1, V4_VIZ = 2, V5_VIZ = 3 };
-constexpr int kModeCount = 4;
-const char* kModeNames[kModeCount] = {"V4", "V5", "V4-viz", "V5-viz"};
+enum class Mode { V4 = 0, V5 = 1, V4_VIZ = 2, V5_VIZ = 3, V6 = 4, V6_VIZ = 5 };
+constexpr int kModeCount = 6;
+const char* kModeNames[kModeCount] = {"V4", "V5", "V4-viz", "V5-viz", "V6", "V6-viz"};
+
+uint8_t modeVersion(Mode mode) {
+  switch (mode) {
+    case Mode::V4:
+    case Mode::V4_VIZ:
+      return 4;
+    case Mode::V5:
+    case Mode::V5_VIZ:
+      return 5;
+    default:
+      return 6;
+  }
+}
+
+bool isVizMode(Mode mode) {
+  return mode == Mode::V4_VIZ || mode == Mode::V5_VIZ || mode == Mode::V6_VIZ;
+}
 
 int modeIndexFromName(const std::string& name) {
   for (int i = 0; i < kModeCount; ++i) {
@@ -120,7 +149,7 @@ void configureMode(Cloudini::EncodingInfo& info, Mode mode, bool with_zstd) {
   // time includes both stages. Decoder mirrors. This matches the path
   // cloudini_rosbag_converter takes when MCAP chunk compression is off.
   info.compression_opt = with_zstd ? Cloudini::CompressionOption::ZSTD : Cloudini::CompressionOption::NONE;
-  info.version = (mode == Mode::V5 || mode == Mode::V5_VIZ) ? 5 : 4;
+  info.version = modeVersion(mode);
   // Viz modes differ only in the per-message preprocessing step applied to
   // pc_info before this configureMode runs.
 }
@@ -226,21 +255,27 @@ void explainOneMessage(
 int main(int argc, char** argv) {
   cxxopts::Options options(
       "mcap_codec_benchmark",
-      "Compare V4/V5 and V4-viz/V5-viz lossy PointCloud2 compression in an MCAP file.\n"
+      "Compare V4/V5/V6 and V4-viz/V5-viz/V6-viz lossy PointCloud2 compression in an MCAP file.\n"
       "Streams the file message-by-message; safe on bags larger than RAM.");
   options.add_options()                                                                            //
       ("h,help", "Print usage")                                                                    //
       ("f,filename", "Input MCAP file (positional also accepted)", cxxopts::value<std::string>())  //
-      ("r,resolution", "XYZ tick size in meters (default 0.001)",
-       cxxopts::value<float>()->default_value(                                                     //
-           "0.001"))                                                                               //
-      ("max-messages", "Stop after N messages per topic (0 = unlimited)",                          //
-       cxxopts::value<uint64_t>()->default_value("0"))                                             //
-      ("sample-every", "Process only 1 of every N messages per topic (>=1)",                       //
-       cxxopts::value<uint64_t>()->default_value("1"))                                             //
-      ("zstd", "Use Cloudini ZSTD chunk compression and report compressed sizes")                  //
-      ("mode", "Profile only one mode: V4, V5, V4-viz, or V5-viz", cxxopts::value<std::string>())  //
-      ("encode-only", "Skip decode timing; useful with --mode for perf profiling")                 //
+      ("r,resolution", "Resolution of the FLOAT32 fields not in the profile (meters for x, y, z)",
+       cxxopts::value<float>()->default_value(                                //
+           "0.001"))                                                          //
+      ("max-messages", "Stop after N messages per topic (0 = unlimited)",     //
+       cxxopts::value<uint64_t>()->default_value("0"))                        //
+      ("sample-every", "Process only 1 of every N messages per topic (>=1)",  //
+       cxxopts::value<uint64_t>()->default_value("1"))                        //
+      ("profile",
+       "Per-field resolutions, as in cloudini_rosbag_converter: a string such as \"xyz:0.001; intensity:0.1; "
+       "ring:remove\", or a file that contains it",
+       cxxopts::value<std::string>())                                              //
+      ("zstd", "Use Cloudini ZSTD chunk compression and report compressed sizes")  //
+      ("no-refine",
+       "V6 variants: do not refine the resolutions to the data (RefineResolutionsToData, on by default)")     //
+      ("mode", "Profile only one mode: V4, V5, V6, V4-viz, V5-viz or V6-viz", cxxopts::value<std::string>())  //
+      ("encode-only", "Skip decode timing; useful with --mode for perf profiling")                            //
       ("decode-replay",
        "Store encoded pointclouds, then time decode after all MCAP messages are read/encoded")  //
       ("decode-repeat", "Repeat decode replay N times (only with --decode-replay)",             //
@@ -266,9 +301,19 @@ int main(int argc, char** argv) {
 
   const std::filesystem::path input_file = parse_result["filename"].as<std::string>();
   const float default_resolution = parse_result["resolution"].as<float>();
+  cloudini_ros::ResolutionProfile profile;
+  if (parse_result.count("profile")) {
+    try {
+      profile = ParseResolutionProfile(parse_result["profile"].as<std::string>());
+    } catch (const std::exception& e) {
+      std::cerr << "Error: " << e.what() << "\n";
+      return 1;
+    }
+  }
   const uint64_t max_per_topic = parse_result["max-messages"].as<uint64_t>();
   const uint64_t sample_every = std::max<uint64_t>(1, parse_result["sample-every"].as<uint64_t>());
   const bool show_zstd = parse_result.count("zstd") > 0;
+  const bool refine = parse_result.count("no-refine") == 0;
   const bool explain_mode = parse_result.count("explain") > 0;
   const bool encode_only = parse_result.count("encode-only") > 0;
   const bool decode_replay = parse_result.count("decode-replay") > 0;
@@ -280,7 +325,7 @@ int main(int argc, char** argv) {
     only_mode = modeIndexFromName(parse_result["mode"].as<std::string>());
     if (only_mode < 0) {
       std::cerr << "Error: unknown mode '" << parse_result["mode"].as<std::string>()
-                << "'. Expected one of: V4, V5, V4-viz, V5-viz\n";
+                << "'. Expected one of: V4, V5, V6, V4-viz, V5-viz, V6-viz\n";
       return 1;
     }
   }
@@ -305,7 +350,11 @@ int main(int argc, char** argv) {
   }
 
   std::cout << "File: " << input_file << "\n";
-  std::cout << "Resolution: " << default_resolution << " m   max-messages/topic: ";
+  std::cout << "Resolution: " << default_resolution << " m";
+  for (const auto& [field, resolution] : profile) {
+    std::cout << "   " << field << ":" << (resolution == 0.0f ? std::string("remove") : std::to_string(resolution));
+  }
+  std::cout << "   max-messages/topic: ";
   if (max_per_topic == 0) {
     std::cout << "unlimited";
   } else {
@@ -315,7 +364,7 @@ int main(int argc, char** argv) {
   if (show_zstd) {
     std::cout << "   +zstd";
   }
-  std::cout << "\n";
+  std::cout << (refine ? "   refine" : "   no-refine") << "\n";
 
   std::ifstream input_stream(input_file);
   auto data_source = std::make_shared<mcap::FileStreamReader>(input_stream);
@@ -372,7 +421,7 @@ int main(int argc, char** argv) {
         std::cerr << "  [warn] " << topic << " parse failed: " << e.what() << "\n";
         continue;
       }
-      cloudini_ros::applyResolutionProfile({}, pc_info.fields, default_resolution);
+      cloudini_ros::applyResolutionProfile(profile, pc_info.fields, default_resolution);
       Cloudini::EncodingInfo base = cloudini_ros::toEncodingInfo(pc_info);
       explainOneMessage(topic, pc_info, base);
 
@@ -396,6 +445,7 @@ int main(int argc, char** argv) {
   std::vector<uint8_t> enc_buf[kModeCount];
   std::vector<uint8_t> dec_buf[kModeCount];
   std::vector<DecodeSample> decode_samples;
+  std::map<std::string, std::array<Cloudini::PointcloudEncoderCache, kModeCount>> encoder_caches;
 
   mcap::ReadMessageOptions reader_options;
   mcap::ProblemCallback problem = [](const mcap::Status&) {};
@@ -423,7 +473,7 @@ int main(int argc, char** argv) {
       std::cerr << "  [warn] " << topic << " msg #" << this_seen << ": parse failed (" << e.what() << "), skipping\n";
       continue;
     }
-    cloudini_ros::applyResolutionProfile({}, pc_info_orig.fields, default_resolution);
+    cloudini_ros::applyResolutionProfile(profile, pc_info_orig.fields, default_resolution);
     Cloudini::EncodingInfo base = cloudini_ros::toEncodingInfo(pc_info_orig);
 
     Cloudini::ConstBufferView raw_points(pc_info_orig.data.data(), pc_info_orig.data.size());
@@ -454,19 +504,25 @@ int main(int argc, char** argv) {
 
       // Time-includes preprocessing for V4_VIZ: --viz pays both costs.
       const auto t_pre0 = Clock::now();
-      if (static_cast<Mode>(m) == Mode::V4_VIZ || static_cast<Mode>(m) == Mode::V5_VIZ) {
+      if (isVizMode(static_cast<Mode>(m))) {
         cloudini_ros::applyVizLossyPreprocessing(pc_info);
         info = cloudini_ros::toEncodingInfo(pc_info);
-        info.encoding_opt = Cloudini::EncodingOptions::LOSSY;
-        info.compression_opt = show_zstd ? Cloudini::CompressionOption::ZSTD : Cloudini::CompressionOption::NONE;
-        info.version = (static_cast<Mode>(m) == Mode::V5_VIZ) ? 5 : 4;
+        configureMode(info, static_cast<Mode>(m), show_zstd);
+      }
+      const bool v6_mode = modeVersion(static_cast<Mode>(m)) == 6;  // the others run as in 1.2.1
+      if (refine && v6_mode) {
+        Cloudini::RefineResolutionsToData(info, Cloudini::ConstBufferView(pc_info.data.data(), pc_info.data.size()));
       }
       const auto t_pre1 = Clock::now();
       st.per_mode[m].enc_ns += elapsedNs(t_pre0, t_pre1);
 
       Cloudini::ConstBufferView enc_in(pc_info.data.data(), pc_info.data.size());
       try {
-        Cloudini::PointcloudEncoder encoder(info);
+        // V6: one encoder per topic, reused across messages as cloudini_rosbag_converter does;
+        // the others: a new encoder per message, as in 1.2.1
+        std::optional<Cloudini::PointcloudEncoder> fresh_encoder;
+        Cloudini::PointcloudEncoder& encoder =
+            v6_mode ? encoder_caches[topic][m].get(info) : fresh_encoder.emplace(info);
         const size_t points_to_encode = pc_info.data.size() / info.point_step;
         const size_t max_encoded_size = Cloudini::MaxCompressedSize(info, points_to_encode, true);
         if (enc_buf[m].size() < max_encoded_size) {

@@ -17,7 +17,9 @@
 #ifndef CLOUDINI_PLUGIN__CLOUDINI_PUBLISHER_HPP_
 #define CLOUDINI_PLUGIN__CLOUDINI_PUBLISHER_HPP_
 
+#include <cloudini_lib/cloudini.hpp>
 #include <memory>
+#include <mutex>
 #include <point_cloud_interfaces/msg/compressed_point_cloud2.hpp>
 #include <point_cloud_transport/point_cloud_transport.hpp>
 #include <point_cloud_transport/simple_publisher_plugin.hpp>
@@ -46,6 +48,11 @@ class CloudiniPublisher
 
  private:
   double resolution_ = 0.001;
+  // 6 (default); 5 for decoders from 1.3.1 and earlier
+  int64_t encoding_version_ = Cloudini::kEncodingVersion;
+  // one encoder for the topic (V6 reuses its per-chunk choices between clouds); encodeTyped is const
+  mutable std::mutex encoder_mutex_;
+  mutable Cloudini::PointcloudEncoderCache encoder_cache_;
 };
 
 }  // namespace cloudini_point_cloud_transport

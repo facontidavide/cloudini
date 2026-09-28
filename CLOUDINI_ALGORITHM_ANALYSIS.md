@@ -70,6 +70,17 @@ for quantization and delta generation, and it has a fast no-NaN path.
 NaN is represented with the reserved varint marker `0`. Real encoded deltas are
 shifted by one so the marker remains available.
 
+Fields are often stored as floats but hold integers (`intensity`, `ring`) or
+values on a coarse grid (a reflectance in 0.01 steps). Quantized at 1 mm, such a
+field wastes about 10 bits per point. `RefineResolutionsToData()` (opt-in, per
+cloud) replaces the resolution of these fields with the grid their values lie on:
+1 for integers, which are then stored exactly, or `k * resolution` otherwise.
+Readers need nothing new, since the resolution is in the header. `k * resolution`
+is stored as a float and the decoder multiplies in the field's precision, so for
+large values the coarser grid can decode further from the original: a second pass
+decodes every value both ways and keeps it only if no value gets worse by more
+than 0.1% of the resolution.
+
 ## Adaptive Integer Encoding
 
 V5 adaptive integer encoding applies to these lossy-mode field types:
@@ -93,8 +104,17 @@ Each adaptive integer field chooses one mode:
 
 ### Mode Selection
 
-For each adaptive integer field, V5 estimates all adaptive modes and commits the
-smallest one.
+For each adaptive integer field, V5 estimates the Stage 1 size of all adaptive
+modes and picks the smallest one.
+
+When Stage 2 compression is enabled, the smallest mode before compression is not
+always the smallest after it. A palette stores every distinct value raw: for the
+per-column timestamps of an organized scan (1024 distinct values per row) that
+table barely compresses, while delta-varint turns the same data into small deltas
+that repeat row after row. So, if the Stage 1 winner is not `DeltaVarint`,
+the probe values are serialized in both modes and compressed with the configured
+compressor, and the mode with the smaller compressed size is committed. This only
+changes which (already supported) mode is written; decoders are unaffected.
 
 - If the first chunk has more than `4096` points, V5 probes the first `4096`
   points, picks the mode, then streams the rest of the chunk using that mode.
@@ -130,6 +150,14 @@ The current benchmark default uses ZSTD level 1. The encoder can use a worker
 thread and double buffering so one chunk can be compressed while the next chunk
 is being encoded.
 
+ZSTD contexts are reused per thread (`ZSTD_compressCCtx` / `ZSTD_decompressDCtx`)
+instead of being created by every `ZSTD_compress` / `ZSTD_decompress` call.
+
+For V5 chunks, the ZSTD frame ends a compressed block where each adaptive
+section starts. ZSTD entropy-codes literals with one set of statistics per block,
+so this keeps the statistics of the per-point stream and of each section apart.
+The chunk is still a single standard ZSTD frame.
+
 Scratch buffers are retained by capacity and are not zero-filled before each
 chunk. Only the serialized byte range is passed to Stage 2.
 
@@ -145,6 +173,14 @@ Decoding reverses the chunk pipeline:
 The decompression buffer keeps its capacity between chunks. The decoder returns
 views sized to the actual decompressed chunk instead of shrinking the backing
 storage after every chunk.
+
+When a chunk has a single per-point decoder (the xyz / xyzi vector of float-only
+clouds, or of V5 clouds whose other fields are all adaptive sections), the whole
+chunk is decoded by one `FieldDecoder::decodePoints()` call. The float vector
+decoder then reads varints without per-byte bounds checks while a longest-possible
+point (`fields * kMaxVarintBytes` bytes) is still available, and falls back to the
+checked path for the last points. Adaptive sections are decoded with a store of
+fixed size (2, 4 or 8 bytes) and the same unchecked varint fast path.
 
 ## Benchmarking
 

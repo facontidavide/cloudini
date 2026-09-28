@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <vector>
 
 #include "cloudini_lib/contrib/ankerl/unordered_dense.h"
@@ -164,8 +165,9 @@ void convertCompressedCloudToPointCloud2(const RosPointCloud2& pc_info, std::vec
 }
 
 void convertPointCloud2ToCompressedCloud(
-    const RosPointCloud2& pc_info, const Cloudini::EncodingInfo& encoding_info,
-    std::vector<uint8_t>& compressed_dds_msg) {
+    const RosPointCloud2& pc_info, const Cloudini::EncodingInfo& requested_info,
+    std::vector<uint8_t>& compressed_dds_msg, Cloudini::PointcloudEncoderCache* encoder_cache,
+    bool refine_resolutions) {
   compressed_dds_msg.clear();
   nanocdr::Encoder cdr_encoder(pc_info.cdr_header, compressed_dds_msg);
   writePointCloudHeader(cdr_encoder, pc_info);
@@ -185,7 +187,7 @@ void convertPointCloud2ToCompressedCloud(
     return;
   }
 
-  if (encoding_info.point_step == 0) {
+  if (requested_info.point_step == 0) {
     throw std::runtime_error("convertPointCloud2ToCompressedCloud: point_step cannot be 0");
   }
   // The header repeats width and height: if they disagree with the payload, the
@@ -196,6 +198,12 @@ void convertPointCloud2ToCompressedCloud(
         "convertPointCloud2ToCompressedCloud: width*height*point_step is " + std::to_string(declared_size) +
         " but data has " + std::to_string(pc_info.data.size()) + " bytes");
   }
+  // Integer-valued floats (e.g. intensity) coded at resolution 1: smaller and faster, same error bound.
+  Cloudini::EncodingInfo encoding_info = requested_info;
+  if (refine_resolutions) {
+    Cloudini::RefineResolutionsToData(encoding_info, pc_info.data);
+  }
+
   // Derive point count from actual data size rather than trusting metadata width*height,
   // which could be maliciously large and cause excessive allocation.
   const size_t points_count = pc_info.data.size() / encoding_info.point_step;
@@ -205,7 +213,9 @@ void convertPointCloud2ToCompressedCloud(
 
   Cloudini::BufferView compressed_data_view(
       compressed_dds_msg.data() + prev_size, compressed_dds_msg.size() - prev_size);
-  Cloudini::PointcloudEncoder cloud_encoder(encoding_info);
+  std::optional<Cloudini::PointcloudEncoder> local_encoder;
+  Cloudini::PointcloudEncoder& cloud_encoder =
+      encoder_cache ? encoder_cache->get(encoding_info) : local_encoder.emplace(encoding_info);
   const size_t compressed_size = cloud_encoder.encode(pc_info.data, compressed_data_view, true);
 
   // we can finally write the actual size of the compressed data

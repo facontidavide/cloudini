@@ -68,7 +68,8 @@ inline size_t encodeVarint64(int64_t value, uint8_t* ptr) {
 
 template <typename T>
 int64_t ToInt64(const uint8_t* ptr) {
-  T tmp = *(reinterpret_cast<const T*>(ptr));
+  T tmp;
+  memcpy(&tmp, ptr, sizeof(T));  // ptr may not be aligned for T
   return static_cast<int64_t>(tmp);
 }
 
@@ -145,6 +146,15 @@ inline size_t decodeVarint(const uint8_t* buf, size_t max_size, int64_t& val) {
   // Perform zigzag decoding to retrieve the original signed value.
   val = static_cast<int64_t>((uval >> 1) ^ static_cast<uint64_t>(-(static_cast<int64_t>(uval & 1))));
   return count;
+}
+
+// Longest varint accepted by decodeVarint(): 10 bytes of 7 bits cover 64 bits.
+constexpr size_t kMaxVarintBytes = 10;
+
+/// decodeVarint() for a caller that guarantees at least kMaxVarintBytes readable bytes at `buf`. Once inlined, the
+/// constant bound folds away the checks on the 1- and 2-byte paths; results and errors are the same.
+inline size_t decodeVarintUnchecked(const uint8_t* buf, int64_t& val) {
+  return decodeVarint(buf, kMaxVarintBytes, val);
 }
 
 }  // namespace Cloudini

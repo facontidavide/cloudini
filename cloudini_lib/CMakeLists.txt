@@ -110,6 +110,7 @@ SET(CLOUDINI_SRC
   src/ros_msg_utils.cpp
   src/v4_codec.cpp
   src/v5_codec.cpp
+  src/v6_codec.cpp
 )
 
 if(ament_cmake_FOUND)
