@@ -49,17 +49,6 @@ Measured on one pinned core of an i7-13700H laptop, best of 5 runs.
 If you are a ROS user, you can test the compression ratio and speed yourself,
 running the application `rosbag_benchmark` on any rosbag containing a `sensor_msgs::msg::PointCloud2` topic.
 
-# How to test it yourself
-
-There is a pre-compiled Linux [AppImage](https://appimage.org/) that can be downloaded in the
-[release page](https://github.com/facontidavide/cloudini/releases/latest)
-
-Alternatively, you can test the obtainable compression ratio in your browser here: https://cloudini.netlify.app/
-
-NOTE: your data will **not** be uploaded to the cloud. The application runs 100% inside your browser.
-
-[![cloudini_web.png](cloudini_web.png)](https://cloudini.netlify.app/)
-
 # How it works
 
 The algorithm contains two steps:
@@ -103,6 +92,8 @@ For more information, see the [cloudini_ros/README.md](cloudini_ros/README.md)
 - **cloudini_topic_converter**: a node that subscribes to a compressed `point_cloud_interfaces/CompressedPointCloud2` and publishes a `sensor_msgs/PointCloud2`.
 
 - **cloudini_rosbag_converter**: a command line tool that, given a rosbag (limited to MCAP format), converts all `sensor_msgs/PointCloud2` topics into compressed `point_cloud_interfaces/CompressedPointCloud2` of vice-versa.
+  It does not need a ROS installation: a pre-compiled Linux [AppImage](https://appimage.org/) can be downloaded from the
+  [release page](https://github.com/facontidavide/cloudini/releases/latest).
 
 ## Compiling the WASM module
 
