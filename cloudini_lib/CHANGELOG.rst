@@ -2,6 +2,12 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.4.1 (2026-09-29)
+------------------
+* fix: build with MSVC. The V6 encoder called the GCC/Clang builtin ``__builtin_clzll``;
+  it now uses ``std::countl_zero``. Output is unchanged.
+* ci: build and test the library with MSVC on Windows.
+
 1.4.0 (2026-09-28)
 ------------------
 * feat: V6 wire format, now the default (`#150 <https://github.com/facontidavide/cloudini/issues/150>`_)

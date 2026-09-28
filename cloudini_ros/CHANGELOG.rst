@@ -2,6 +2,10 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.4.1 (2026-09-29)
+------------------
+* Follows cloudini_lib 1.4.1 (MSVC build fix); no changes in this package.
+
 1.4.0 (2026-09-28)
 ------------------
 * feat: V6 wire format, now the default (`#150 <https://github.com/facontidavide/cloudini/issues/150>`_)

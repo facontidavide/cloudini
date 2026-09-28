@@ -9,7 +9,7 @@
 #   curl -sL https://github.com/facontidavide/cloudini/archive/refs/tags/${version}.tar.gz | sha256sum
 
 context:
-  version: "1.4.0"
+  version: "1.4.1"
 
 package:
   name: cloudini

@@ -3,8 +3,10 @@ name: Ubuntu Build & Test
 on:
   push:
     branches: [ main ]
+    paths-ignore: ['**.md', '**.svg', '**.png', 'docs/**', 'LICENSE']
   pull_request:
     branches: [ main ]
+    paths-ignore: ['**.md', '**.svg', '**.png', 'docs/**', 'LICENSE']
   workflow_dispatch:
 
 concurrency:
@@ -14,6 +16,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # CMake reads these for every configure below, including the install matrix.
+    env:
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
 
     steps:
       - uses: actions/checkout@v7
@@ -24,15 +30,9 @@ jobs:
           packages: git cmake liblz4-dev libzstd-dev libgtest-dev
           version: 1.0
 
-      - name: Cache CMake files
-        uses: actions/cache@v6
+      - uses: hendrikmuhs/ccache-action@v1.2
         with:
-          path: |
-            ~/.cache/cmake
-            build
-          key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-cmake-
+          key: ${{ github.workflow }}
 
       - name: Configure
         run: |
@@ -69,7 +69,7 @@ jobs:
                 -DCLOUDINI_BUILD_TOOLS=OFF -DCLOUDINI_BUILD_BENCHMARKS=OFF \
                 -DBUILD_TESTING=OFF -DCMAKE_DISABLE_FIND_PACKAGE_PCL=TRUE \
                 -DCMAKE_INSTALL_PREFIX="$build_dir/prefix"
-              cmake --build "$build_dir" --parallel 2
+              cmake --build "$build_dir" --parallel "$(nproc)"
               cmake --install "$build_dir"
               mv "$build_dir/prefix" "$build_dir/relocated"
               cmake -S cloudini_lib/test/install -B "$build_dir/consumer" \
