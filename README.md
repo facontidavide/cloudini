@@ -31,31 +31,27 @@ they include some "padding" in the message that, in extreme cases, may reach up 
 
 (Yes, you heard correctly, almost 50% of that 10 Gb rosbag is useless padding).
 
-But, in general, you may expect considerably **better compression and faster encoding/decoding**  than ZSTD or LZ4 alone.
+But, in general, you may expect considerably **better compression**, at a similar or higher speed, than ZSTD or LZ4 alone.
 
-These are some examples using real-world data from LiDARs.
+These are measurements on real-world clouds from 13 sensors (public datasets and the samples in this repository), with the 1.4.0 defaults:
+V6 at 1 mm resolution, refined to the data, followed by ZSTD. "ZSTD alone" is ZSTD level 1, the level Cloudini uses, on the same raw cloud.
 
-Below, you can see the compression ratio (normalized to original pointcloud size)
+![Compressed size per sensor](compression_ratio.svg)
 
-![compression_ratio.png](compression_ratio.png)
+Cloudini adds little or no time on top of ZSTD, because ZSTD has much less data left to compress:
+encoding is 1.4–2× faster than ZSTD alone on the Velodyne clouds, the PCD sample and the stereo cloud, and 0.87–1.05× its speed on Ouster and Hesai.
+Decoding runs at 0.67× (Hesai) to 1.42× (KITTI) the speed of ZSTD alone.
 
-Interestingly, Cloudini has a negative overhead, i.e. Cloudini + ZSTD is **faster** than ZSTD alone.
+![Encode and decode throughput per sensor](compression_speed.svg)
 
-![compression_time.png](compression_time.png)
+Measured on one pinned core of an i7-13700H laptop, best of 5 runs.
 
-If you are a ROS user, you can test the compression ratio and speed yourself,
-running the application `rosbag_benchmark` on any rosbag containing a `sensor_msgs::msg::PointCloud2` topic.
+You can measure the compression ratio and speed on your own data with `mcap_codec_benchmark`, built with `cloudini_lib`
+(no ROS needed), on any MCAP file containing `sensor_msgs/msg/PointCloud2` topics:
 
-# How to test it yourself
-
-There is a pre-compiled Linux [AppImage](https://appimage.org/) that can be downloaded in the
-[release page](https://github.com/facontidavide/cloudini/releases/latest)
-
-Alternatively, you can test the obtainable compression ratio in your browser here: https://cloudini.netlify.app/
-
-NOTE: your data will **not** be uploaded to the cloud. The application runs 100% inside your browser.
-
-[![cloudini_web.png](cloudini_web.png)](https://cloudini.netlify.app/)
+```
+./build/release/tools/mcap_codec_benchmark my_bag.mcap --mode V6 --zstd
+```
 
 # How it works
 
@@ -97,29 +93,22 @@ For more information, see the [cloudini_ros/README.md](cloudini_ros/README.md)
 
 - **point_cloud_transport plugins**: see [point_cloud_transport plugins](https://github.com/ros-perception/point_cloud_transport_plugins) for reference about how they are used.
 
-- **cloudini_topic_converter**: a node that subscribes to a compressed `point_cloud_interfaces/CompressedPointCloud2` and publishes a `sensor_msgs/PointCloud2`.
+- **cloudini_topic_converter**: a node that converts a `sensor_msgs/PointCloud2` topic into a compressed `point_cloud_interfaces/CompressedPointCloud2` (`compressing:=true`), or vice-versa (`compressing:=false`).
 
-- **cloudini_rosbag_converter**: a command line tool that, given a rosbag (limited to MCAP format), converts all `sensor_msgs/PointCloud2` topics into compressed `point_cloud_interfaces/CompressedPointCloud2` of vice-versa.
+- **cloudini_rosbag_converter**: a command line tool that, given a rosbag (limited to MCAP format), converts all `sensor_msgs/PointCloud2` topics into compressed `point_cloud_interfaces/CompressedPointCloud2` or vice-versa.
+  It does not need a ROS installation: a pre-compiled Linux [AppImage](https://appimage.org/) can be downloaded from the
+  [release page](https://github.com/facontidavide/cloudini/releases/latest).
 
 ## Compiling the WASM module
 
-Cloduni in your web browser! The following instructions assume that you have
+The WebAssembly module is used by the [Foxglove extension](cloudini_foxglove/README.md) and the
+[Python decoder](cloudini_py/README.md). The following instructions assume that you have
 [Emscripten installed](https://emscripten.org/docs/getting_started/downloads.html).
 
 ```
 emcmake cmake -B build/wasm -S ./cloudini_lib -DCLOUDINI_BUILD_TOOLS=OFF
 cd build/wasm
 emmake make
-```
-
-To test the **cloudini_web** move back to the `cloudini`main folder and do:
-
-```
-cp -r cloudini_web build/web_deploy
-cp build/wasm/cloudini_wasm.js build/web_deploy/public/
-cd build/web_deploy
-npm install
-npm run dev
 ```
 
 # Frequently Asked Questions
@@ -158,3 +147,10 @@ Compared with the Draco sequential mode, Cloudini achieves approximately the sam
 
 No, that information is stored in the header of the compressed data, and the decoder will automatically select the right
 decompression algorithm.
+
+### Can older versions of Cloudini read the data I compress now?
+
+Since 1.4.0, the encoders write the V6 format by default, and decoders from 1.3.1 and earlier cannot read it
+(they report an unsupported encoding version). If some of your readers are still on those versions, write V5 instead:
+`--encoding-version 5` (rosbag converter), `encoding_version:=5` (topic converter), `cloudini_encoding_version: 5`
+(point_cloud_transport plugin), or `EncodingInfo::version = 5` in C++. Newer decoders read every version.
