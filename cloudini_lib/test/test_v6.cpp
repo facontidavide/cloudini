@@ -251,11 +251,13 @@ TEST(V6, SmallCloudsAndMultiChunk) {
 
 TEST(V6, OtherLayoutsFallBackOrRoundTrip) {
   // x, y, z only; packed 26-byte point with a FLOAT64 timestamp; no resolution (not V6: falls back)
+#pragma pack(push, 1)
   struct Packed {
     float x, y, z, intensity;
     uint16_t ring;
     double timestamp;
-  } __attribute__((packed));
+  };
+#pragma pack(pop)
   static_assert(sizeof(Packed) == 26);
   std::vector<Packed> points(5000);
   for (size_t i = 0; i < points.size(); ++i) {
