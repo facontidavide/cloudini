@@ -42,22 +42,24 @@ void CloudiniPublisher::declareParameters(const std::string& base_topic) {
   encoding_version_descriptor.description =
       "Cloudini wire version: 5 (default, read by every released decoder) or 6 (smaller, needs a V6-capable "
       "decoder)";
-  encoding_version_descriptor.set__integer_range(
-      {rcl_interfaces::msg::IntegerRange().set__from_value(4).set__to_value(Cloudini::kMaxEncodingVersion)});
   declareParam<int64_t>(encoding_version_descriptor.name, encoding_version_, encoding_version_descriptor);
-  // declareParam drops the descriptor, so the range above is not enforced: check it here
-  const auto valid_version = [](int64_t v) { return v >= 4 && v <= Cloudini::kMaxEncodingVersion; };
+  // declareParam drops the descriptor, so a range in it would not be enforced: check the value here
+  const auto valid_version = [](int64_t v) {
+    return v >= Cloudini::kMinEncodingVersion && v <= Cloudini::kMaxEncodingVersion;
+  };
+  const std::string version_range =
+      std::to_string(Cloudini::kMinEncodingVersion) + " to " + std::to_string(Cloudini::kMaxEncodingVersion);
   int64_t encoding_version = encoding_version_;
   getParam<int64_t>(encoding_version_descriptor.name, encoding_version);
   if (valid_version(encoding_version)) {
     encoding_version_ = encoding_version;
   } else {
     RCLCPP_ERROR(
-        getLogger(), "cloudini_encoding_version must be 4, 5 or 6 (got %ld), using %ld",
+        getLogger(), "cloudini_encoding_version must be %s (got %ld), using %ld", version_range.c_str(),
         static_cast<long>(encoding_version), static_cast<long>(encoding_version_));
   }
 
-  auto param_change_callback = [this, valid_version](const std::vector<rclcpp::Parameter>& parameters) {
+  auto param_change_callback = [this, valid_version, version_range](const std::vector<rclcpp::Parameter>& parameters) {
     auto result = rcl_interfaces::msg::SetParametersResult();
     result.successful = true;
     for (auto parameter : parameters) {
@@ -66,7 +68,7 @@ void CloudiniPublisher::declareParameters(const std::string& base_topic) {
       } else if (parameter.get_name().find("cloudini_encoding_version") != std::string::npos) {
         if (!valid_version(parameter.as_int())) {
           result.successful = false;
-          result.reason = "cloudini_encoding_version must be 4, 5 or 6";
+          result.reason = "cloudini_encoding_version must be " + version_range;
           return result;
         }
         encoding_version_ = parameter.as_int();
@@ -95,15 +97,8 @@ CloudiniPublisher::TypedEncodeResult CloudiniPublisher::encodeTyped(const sensor
   result.row_step = raw.row_step;
   result.is_dense = raw.is_dense;
 
-  // reserve memory for the compressed data
-  result.compressed_data.resize(raw.data.size());
-
-  // prepare buffer for compression
-  Cloudini::ConstBufferView input(raw.data.data(), raw.data.size());
-  auto new_size = encoder.encode(input, result.compressed_data);
-
-  // resize the compressed data to the actual size
-  result.compressed_data.resize(new_size);
+  // encode() sizes compressed_data to the bytes it writes
+  encoder.encode(Cloudini::ConstBufferView(raw.data.data(), raw.data.size()), result.compressed_data);
   return result;
 }
 

@@ -481,9 +481,7 @@ int main(int argc, char** argv) {
       if (isVizMode(static_cast<Mode>(m))) {
         cloudini_ros::applyVizLossyPreprocessing(pc_info);
         info = cloudini_ros::toEncodingInfo(pc_info);
-        info.encoding_opt = Cloudini::EncodingOptions::LOSSY;
-        info.compression_opt = show_zstd ? Cloudini::CompressionOption::ZSTD : Cloudini::CompressionOption::NONE;
-        info.version = modeVersion(static_cast<Mode>(m));
+        configureMode(info, static_cast<Mode>(m), show_zstd);
       }
       const auto t_pre1 = Clock::now();
       st.per_mode[m].enc_ns += elapsedNs(t_pre0, t_pre1);
@@ -607,7 +605,8 @@ int main(int argc, char** argv) {
       }
     }
     if (profile_sleep_ms > 0) {
-      std::cout << "Sleeping " << profile_sleep_ms << " ms before decode replay" << " so perf can attach...\n"
+      std::cout << "Sleeping " << profile_sleep_ms << " ms before decode replay"
+                << " so perf can attach...\n"
                 << std::flush;
       std::this_thread::sleep_for(std::chrono::milliseconds(profile_sleep_ms));
     }

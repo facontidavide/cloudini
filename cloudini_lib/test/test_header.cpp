@@ -709,3 +709,66 @@ TEST(Cloudini, V5RleRunLengthOverflowIsRejected) {
     }
   }
 }
+
+// Corrupted deltas must wrap around, not overflow a signed integer (undefined behaviour; caught by
+// UBSan builds): V4 message, x/y/z (FloatN), t (UINT32) and intensity (FLOAT32 lossy), two points.
+TEST(Cloudini, V4DeltaOverflowWrapsAround) {
+  struct Point {
+    float x, y, z;
+    uint32_t t;
+    float intensity;
+  };
+  std::vector<Point> points(2, Point{0, 0, 0, 0, 0});
+  Cloudini::EncodingInfo info;
+  info.width = 2;
+  info.height = 1;
+  info.point_step = sizeof(Point);
+  info.version = 4;
+  info.encoding_opt = Cloudini::EncodingOptions::LOSSY;
+  info.compression_opt = Cloudini::CompressionOption::NONE;
+  info.fields.resize(5);
+  const char* names[5] = {"x", "y", "z", "t", "intensity"};
+  for (size_t k = 0; k < 5; ++k) {
+    info.fields[k].name = names[k];
+    info.fields[k].offset = uint32_t(4 * k);
+    info.fields[k].type = k == 3 ? Cloudini::FieldType::UINT32 : Cloudini::FieldType::FLOAT32;
+    if (k != 3) {
+      info.fields[k].resolution = k < 3 ? 0.001F : 1.0F;
+    }
+  }
+  std::vector<uint8_t> msg;
+  Cloudini::PointcloudEncoder(info).encode(
+      Cloudini::ConstBufferView(reinterpret_cast<const uint8_t*>(points.data()), points.size() * sizeof(Point)), msg);
+  Cloudini::ConstBufferView view(msg.data(), msg.size());
+  const auto header = Cloudini::DecodeHeader(view);
+  const size_t chunk_size_pos = msg.size() - view.size();
+  // all-zero points: one 1-byte varint (zig-zag + 1 = 1) per field and point
+  ASSERT_EQ(msg.size(), chunk_size_pos + sizeof(uint32_t) + 10);
+
+  // point 0: x += 2^31 - 1, t and intensity += INT64_MAX; point 1: x, t and intensity += 1
+  const std::vector<uint8_t> max31 = {0xFF, 0xFF, 0xFF, 0xFF, 0x0F};
+  const std::vector<uint8_t> max63 = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01};
+  std::vector<uint8_t> stage1;
+  stage1.insert(stage1.end(), max31.begin(), max31.end());
+  stage1.push_back(1);
+  stage1.push_back(1);
+  stage1.insert(stage1.end(), max63.begin(), max63.end());
+  stage1.insert(stage1.end(), max63.begin(), max63.end());
+  for (uint8_t b : {3, 1, 1, 3, 3}) {
+    stage1.push_back(b);
+  }
+  msg.resize(chunk_size_pos);
+  const uint32_t chunk_size = uint32_t(stage1.size());
+  msg.insert(
+      msg.end(), reinterpret_cast<const uint8_t*>(&chunk_size),
+      reinterpret_cast<const uint8_t*>(&chunk_size) + sizeof(chunk_size));
+  msg.insert(msg.end(), stage1.begin(), stage1.end());
+
+  Cloudini::ConstBufferView payload(msg.data() + chunk_size_pos, msg.size() - chunk_size_pos);
+  std::vector<uint8_t> out;
+  ASSERT_NO_THROW(Cloudini::PointcloudDecoder().decode(header, payload, out));
+  ASSERT_EQ(out.size(), 2 * sizeof(Point));
+  Point p1;
+  std::memcpy(&p1, out.data() + sizeof(Point), sizeof(Point));
+  EXPECT_EQ(p1.t, 0u);  // uint32 of INT64_MAX + 1 (wrapped): 0
+}

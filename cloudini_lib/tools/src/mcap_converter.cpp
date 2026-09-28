@@ -139,13 +139,13 @@ mcap::Compression toMcapCompression(Cloudini::CompressionOption compression) {
   }
 }
 //------------------------------------------------------
-void McapConverter::setEncodingVersion(uint8_t version) {
-  if (version < 4 || version > Cloudini::kMaxEncodingVersion) {
+void McapConverter::setEncodingVersion(int version) {
+  if (version < Cloudini::kMinEncodingVersion || version > Cloudini::kMaxEncodingVersion) {
     throw std::runtime_error(
-        "Unsupported encoding version " + std::to_string(version) + " (4 to " +
-        std::to_string(Cloudini::kMaxEncodingVersion) + ")");
+        "Unsupported encoding version " + std::to_string(version) + " (" +
+        std::to_string(Cloudini::kMinEncodingVersion) + " to " + std::to_string(Cloudini::kMaxEncodingVersion) + ")");
   }
-  encoding_version_ = version;
+  encoding_version_ = static_cast<uint8_t>(version);
 }
 
 //------------------------------------------------------

@@ -332,12 +332,7 @@ int main(int argc, char** argv) {
         std::cout << "\nViz-lossy preprocessing: drop NaN, voxel-dedupe at " << resolution
                   << " m, quantize FLOAT64 to 1us\n";
       }
-      const int encoding_version = parse_result["encoding-version"].as<int>();
-      if (encoding_version < 4 || encoding_version > Cloudini::kMaxEncodingVersion) {
-        std::cerr << "Error: --encoding-version must be 4, 5 or 6." << std::endl;
-        return 1;
-      }
-      converter.setEncodingVersion(static_cast<uint8_t>(encoding_version));
+      converter.setEncodingVersion(parse_result["encoding-version"].as<int>());
       converter.encodePointClouds(output_filename, resolution, mcap_writer_compression, viz_lossy);
     }
     if (decode) {

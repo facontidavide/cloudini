@@ -118,9 +118,10 @@ CloudiniPointcloudConverter::CloudiniPointcloudConverter(const rclcpp::NodeOptio
   compressing_ = this->get_parameter("compressing").as_bool();
   resolution_ = this->get_parameter("resolution").as_double();
   const int64_t encoding_version = this->get_parameter("encoding_version").as_int();
-  if (encoding_version < 4 || encoding_version > Cloudini::kMaxEncodingVersion) {
+  if (encoding_version < Cloudini::kMinEncodingVersion || encoding_version > Cloudini::kMaxEncodingVersion) {
     RCLCPP_ERROR(
-        this->get_logger(), "encoding_version must be 4, 5 or 6 (got %ld)", static_cast<long>(encoding_version));
+        this->get_logger(), "encoding_version must be %d to %d (got %ld)", Cloudini::kMinEncodingVersion,
+        Cloudini::kMaxEncodingVersion, static_cast<long>(encoding_version));
     throw std::runtime_error("Unsupported encoding_version");
   }
   encoding_version_ = static_cast<uint8_t>(encoding_version);
