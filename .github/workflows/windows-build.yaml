@@ -1,0 +1,39 @@
+name: Windows Build & Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install GTest
+        run: vcpkg install gtest:x64-windows
+
+      # Tools and benchmarks pull extra deps; the library and its tests are what
+      # MSVC consumers (Conan, conda win-64) compile.
+      - name: Configure
+        run: >
+          cmake -S cloudini_lib -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=ON -DCLOUDINI_BUILD_TOOLS=OFF -DCLOUDINI_BUILD_BENCHMARKS=OFF
+          -DCMAKE_DISABLE_FIND_PACKAGE_PCL=TRUE
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
