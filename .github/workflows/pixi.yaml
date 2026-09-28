@@ -3,8 +3,10 @@ name: Pixi Package
 on:
   push:
     branches: [ main ]
+    paths-ignore: ['**.md', '**.svg', '**.png', 'docs/**', 'LICENSE']
   pull_request:
     branches: [ main ]
+    paths-ignore: ['**.md', '**.svg', '**.png', 'docs/**', 'LICENSE']
   workflow_dispatch:
 
 permissions:

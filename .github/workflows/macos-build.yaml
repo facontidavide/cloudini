@@ -3,8 +3,10 @@ name: macOS Build & Test
 on:
   push:
     branches: [ main ]
+    paths-ignore: ['**.md', '**.svg', '**.png', 'docs/**', 'LICENSE']
   pull_request:
     branches: [ main ]
+    paths-ignore: ['**.md', '**.svg', '**.png', 'docs/**', 'LICENSE']
   workflow_dispatch:
 
 concurrency:
@@ -14,9 +16,18 @@ concurrency:
 jobs:
   build:
     runs-on: macos-latest
+    env:
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_INSTALL_CLEANUP: 1
 
     steps:
       - uses: actions/checkout@v7
+
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ github.workflow }}
 
       - name: Install dependencies
         run: brew install ninja googletest

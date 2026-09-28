@@ -3,8 +3,10 @@ name: ROS2 Lyrical
 on:
   push:
     branches: [ main ]
+    paths-ignore: ['**.md', '**.svg', '**.png', 'docs/**', 'LICENSE']
   pull_request:
     branches: [ main ]
+    paths-ignore: ['**.md', '**.svg', '**.png', 'docs/**', 'LICENSE']
   workflow_dispatch:
 
 concurrency:
@@ -14,21 +16,18 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # The setup-ros-docker image is setup-ros pre-applied: no setup-ros step needed.
     container:
       image: rostooling/setup-ros-docker:ubuntu-resolute-ros-lyrical-ros-base-latest
     steps:
-      - uses: ros-tooling/setup-ros@v0.7
-        with:
-          required-ros-distributions: lyrical
-
       # The Docker image can ship stale packages. Upgrade ALL installed
       # ros-lyrical-* packages atomically to match the buildfarm and catch
       # breakages from upstream dependency changes (e.g. pcl_conversions
       # switching cmake export style).
       - name: Upgrade all ROS Lyrical packages
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --only-upgrade $(dpkg -l 'ros-lyrical-*' | awk '/^ii/{print $2}' | tr '\n' ' ')
+          apt-get update
+          apt-get install -y --only-upgrade $(dpkg -l 'ros-lyrical-*' | awk '/^ii/{print $2}' | tr '\n' ' ')
 
       - uses: ros-tooling/action-ros-ci@v0.4
         with:

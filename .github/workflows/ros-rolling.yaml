@@ -3,8 +3,10 @@ name: ROS2 Rolling
 on:
   push:
     branches: [ main ]
+    paths-ignore: ['**.md', '**.svg', '**.png', 'docs/**', 'LICENSE']
   pull_request:
     branches: [ main ]
+    paths-ignore: ['**.md', '**.svg', '**.png', 'docs/**', 'LICENSE']
   workflow_dispatch:
 
 concurrency:
@@ -14,6 +16,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # The setup-ros-docker image is setup-ros pre-applied: no setup-ros step needed.
     container:
       image: rostooling/setup-ros-docker:ubuntu-noble-ros-rolling-ros-base-latest
     steps:
@@ -22,17 +25,13 @@ jobs:
       # .repos file passed to vcs-repo-file-url below is reachable.
       - uses: actions/checkout@v7
 
-      - uses: ros-tooling/setup-ros@v0.7
-        with:
-          required-ros-distributions: rolling
-
       # Rolling is a rolling release - the Docker base image can have a stale set of
       # packages. Upgrading only a subset (e.g. rclcpp) breaks rcl/rmw ABI. Upgrade
       # ALL installed ros-rolling-* packages atomically to restore consistency.
       - name: Upgrade all ROS Rolling packages
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --only-upgrade $(dpkg -l 'ros-rolling-*' | awk '/^ii/{print $2}' | tr '\n' ' ')
+          apt-get update
+          apt-get install -y --only-upgrade $(dpkg -l 'ros-rolling-*' | awk '/^ii/{print $2}' | tr '\n' ' ')
 
       # point_cloud_interfaces was dropped from the Rolling apt sync circa 2026-04-25.
       # Build it from source via vcstool until it reappears in the binary repo.

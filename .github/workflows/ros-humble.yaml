@@ -3,8 +3,10 @@ name: ROS2 Humble
 on:
   push:
     branches: [ main ]
+    paths-ignore: ['**.md', '**.svg', '**.png', 'docs/**', 'LICENSE']
   pull_request:
     branches: [ main ]
+    paths-ignore: ['**.md', '**.svg', '**.png', 'docs/**', 'LICENSE']
   workflow_dispatch:
 
 concurrency:
@@ -14,13 +16,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # The setup-ros-docker image is setup-ros pre-applied: no setup-ros step needed.
     container:
       image: rostooling/setup-ros-docker:ubuntu-jammy-ros-humble-ros-base-latest
     steps:
-      - uses: ros-tooling/setup-ros@v0.7
-        with:
-          required-ros-distributions: humble
-
       - uses: ros-tooling/action-ros-ci@v0.4
         with:
           package-name: |
