@@ -43,6 +43,13 @@ std::unique_ptr<FieldDecoder> CreateCompatibleDecoder(const EncodingInfo& info, 
 
 void ResetEncoders(std::vector<std::unique_ptr<FieldEncoder>>& encoders);
 void ResetDecoders(std::vector<std::unique_ptr<FieldDecoder>>& decoders);
+
+// Decodes `count` points of a chunk whose per-point fields are interleaved (V4, V5). With several decoders,
+// the points are decoded with FieldDecoder::decodeUnchecked() while the input holds a longest possible
+// point, and the rest with the checked decode(). `output` must hold count * point_step bytes.
+void DecodePoints(
+    std::vector<std::unique_ptr<FieldDecoder>>& decoders, ConstBufferView& input, uint8_t* output, size_t point_step,
+    size_t count);
 size_t FlushEncoders(std::vector<std::unique_ptr<FieldEncoder>>& encoders, BufferView& output);
 
 // Worst-case size of CompressChunk() output for `input_size` bytes of input.
