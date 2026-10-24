@@ -63,7 +63,8 @@ Key components:
 - `convertCompressedCloudToPointCloud2()`: Decompress + convert
 - `toEncodingInfo()`: Extract encoding metadata from point cloud
 
-**PCL Integration** (`cloudini_lib/include/cloudini_lib/pcl_conversion.hpp`):
+**PCL Integration** (`cloudini_lib/include/cloudini_lib/pcl_conversion.hpp`, header-only, so
+`cloudini_lib` does not depend on PCL; code including it must find and link PCL `common` and `io`):
 - `PCLPointCloudEncode()`: Encode `pcl::PCLPointCloud2` to Cloudini format
 - `PCLPointCloudDecode()`: Decode Cloudini format to `pcl::PCLPointCloud2`
 - Direct conversion without intermediate ROS message types
@@ -645,7 +646,8 @@ include/cloudini_lib/
 ├── field_encoder.hpp         # Field-specific encoder implementations
 ├── field_decoder.hpp         # Field-specific decoder implementations
 ├── intrinsics.hpp            # SIMD intrinsics wrappers (Vector4f, Vector4i)
-├── pcl_conversion.hpp        # PCL ↔ Cloudini conversion
+├── pcl_conversion.hpp        # PCL ↔ Cloudini conversion (header-only)
+├── pcl_conversion_impl.hpp   # Its implementation
 └── ros_msg_utils.hpp         # ROS2 message parsing/conversion utilities
 
 src/
@@ -657,7 +659,6 @@ src/
 ├── v6_codec.cpp              # V6 residual streams (see docs/v6_format.html)
 ├── field_encoder.cpp         # Encoder implementations (FloatN, Int, XOR)
 ├── field_decoder.cpp         # Decoder implementations
-├── pcl_conversion.cpp        # PCL integration
 ├── ros_msg_utils.cpp         # ROS message utilities
 └── wasm_functions.cpp        # WebAssembly exports (cldn_*)
 

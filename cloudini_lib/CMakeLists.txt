@@ -32,7 +32,7 @@ message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 
 option(CLOUDINI_BUILD_TOOLS "Build Tools" ${CLOUDINI_IS_TOP_LEVEL})
 option(CLOUDINI_FORCE_VENDORED_DEPS "Force vendored dependencies" ON)
-option(CLOUDINI_WITH_PCL "Build the PCL conversions when PCL is found" ${CLOUDINI_IS_TOP_LEVEL})
+option(CLOUDINI_WITH_PCL "Build the tests, tools and benchmarks of the (header-only) PCL conversions when PCL is found" ${CLOUDINI_IS_TOP_LEVEL})
 option(CLOUDINI_INSTALL "Generate install rules" ${CLOUDINI_IS_TOP_LEVEL})
 
 
@@ -79,10 +79,11 @@ if(CLOUDINI_WITH_PCL)
   find_package(PCL COMPONENTS common io QUIET)
 endif()
 
+# The PCL conversions (cloudini_lib/pcl_conversion.hpp) are header-only, so the
+# library itself does not depend on PCL: only its tests, tools and benchmarks.
 if(PCL_FOUND)
   message(STATUS "PCL found in system")
   add_definitions(${PCL_DEFINITIONS})
-  set(PCL_SRC src/pcl_conversion.cpp)
 else()
   message(STATUS "PCL NOT found")
 endif()
@@ -117,13 +118,11 @@ if(ament_cmake_FOUND)
   # ROS/ament always builds shared so the plugin pluginlib can dlopen it.
   add_library(cloudini_lib SHARED
     ${CLOUDINI_SRC}
-    ${PCL_SRC}
   )
 else()
   # Standalone builds honor BUILD_SHARED_LIBS (static by default).
   add_library(cloudini_lib
     ${CLOUDINI_SRC}
-    ${PCL_SRC}
   )
 endif()
 
@@ -171,8 +170,6 @@ target_link_libraries(cloudini_lib
     $<BUILD_INTERFACE:${CLOUDINI_ZSTD_TARGET}>
   PUBLIC
     Threads::Threads
-    ${PCL_COMMON_LIBRARIES}
-    ${PCL_IO_LIBRARIES}
 )
 
 if(NOT EMSCRIPTEN)
@@ -262,7 +259,7 @@ if(CLOUDINI_INSTALL)
 
   if(ament_cmake_FOUND)
     ament_export_targets(cloudini_libTargets HAS_LIBRARY_TARGET)
-    ament_export_dependencies(PCL Threads)
+    ament_export_dependencies(Threads)
     ament_package()
   else()
     # Standalone (non-ament) install: generate a CMake package config so downstream
@@ -294,10 +291,6 @@ if(CLOUDINI_INSTALL)
       NAMESPACE cloudini::
       DESTINATION lib/cmake/cloudini_lib)
 
-    set(CLOUDINI_HAS_PCL 0)
-    if(PCL_FOUND)
-      set(CLOUDINI_HAS_PCL 1)
-    endif()
 
     configure_package_config_file(
       ${CMAKE_CURRENT_SOURCE_DIR}/cmake/cloudini_libConfig.cmake.in
