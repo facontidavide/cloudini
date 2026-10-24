@@ -135,6 +135,9 @@ target_compile_features(cloudini_lib PUBLIC cxx_std_20)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   target_compile_options(cloudini_lib PRIVATE -Wall -Wextra)
+  # The codec runs much faster with -O3 than with the -O2 of RelWithDebInfo
+  # (the default of ROS/colcon builds) or of distribution packages:
+  target_compile_options(cloudini_lib PRIVATE $<$<NOT:$<CONFIG:Debug>>:-O3>)
 endif()
 
 target_include_directories(cloudini_lib
