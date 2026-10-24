@@ -39,6 +39,21 @@ class FieldEncoder {
    */
   virtual size_t encode(const ConstBufferView& point_view, BufferView& output) = 0;
 
+  /**
+   * @brief Same as calling encode() for `count` consecutive points, which encoders can do faster.
+   *
+   * @param points Pointer to the first point.
+   * @param point_step Bytes from one point to the next.
+   * @return The number of bytes written to the output buffer.
+   */
+  virtual size_t encodePoints(const uint8_t* points, size_t point_step, size_t count, BufferView& output) {
+    size_t written = 0;
+    for (size_t i = 0; i < count; ++i) {
+      written += encode(ConstBufferView(points + i * point_step, point_step), output);
+    }
+    return written;
+  }
+
   virtual void reset() = 0;
 
   // Flush any remaining buffered data. Default implementation does nothing.
@@ -59,9 +74,47 @@ class FieldEncoderCopy : public FieldEncoder {
     return field_size_;
   }
 
+  // One copy when the values are contiguous (a single-field cloud), a strided one with a compile-time
+  // size otherwise.
+  size_t encodePoints(const uint8_t* points, size_t point_step, size_t count, BufferView& output) override {
+    const uint8_t* src = points + offset_;
+    uint8_t* dst = output.data();
+    if (point_step == field_size_) {
+      memcpy(dst, src, count * field_size_);
+    } else {
+      switch (field_size_) {
+        case 1:
+          copyStrided<1>(src, dst, point_step, count);
+          break;
+        case 2:
+          copyStrided<2>(src, dst, point_step, count);
+          break;
+        case 4:
+          copyStrided<4>(src, dst, point_step, count);
+          break;
+        case 8:
+          copyStrided<8>(src, dst, point_step, count);
+          break;
+        default:
+          for (size_t i = 0; i < count; ++i) {
+            memcpy(dst + i * field_size_, src + i * point_step, field_size_);
+          }
+      }
+    }
+    output.trim_front(count * field_size_);
+    return count * field_size_;
+  }
+
   void reset() override {}
 
  private:
+  template <size_t N>
+  static void copyStrided(const uint8_t* src, uint8_t* dst, size_t point_step, size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+      memcpy(dst + i * N, src + i * point_step, N);
+    }
+  }
+
   size_t offset_;
   size_t field_size_;
 };
@@ -106,6 +159,15 @@ class FieldEncoderFloat_Lossy : public FieldEncoder {
   }
 
   size_t encode(const ConstBufferView& point_view, BufferView& output) override;
+
+  // Same as encode() once per point, without a virtual call per point.
+  size_t encodePoints(const uint8_t* points, size_t point_step, size_t count, BufferView& output) override {
+    size_t written = 0;
+    for (size_t i = 0; i < count; ++i) {
+      written += FieldEncoderFloat_Lossy::encode(ConstBufferView(points + i * point_step, point_step), output);
+    }
+    return written;
+  }
 
   void reset() override {
     prev_value_ = 0.0;
