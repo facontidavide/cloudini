@@ -99,6 +99,41 @@ class FieldDecoderCopy : public FieldDecoder {
     input.trim_front(field_size_);
   }
 
+  // Same result as decode() once per point, as one copy when the values are contiguous (a single-field
+  // cloud), or a strided one with a compile-time size otherwise.
+  void decodePoints(ConstBufferView& input, uint8_t* output, size_t point_step, size_t count) override {
+    if (input.size() / field_size_ < count) {
+      throw std::runtime_error("Truncated encoded data: not enough bytes for a complete point");
+    }
+    if (offset_ != kDecodeButSkipStore) {
+      const uint8_t* src = input.data();
+      uint8_t* dst = output + offset_;
+      if (point_step == field_size_) {
+        memcpy(dst, src, count * field_size_);
+      } else {
+        switch (field_size_) {
+          case 1:
+            copyStrided<1>(src, dst, point_step, count);
+            break;
+          case 2:
+            copyStrided<2>(src, dst, point_step, count);
+            break;
+          case 4:
+            copyStrided<4>(src, dst, point_step, count);
+            break;
+          case 8:
+            copyStrided<8>(src, dst, point_step, count);
+            break;
+          default:
+            for (size_t i = 0; i < count; ++i) {
+              memcpy(dst + i * point_step, src + i * field_size_, field_size_);
+            }
+        }
+      }
+    }
+    input.trim_front(count * field_size_);
+  }
+
   void reset() override {}
 
   size_t maxInputBytes() const override {
@@ -113,6 +148,13 @@ class FieldDecoderCopy : public FieldDecoder {
   }
 
  private:
+  template <size_t N>
+  static void copyStrided(const uint8_t* src, uint8_t* dst, size_t point_step, size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+      memcpy(dst + i * point_step, src + i * N, N);
+    }
+  }
+
   size_t offset_ = 0;
   size_t field_size_ = 0;
 };
