@@ -5,10 +5,6 @@ include(CMakeFindDependencyMacro)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_dependency(Threads)
 
-# PCL only leaks into the interface when cloudini_lib was built with PCL support.
-if(@CLOUDINI_HAS_PCL@)
-  find_dependency(PCL COMPONENTS common io)
-endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/cloudini_libTargets.cmake")
 
