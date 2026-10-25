@@ -14,14 +14,12 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <build_depend>libpcl-all-dev</build_depend>
-  <build_export_depend>libpcl-all-dev</build_export_depend>
-  <exec_depend>libpcl-common</exec_depend>
-  <exec_depend>libpcl-io</exec_depend>
   <build_depend>libzstd-dev</build_depend>
   <build_depend>lz4</build_depend>
 
   <test_depend>ament_cmake_gtest</test_depend>
+  <!-- The PCL conversions are header-only: PCL is only needed by their tests -->
+  <test_depend>libpcl-all-dev</test_depend>
 
   <export>
       <build_type >ament_cmake</build_type>

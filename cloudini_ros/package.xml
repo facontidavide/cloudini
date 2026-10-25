@@ -27,6 +27,10 @@
   <depend>rclcpp_components</depend>
   <depend>rosbag2_cpp</depend>
   <depend>pcl_conversions</depend>
+  <build_depend>libpcl-all-dev</build_depend>
+  <build_export_depend>libpcl-all-dev</build_export_depend>
+  <exec_depend>libpcl-common</exec_depend>
+  <exec_depend>libpcl-io</exec_depend>
 
   <test_depend>ament_lint_common</test_depend>
   <test_depend>ament_lint_auto</test_depend>
