@@ -115,10 +115,33 @@ int64_t readIntAsI64(const uint8_t* ptr, FieldType type) {
   }
 }
 
-uint64_t readRawBits(const uint8_t* ptr, size_t bytes) {
-  uint64_t out = 0;
-  std::memcpy(&out, ptr, bytes);
-  return out;
+// Fixed-size loads: a memcpy of a run-time size becomes a library call, and the 8-byte reload of the
+// narrower bytes it stored misses store-to-load forwarding.
+inline uint64_t readRawBits(const uint8_t* ptr, size_t bytes) {
+  switch (bytes) {
+    case 1:
+      return ptr[0];
+    case 2: {
+      uint16_t v;
+      std::memcpy(&v, ptr, 2);
+      return v;
+    }
+    case 4: {
+      uint32_t v;
+      std::memcpy(&v, ptr, 4);
+      return v;
+    }
+    case 8: {
+      uint64_t v;
+      std::memcpy(&v, ptr, 8);
+      return v;
+    }
+    default: {
+      uint64_t out = 0;
+      std::memcpy(&out, ptr, bytes);
+      return out;
+    }
+  }
 }
 
 void appendRawBits(BufferView& out, uint64_t value, size_t bytes) {
