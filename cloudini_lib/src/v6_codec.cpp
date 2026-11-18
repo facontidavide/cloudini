@@ -1258,12 +1258,19 @@ class V6CloudEncoder {
     if (state_.encodes++ % kV6ReprobeInterval == 0) {
       state_.lag.reset();
       state_.chunks.assign(chunks_count, {});
+      state_.int_modes.clear();
     } else {
       state_.chunks.resize(chunks_count);
+      adaptive_->commitModes(state_.int_modes);
     }
     if (info.height > 1) {  // organized clouds: the point one row up
       state_.lag = info.width;
     }
+  }
+
+  // Keeps the modes of the integer fields for the next clouds.
+  void saveIntModes() {
+    state_.int_modes = adaptive_->committedModes();
   }
 
   std::vector<size_t>& sectionStarts() {
@@ -1416,6 +1423,7 @@ void EncodeV6Stage1(
     encoder.encodeChunk(cloud_data.data() + first * info.point_step, n, chunk_index, out, mark_section);
     write_stage1_chunk(stage_buffer.size() - out.size(), section_starts);
   }
+  encoder.saveIntModes();
 }
 
 //==========================================================================================
