@@ -203,6 +203,39 @@ V6GeometryHeader readV6GeometryHeader(ConstBufferView& input, size_t n) {
   return header;
 }
 
+template <size_t Size>
+void gatherColumn(const uint8_t* points, size_t point_step, size_t offset, size_t n, uint8_t* dst) {
+  for (size_t i = 0; i < n; ++i) {
+    std::memcpy(dst + i * Size, points + i * point_step + offset, Size);
+  }
+}
+
+// n values of `size` bytes of a field, in point order (the output of FieldEncoderCopy run over the points).
+void appendCopyColumn(const uint8_t* points, size_t point_step, size_t offset, size_t size, size_t n, BufferView& out) {
+  if (out.size() < n * size) {
+    throw std::runtime_error("V6: output buffer full");
+  }
+  switch (size) {
+    case 1:
+      gatherColumn<1>(points, point_step, offset, n, out.data());
+      break;
+    case 2:
+      gatherColumn<2>(points, point_step, offset, n, out.data());
+      break;
+    case 4:
+      gatherColumn<4>(points, point_step, offset, n, out.data());
+      break;
+    case 8:
+      gatherColumn<8>(points, point_step, offset, n, out.data());
+      break;
+    default:
+      for (size_t i = 0; i < n; ++i) {
+        std::memcpy(out.data() + i * size, points + i * point_step + offset, size);
+      }
+  }
+  out.trim_front(n * size);
+}
+
 // n FLOAT32 values of a field, copied bit-exact.
 void appendRawFloatColumn(BufferView& out, const uint8_t* points, size_t point_step, size_t offset, size_t n) {
   if (out.size() < n * sizeof(float)) {
@@ -938,6 +971,11 @@ class V6CloudEncoder {
         encodeV6FloatColumn(
             points, info_.point_step, field.offset, *field.resolution, n, scratch.streams, scratch.column_quantized,
             scratch.column_nan, out);
+        continue;
+      }
+      if (const auto* copy = dynamic_cast<const FieldEncoderCopy*>(encoder.get())) {
+        // Same bytes as the per-point FieldEncoderCopy, as one gather loop with a fixed size.
+        appendCopyColumn(points, info_.point_step, copy->offset(), copy->fieldSize(), n, out);
         continue;
       }
       encoder->reset();

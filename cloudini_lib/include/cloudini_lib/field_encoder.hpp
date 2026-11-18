@@ -61,6 +61,13 @@ class FieldEncoderCopy : public FieldEncoder {
 
   void reset() override {}
 
+  size_t offset() const {
+    return offset_;
+  }
+  size_t fieldSize() const {
+    return field_size_;
+  }
+
  private:
   size_t offset_;
   size_t field_size_;
