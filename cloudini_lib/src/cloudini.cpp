@@ -347,15 +347,10 @@ float refinedResolution(const PointField& field, float resolution, ConstBufferVi
       any_value_bits |= _mm_movemask_ps(is_value);
       const __m128 is_integer = _mm_cmpeq_ps(_mm_round_ps(v, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC), v);
       if (_mm_movemask_ps(_mm_andnot_ps(is_integer, is_value)) != 0) {
-        all_integers = false;
-        break;
+        break;  // a fraction among these 4 values: the loop below stops at it
       }
     }
     any_value = any_value_bits != 0;
-    if (!all_integers) {
-      any_value = true;
-      first = points;  // the gcd loop below checks the rest, infinities included
-    }
   }
 #endif
   for (size_t i = first; i < points; ++i) {

@@ -22,7 +22,6 @@
 #include <cstring>
 #include <limits>
 #include <stdexcept>
-#include <type_traits>
 
 #include "cloudini_lib/encoding_utils.hpp"
 #include "cloudini_lib/field_encoder.hpp"
@@ -634,76 +633,67 @@ void appendCommittedValueToSection(V5AdaptiveIntField& field, const uint8_t* fie
   }
 }
 
-// appendCommittedValueToSection over the points [first, last) of a chunk, with the mode and the type fixed at
-// compile time: the same bytes, without a call and two switches per value.
-template <AdaptiveIntMode Mode, typename T>
+// Committed fields are coded field by field over blocks of this many points, which stay in L1.
+constexpr size_t kCommittedBlockPoints = 512;
+
+// appendCommittedValueToSection over the points [first, last) of a chunk, for a field of type T: the same
+// bytes, with the switches on the mode and on the type outside the loops.
+template <typename T>
 void appendCommittedRangeT(
     V5AdaptiveIntField& field, const uint8_t* points, size_t point_step, size_t first, size_t last) {
-  using U = std::make_unsigned_t<T>;
   const uint8_t* ptr = points + first * point_step + field.offset;
-  const size_t n = last - first;
-  if constexpr (Mode == AdaptiveIntMode::DeltaVarint) {
-    auto& bytes = field.section_bytes;
-    const size_t start = bytes.size();
-    bytes.resize(start + n * kMaxVarintBytes);
-    uint8_t* out = bytes.data() + start;
-    int64_t prev = field.stream_prev_value;
-    for (size_t i = 0; i < n; ++i, ptr += point_step) {
-      T v;
-      std::memcpy(&v, ptr, sizeof(T));
-      const int64_t value = static_cast<int64_t>(v);
-      out += encodeVarint64(value - prev, out);
-      prev = value;
-    }
-    field.stream_prev_value = prev;
-    bytes.resize(static_cast<size_t>(out - bytes.data()));
-  } else {
-    for (size_t i = 0; i < n; ++i, ptr += point_step) {
-      T v;
-      std::memcpy(&v, ptr, sizeof(T));
-      if constexpr (Mode == AdaptiveIntMode::DeltaRle) {
-        appendDeltaRleValue(field, static_cast<int64_t>(v));
-      } else if constexpr (Mode == AdaptiveIntMode::Rle) {
-        appendRleValue(field, static_cast<uint64_t>(static_cast<U>(v)));
-      } else {
-        field.raw_values.push_back(static_cast<uint64_t>(static_cast<U>(v)));
+  switch (field.committed_mode) {
+    case AdaptiveIntMode::DeltaVarint: {
+      int64_t prev = field.stream_prev_value;
+      uint8_t block[kCommittedBlockPoints * kMaxVarintBytes];  // not zero-filled, unlike a resized vector
+      while (first < last) {
+        const size_t count = std::min(last - first, kCommittedBlockPoints);
+        uint8_t* out = block;
+        for (size_t i = 0; i < count; ++i, ptr += point_step) {
+          const int64_t value = ToInt64<T>(ptr);
+          out += encodeVarint64(value - prev, out);
+          prev = value;
+        }
+        field.section_bytes.insert(field.section_bytes.end(), block, out);
+        first += count;
       }
-    }
-  }
-}
-
-template <AdaptiveIntMode Mode>
-void appendCommittedRangeMode(
-    V5AdaptiveIntField& field, const uint8_t* points, size_t point_step, size_t first, size_t last) {
-  switch (field.type) {
-    case FieldType::INT16:
-      return appendCommittedRangeT<Mode, int16_t>(field, points, point_step, first, last);
-    case FieldType::UINT16:
-      return appendCommittedRangeT<Mode, uint16_t>(field, points, point_step, first, last);
-    case FieldType::INT32:
-      return appendCommittedRangeT<Mode, int32_t>(field, points, point_step, first, last);
-    case FieldType::UINT32:
-      return appendCommittedRangeT<Mode, uint32_t>(field, points, point_step, first, last);
-    case FieldType::INT64:
-      return appendCommittedRangeT<Mode, int64_t>(field, points, point_step, first, last);
-    case FieldType::UINT64:
-      return appendCommittedRangeT<Mode, uint64_t>(field, points, point_step, first, last);
-    default:
-      throw std::runtime_error("V5 adaptive int called on non-integer field");
+      field.stream_prev_value = prev;
+    } break;
+    case AdaptiveIntMode::DeltaRle:
+      for (; first < last; ++first, ptr += point_step) {
+        appendDeltaRleValue(field, ToInt64<T>(ptr));
+      }
+      break;
+    case AdaptiveIntMode::Rle:
+      for (; first < last; ++first, ptr += point_step) {
+        appendRleValue(field, readRawBits(ptr, sizeof(T)));
+      }
+      break;
+    case AdaptiveIntMode::Palette:
+      for (; first < last; ++first, ptr += point_step) {
+        field.raw_values.push_back(readRawBits(ptr, sizeof(T)));
+      }
+      break;
   }
 }
 
 void appendCommittedRange(
     V5AdaptiveIntField& field, const uint8_t* points, size_t point_step, size_t first, size_t last) {
-  switch (field.committed_mode) {
-    case AdaptiveIntMode::DeltaVarint:
-      return appendCommittedRangeMode<AdaptiveIntMode::DeltaVarint>(field, points, point_step, first, last);
-    case AdaptiveIntMode::DeltaRle:
-      return appendCommittedRangeMode<AdaptiveIntMode::DeltaRle>(field, points, point_step, first, last);
-    case AdaptiveIntMode::Rle:
-      return appendCommittedRangeMode<AdaptiveIntMode::Rle>(field, points, point_step, first, last);
-    case AdaptiveIntMode::Palette:
-      return appendCommittedRangeMode<AdaptiveIntMode::Palette>(field, points, point_step, first, last);
+  switch (field.type) {
+    case FieldType::INT16:
+      return appendCommittedRangeT<int16_t>(field, points, point_step, first, last);
+    case FieldType::UINT16:
+      return appendCommittedRangeT<uint16_t>(field, points, point_step, first, last);
+    case FieldType::INT32:
+      return appendCommittedRangeT<int32_t>(field, points, point_step, first, last);
+    case FieldType::UINT32:
+      return appendCommittedRangeT<uint32_t>(field, points, point_step, first, last);
+    case FieldType::INT64:
+      return appendCommittedRangeT<int64_t>(field, points, point_step, first, last);
+    case FieldType::UINT64:
+      return appendCommittedRangeT<uint64_t>(field, points, point_step, first, last);
+    default:
+      throw std::runtime_error("V5 adaptive int called on non-integer field");
   }
 }
 
@@ -1205,12 +1195,11 @@ void AdaptiveIntSectionsEncoder::encodeChunk(
   for (auto& field : adaptive) {
     prepareAdaptiveIntFieldForChunk(field, count);
   }
-  // Field by field in blocks that stay in L1: each field writes a section of its own, so the order of the
-  // values within a field, and the bytes, are those of the point-by-point loop.
-  constexpr size_t kBlockPoints = 512;
+  // Field by field in blocks: each field writes a section of its own, so the order of the values within a
+  // field, and the bytes, are those of the point-by-point loop.
   auto collect_range = [&](size_t first, size_t last) {
-    for (size_t block = first; block < last; block += kBlockPoints) {
-      const size_t block_end = std::min(last, block + kBlockPoints);
+    for (size_t block = first; block < last; block += kCommittedBlockPoints) {
+      const size_t block_end = std::min(last, block + kCommittedBlockPoints);
       for (auto& field : adaptive) {
         if (field.committed) {
           appendCommittedRange(field, points, point_step, block, block_end);
