@@ -194,7 +194,7 @@ size_t encodedDeltaVarintSectionSize(const std::vector<int64_t>& values) {
   size_t bytes = 1;  // mode byte
   int64_t prev = 0;
   for (int64_t value : values) {
-    const int64_t diff = value - prev;
+    const int64_t diff = wrappingDiff(value, prev);
     prev = value;
     bytes += encodedVarint64Size(diff);
   }
@@ -206,11 +206,11 @@ void forEachDeltaRun(const std::vector<int64_t>& values, Callback callback) {
   int64_t prev = 0;
   size_t i = 0;
   while (i < values.size()) {
-    const int64_t diff = values[i] - prev;
+    const int64_t diff = wrappingDiff(values[i], prev);
     prev = values[i];
     size_t j = i + 1;
     while (j < values.size()) {
-      const int64_t next_diff = values[j] - prev;
+      const int64_t next_diff = wrappingDiff(values[j], prev);
       if (next_diff != diff) {
         break;
       }
@@ -349,7 +349,7 @@ void appendDeltaVarintSection(const std::vector<int64_t>& values, BufferView& ou
   appendByte(out, static_cast<uint8_t>(AdaptiveIntMode::DeltaVarint));
   int64_t prev = 0;
   for (int64_t value : values) {
-    const int64_t diff = value - prev;
+    const int64_t diff = wrappingDiff(value, prev);
     prev = value;
     const size_t bytes = encodeVarint64(diff, out.data());
     out.trim_front(bytes);
@@ -541,7 +541,7 @@ void flushDeltaRleRun(V5AdaptiveIntField& field) {
 }
 
 void appendDeltaRleValue(V5AdaptiveIntField& field, int64_t value) {
-  const int64_t diff = value - field.stream_prev_value;
+  const int64_t diff = wrappingDiff(value, field.stream_prev_value);
   field.stream_prev_value = value;
   if (!field.stream_has_run) {
     field.stream_run_diff = diff;
@@ -594,7 +594,7 @@ void appendCommittedValueToSection(V5AdaptiveIntField& field, const uint8_t* fie
   switch (field.committed_mode) {
     case AdaptiveIntMode::DeltaVarint: {
       const int64_t value = readIntAsI64(field_ptr, field.type);
-      const int64_t diff = value - field.stream_prev_value;
+      const int64_t diff = wrappingDiff(value, field.stream_prev_value);
       field.stream_prev_value = value;
       appendVarint64(diff, field.section_bytes);
     } break;
@@ -614,7 +614,7 @@ void appendCommittedValueToSection(V5AdaptiveIntField& field, size_t index) {
   switch (field.committed_mode) {
     case AdaptiveIntMode::DeltaVarint: {
       const int64_t value = field.values[index];
-      const int64_t diff = value - field.stream_prev_value;
+      const int64_t diff = wrappingDiff(value, field.stream_prev_value);
       field.stream_prev_value = value;
       appendVarint64(diff, field.section_bytes);
     } break;

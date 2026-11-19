@@ -52,6 +52,12 @@ inline void encode(const std::string& str, BufferView& buff) {
   buff.trim_front(len);
 }
 
+/// a - b in two's complement, wrapping around instead of overflowing: the difference of two 64-bit values can
+/// need 65 bits. The decoders add the difference back with the same wrap-around, so the value round-trips.
+inline int64_t wrappingDiff(int64_t a, int64_t b) {
+  return static_cast<int64_t>(static_cast<uint64_t>(a) - static_cast<uint64_t>(b));
+}
+
 inline size_t encodeVarint64(int64_t value, uint8_t* ptr) {
   uint64_t val = static_cast<uint64_t>((value << 1) ^ (value >> 63));  // Zig-zag encoding
   val++;                                                               // reserving value 0 for NaN
