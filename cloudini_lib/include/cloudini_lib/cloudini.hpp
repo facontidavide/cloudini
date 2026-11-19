@@ -254,8 +254,9 @@ class PointcloudEncoder {
  * @brief Keeps one PointcloudEncoder for a stream of clouds (e.g. one topic).
  *
  * The encoder is reused while the fields, point step, options and version stay the same; a change of
- * width or height only updates its header. Reuse matters for V6: the encoder keeps the lag, predictor and
- * mask kind it chose for each chunk, and codes the next clouds in a single pass.
+ * width or height only updates its header. Reuse matters for V6: the encoder keeps the lag, the predictor
+ * and mask kind it chose for each chunk and the coding modes of the integer fields, and codes the next
+ * clouds in a single pass.
  */
 class PointcloudEncoderCache {
  public:
