@@ -45,6 +45,7 @@ struct V6EncoderState {
   std::optional<size_t> lag;  // the row width for organized clouds, detected otherwise
   uint32_t encodes = 0;
   std::vector<ChunkChoice> chunks;
+  std::vector<uint8_t> int_modes;  // modes of the integer fields, reused like the chunk choices
   std::shared_ptr<V6EncoderScratch> scratch;
 };
 

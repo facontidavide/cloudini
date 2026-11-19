@@ -107,6 +107,13 @@ class FieldEncoderCopy : public FieldEncoder {
 
   void reset() override {}
 
+  size_t offset() const {
+    return offset_;
+  }
+  size_t fieldSize() const {
+    return field_size_;
+  }
+
  private:
   template <size_t N>
   static void copyStrided(const uint8_t* src, uint8_t* dst, size_t point_step, size_t count) {

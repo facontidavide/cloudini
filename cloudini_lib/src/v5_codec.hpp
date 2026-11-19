@@ -56,6 +56,12 @@ class AdaptiveIntSectionsEncoder {
       const uint8_t* points, size_t point_step, size_t count, CompressionOption compression, BufferView& out,
       const std::function<void()>& before_section);
 
+  // The mode each field committed to (one byte per field, in field order); empty while a field has not.
+  std::vector<uint8_t> committedModes() const;
+  // Commits the fields to `modes` (from committedModes) before the first chunk: no probe. Ignored when the
+  // count does not match.
+  void commitModes(std::span<const uint8_t> modes);
+
  private:
   struct Impl;
   std::unique_ptr<Impl> impl_;
