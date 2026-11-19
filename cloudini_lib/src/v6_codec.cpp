@@ -312,10 +312,12 @@ CLOUDINI_V6_INLINE bool quantizeV6Point(const V6Geometry& geometry, const uint8_
       _mm_setr_ps(geometry.inv_resolution_f[0], geometry.inv_resolution_f[1], geometry.inv_resolution_f[2], 0.0f);
   const __m128 scaled = _mm_round_ps(_mm_mul_ps(v, inv), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
   const __m128 magnitude = _mm_andnot_ps(_mm_set1_ps(-0.0f), scaled);
-  if (_mm_movemask_ps(_mm_cmpge_ps(magnitude, _mm_set1_ps(kV6FloatQuantized))) != 0) {
-    return false;  // NaN lanes compare false
-  }
   const __m128 is_nan = _mm_cmpunord_ps(v, v);
+  // Not below the limit. That includes a NaN product of a value that is not NaN: 0 times the infinite
+  // inverse of a resolution below 1 / FLT_MAX, which the double-precision path quantizes to 0.
+  if (_mm_movemask_ps(_mm_andnot_ps(is_nan, _mm_cmpnlt_ps(magnitude, _mm_set1_ps(kV6FloatQuantized)))) != 0) {
+    return false;
+  }
   out.nan = _mm_movemask_ps(is_nan) & 7;
   out.zero = _mm_movemask_ps(_mm_cmpeq_ps(v, _mm_setzero_ps())) & 7;
   _mm_store_si128(reinterpret_cast<__m128i*>(out.q), _mm_cvtps_epi32(_mm_andnot_ps(is_nan, scaled)));

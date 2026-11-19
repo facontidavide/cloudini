@@ -283,9 +283,10 @@ TEST(V6, OtherLayoutsFallBackOrRoundTrip) {
     std::memcpy(&b, v5.data() + i * sizeof(Packed), sizeof(Packed));
     ASSERT_NEAR(a.x, points[i].x, 0.0006f);
     ASSERT_NEAR(a.z, points[i].z, 0.0006f);
-    ASSERT_EQ(a.intensity, b.intensity);
-    ASSERT_EQ(a.ring, b.ring);
-    ASSERT_EQ(a.timestamp, b.timestamp);
+    // copies: ASSERT_EQ binds references, and the members of a packed struct are not aligned
+    ASSERT_EQ(float(a.intensity), float(b.intensity));
+    ASSERT_EQ(uint16_t(a.ring), uint16_t(b.ring));
+    ASSERT_EQ(double(a.timestamp), double(b.timestamp));
   }
 
   // lossless x, y, z: V6 does not apply, the cloud is encoded with the V5 / V4 codec and still decodes
@@ -854,5 +855,98 @@ TEST(V6, EncoderRejectsVersionsNoDecoderReads) {
         PointcloudEncoder(makeInfo(fields, 64, 1, sizeof(OusterPoint), version, CompressionOption::ZSTD)),
         std::runtime_error)
         << int(version);
+  }
+}
+
+// A resolution below 1 / FLT_MAX has an infinite inverse in float precision, and 0 times infinity is NaN:
+// such a value takes the double-precision path, where it quantizes to 0.
+TEST(V6, ResolutionWithInfiniteFloatInverse) {
+  struct Point {
+    float x, y, z, w;
+  };
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  const float resolution = 1e-40f;
+  ASSERT_TRUE(std::isinf(1.0f / resolution));
+  // more NaN points than zero points: the mask kind is NaN, so the zero points are coded
+  std::vector<Point> points(1000);
+  for (size_t i = 0; i < points.size(); ++i) {
+    points[i] = (i % 3 == 0) ? Point{0.0f, 0.0f, 0.0f, 0.0f} : Point{nan, nan, nan, 0.0f};
+  }
+  points[7] = {0.0f, nan, 0.0f, 0.0f};
+  const std::vector<PointField> fields = {
+      {"x", offsetof(Point, x), FieldType::FLOAT32, resolution},
+      {"y", offsetof(Point, y), FieldType::FLOAT32, resolution},
+      {"z", offsetof(Point, z), FieldType::FLOAT32, resolution},
+      {"w", offsetof(Point, w), FieldType::FLOAT32, resolution}};
+  const uint32_t n = uint32_t(points.size());
+  PointcloudEncoder encoder(makeInfo(fields, n, 1, sizeof(Point), 6, CompressionOption::ZSTD));
+  for (int round = 0; round < 3; ++round) {  // the probing encode, then the one-pass encodes
+    std::vector<uint8_t> encoded;
+    encoder.encode(ConstBufferView(reinterpret_cast<const uint8_t*>(points.data()), n * sizeof(Point)), encoded);
+    const auto decoded = decode(encoded);
+    ASSERT_EQ(decoded.size(), n * sizeof(Point));
+    for (size_t i = 0; i < points.size(); ++i) {
+      Point out;
+      std::memcpy(&out, decoded.data() + i * sizeof(Point), sizeof(Point));
+      const float expected[4] = {points[i].x, points[i].y, points[i].z, points[i].w};
+      const float actual[4] = {out.x, out.y, out.z, out.w};
+      for (int k = 0; k < 4; ++k) {
+        if (std::isnan(expected[k])) {
+          ASSERT_TRUE(std::isnan(actual[k])) << "round " << round << " point " << i << " field " << k;
+        } else {
+          ASSERT_EQ(actual[k], expected[k]) << "round " << round << " point " << i << " field " << k;
+        }
+      }
+    }
+  }
+}
+
+// The difference of two 64-bit values can need 65 bits: the encoders wrap around, as the decoders do
+// (no signed overflow, checked by UBSan).
+TEST(V6, IntegerDeltasWrapAround) {
+  struct Point {
+    float x, y, z;
+    uint32_t count;
+    int64_t noise;
+    uint64_t ramp;
+    int64_t alternating;
+  };
+  static_assert(sizeof(Point) == 40);
+  std::mt19937_64 rng(11);
+  std::vector<Point> points(10000);  // more than the 4096 points the integer modes are probed on
+  for (size_t i = 0; i < points.size(); ++i) {
+    auto& p = points[i];
+    p.x = 0.01f * float(i % 100);
+    p.y = 0.01f * float(i / 100);
+    p.z = 1.0f;
+    p.count = uint32_t(i);
+    p.noise = static_cast<int64_t>(rng());
+    p.ramp = uint64_t(i) * 0x3000000000000001ULL;  // a constant step that wraps around
+    p.alternating = (i % 2) ? std::numeric_limits<int64_t>::max() - int64_t(i)
+                            : std::numeric_limits<int64_t>::min() + 1 + int64_t(i);
+  }
+  const std::vector<PointField> fields = {
+      {"x", offsetof(Point, x), FieldType::FLOAT32, 0.001f},
+      {"y", offsetof(Point, y), FieldType::FLOAT32, 0.001f},
+      {"z", offsetof(Point, z), FieldType::FLOAT32, 0.001f},
+      {"count", offsetof(Point, count), FieldType::UINT32, std::nullopt},
+      {"noise", offsetof(Point, noise), FieldType::INT64, std::nullopt},
+      {"ramp", offsetof(Point, ramp), FieldType::UINT64, std::nullopt},
+      {"alternating", offsetof(Point, alternating), FieldType::INT64, std::nullopt}};
+  const uint32_t n = uint32_t(points.size());
+  for (const uint8_t version : {uint8_t(4), uint8_t(5), uint8_t(6)}) {
+    for (const auto compression : {CompressionOption::NONE, CompressionOption::ZSTD}) {
+      const auto decoded =
+          decode(encode(makeInfo(fields, n, 1, sizeof(Point), version, compression), points.data(), n * sizeof(Point)));
+      ASSERT_EQ(decoded.size(), n * sizeof(Point));
+      for (size_t i = 0; i < points.size(); ++i) {
+        Point out;
+        std::memcpy(&out, decoded.data() + i * sizeof(Point), sizeof(Point));
+        ASSERT_EQ(out.count, points[i].count) << "version " << int(version) << " point " << i;
+        ASSERT_EQ(out.noise, points[i].noise) << "version " << int(version) << " point " << i;
+        ASSERT_EQ(out.ramp, points[i].ramp) << "version " << int(version) << " point " << i;
+        ASSERT_EQ(out.alternating, points[i].alternating) << "version " << int(version) << " point " << i;
+      }
+    }
   }
 }
