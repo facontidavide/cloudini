@@ -1181,8 +1181,10 @@ size_t V6StageBufferSize(const EncodingInfo& info, size_t points_per_chunk) {
   return V5StageBufferSize(info, points_per_chunk) + points_per_chunk / 8 + 1024;
 }
 
-// Buffers an encoder reuses from cloud to cloud.
+// What an encoder reuses from cloud to cloud: buffers, and the encoder of the integer fields with the modes
+// it chose (the fields of a PointcloudEncoder never change).
 struct V6EncoderScratch {
+  std::unique_ptr<AdaptiveIntSectionsEncoder> adaptive;
   V6ChunkGeometry chunk;
   V6Streams streams;
   std::vector<uint8_t> mask_bits;
@@ -1193,13 +1195,14 @@ struct V6EncoderScratch {
 
 namespace {
 
-// Probe the lag, the predictors and the mask kind again every kV6ReprobeInterval clouds.
+// Probe the lag, the predictors, the mask kind and the modes of the integer fields again every
+// kV6ReprobeInterval clouds.
 constexpr uint32_t kV6ReprobeInterval = 16;
 
-// Encodes the chunks of one cloud. The lag, and the predictor and mask kind of each chunk, come from the
-// previous clouds of the stream (V6EncoderState), which may have another size: unorganized scans vary from
-// cloud to cloud. They are probed again every kV6ReprobeInterval clouds, and for a chunk the previous
-// clouds did not have.
+// Encodes the chunks of one cloud. The lag, the predictor and mask kind of each chunk, and the modes of the
+// integer fields come from the previous clouds of the stream (V6EncoderState), which may have another size:
+// unorganized scans vary from cloud to cloud. They are probed again every kV6ReprobeInterval clouds, and
+// the chunk choices also for a chunk the previous clouds did not have.
 class V6CloudEncoder {
  public:
   using ChunkChoice = V6EncoderState::ChunkChoice;
@@ -1217,28 +1220,24 @@ class V6CloudEncoder {
         regular_.emplace_back(index, CreateCompatibleEncoder(info, field));
       }
     }
-    adaptive_ = std::make_unique<AdaptiveIntSectionsEncoder>(info, adaptive_indexes, points_per_chunk);
     if (!state_.scratch) {
       state_.scratch = std::make_shared<V6EncoderScratch>();
+    }
+    if (!state_.scratch->adaptive) {
+      state_.scratch->adaptive = std::make_unique<AdaptiveIntSectionsEncoder>(info, adaptive_indexes, points_per_chunk);
     }
 
     const size_t chunks_count = (points_count + points_per_chunk - 1) / points_per_chunk;
     if (state_.encodes++ % kV6ReprobeInterval == 0) {
       state_.lag.reset();
       state_.chunks.assign(chunks_count, {});
-      state_.int_modes.clear();
+      state_.scratch->adaptive->resetModes();
     } else {
       state_.chunks.resize(chunks_count);
-      adaptive_->commitModes(state_.int_modes);
     }
     if (info.height > 1) {  // organized clouds: the point one row up
       state_.lag = info.width;
     }
-  }
-
-  // Keeps the modes of the integer fields for the next clouds.
-  void saveIntModes() {
-    state_.int_modes = adaptive_->committedModes();
   }
 
   std::vector<size_t>& sectionStarts() {
@@ -1354,7 +1353,7 @@ class V6CloudEncoder {
       encoder->encodePoints(points, info_.point_step, n, out);  // one call per column: copied fields in one loop
       encoder->flush(out);
     }
-    adaptive_->encodeChunk(points, info_.point_step, n, info_.compression_opt, out, mark_section);
+    scratch.adaptive->encodeChunk(points, info_.point_step, n, info_.compression_opt, out, mark_section);
   }
 
   const EncodingInfo& info_;
@@ -1362,7 +1361,6 @@ class V6CloudEncoder {
   const V6Geometry geometry_;
   // non-integer fields after x, y, z in field order: a float column (null encoder) or a V4 field encoder
   std::vector<std::pair<size_t, std::unique_ptr<FieldEncoder>>> regular_;
-  std::unique_ptr<AdaptiveIntSectionsEncoder> adaptive_;
 };
 
 }  // namespace
@@ -1384,7 +1382,6 @@ void EncodeV6Stage1(
     encoder.encodeChunk(cloud_data.data() + first * info.point_step, n, chunk_index, out, mark_section);
     write_stage1_chunk(stage_buffer.size() - out.size(), section_starts);
   }
-  encoder.saveIntModes();
 }
 
 //==========================================================================================

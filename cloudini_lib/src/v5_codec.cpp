@@ -1192,29 +1192,9 @@ AdaptiveIntSectionsEncoder::AdaptiveIntSectionsEncoder(
 
 AdaptiveIntSectionsEncoder::~AdaptiveIntSectionsEncoder() = default;
 
-std::vector<uint8_t> AdaptiveIntSectionsEncoder::committedModes() const {
-  std::vector<uint8_t> modes;
-  for (const auto& field : impl_->fields) {
-    if (!field.committed) {
-      return {};
-    }
-    modes.push_back(static_cast<uint8_t>(field.committed_mode));
-  }
-  return modes;
-}
-
-void AdaptiveIntSectionsEncoder::commitModes(std::span<const uint8_t> modes) {
-  if (modes.size() != impl_->fields.size() || modes.empty()) {
-    return;
-  }
-  for (size_t i = 0; i < modes.size(); ++i) {
-    if (modes[i] > static_cast<uint8_t>(AdaptiveIntMode::DeltaRle)) {
-      return;
-    }
-  }
-  for (size_t i = 0; i < modes.size(); ++i) {
-    impl_->fields[i].committed = true;
-    impl_->fields[i].committed_mode = static_cast<AdaptiveIntMode>(modes[i]);
+void AdaptiveIntSectionsEncoder::resetModes() {
+  for (auto& field : impl_->fields) {
+    field.committed = false;
   }
 }
 

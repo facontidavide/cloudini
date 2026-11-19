@@ -33,9 +33,10 @@ namespace Cloudini::detail {
 // resolution in (0, 1e18); other version-6 clouds use the V5 chunk layout (the decoder decides the same way).
 bool UsesV6Codec(const EncodingInfo& info);
 
-// State a PointcloudEncoder keeps between encode() calls with V6: the detected lag and the predictor and
-// mask kind chosen for each chunk are reused for the next clouds, and probed again every few clouds.
-struct V6EncoderScratch;  // buffers reused across calls, defined in v6_codec.cpp
+// State a PointcloudEncoder keeps between encode() calls with V6: the detected lag, the predictor and mask
+// kind chosen for each chunk and the modes of the integer fields are reused for the next clouds, and probed
+// again every few clouds.
+struct V6EncoderScratch;  // buffers and the integer sections encoder, reused across calls (v6_codec.cpp)
 struct V6EncoderState {
   struct ChunkChoice {
     static constexpr uint8_t kNotProbed = 0xFF;
@@ -45,7 +46,6 @@ struct V6EncoderState {
   std::optional<size_t> lag;  // the row width for organized clouds, detected otherwise
   uint32_t encodes = 0;
   std::vector<ChunkChoice> chunks;
-  std::vector<uint8_t> int_modes;  // modes of the integer fields, reused like the chunk choices
   std::shared_ptr<V6EncoderScratch> scratch;
 };
 
