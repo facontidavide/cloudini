@@ -277,10 +277,10 @@ otherwise), with an optional validity mask for NaN or all-zero points. Other
 FLOAT32 fields with a resolution get their own residual stream. The layout
 is used only when x, y, z are the first three FLOAT32 fields with a
 resolution in (0, 1e18); other version-6 clouds use the V5 layout. The
-encoder caches lag, predictor and mask kind per cloud size (re-probed every
-16 clouds, also across clouds of different size) and quantizes and codes in
-one SSE pass; the first encode probes a prefix of each chunk, then codes it the
-same way. Keep one encoder per stream to benefit: `Cloudini::PointcloudEncoderCache`
+encoder caches lag, predictor and mask kind per cloud size, and the coding modes
+of the integer fields (re-probed every 16 clouds, also across clouds of different
+size) and quantizes and codes with SSE4.1, 4 values per step; the first encode
+probes a prefix of each chunk, then codes it the same way. Keep one encoder per stream to benefit: `Cloudini::PointcloudEncoderCache`
 (used by the rosbag converter, `mcap_codec_benchmark`, the topic converter and
 the point_cloud_transport plugin). Selecting V5 instead: `--encoding-version 5`
 (rosbag converter), `encoding_version:=5` (topic converter),

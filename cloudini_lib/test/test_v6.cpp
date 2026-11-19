@@ -25,6 +25,7 @@
 #include <limits>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "cloudini_lib/cloudini.hpp"
@@ -361,6 +362,281 @@ TEST(V6, FloatColumnsNaNFractionalAndHuge) {
         ASSERT_NEAR(p.intensity, cloud[i].intensity, 0.005f * 1.001f + 1e-6f * cloud[i].intensity) << i;
       }
     }
+  }
+}
+
+// A float column with a resolution below 1 / FLT_MAX: the inverse is infinite in float precision and
+// 0 * inf is NaN, which is not the NaN of a value. Such a column takes the double-precision path.
+TEST(V6, FloatColumnResolutionWithInfiniteFloatInverse) {
+  struct Point {
+    float x, y, z, w;
+  };
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  const float resolution = 1e-40f;
+  ASSERT_TRUE(std::isinf(1.0f / resolution));
+  std::vector<Point> points(1000);  // a multiple of 4: no value is left to the scalar loop
+  for (size_t i = 0; i < points.size(); ++i) {
+    points[i] = {0.01f * float(i % 50), 0.02f * float(i / 50), 1.0f, (i % 7 == 3) ? nan : 0.0f};
+  }
+  const std::vector<PointField> fields = {
+      {"x", offsetof(Point, x), FieldType::FLOAT32, 0.001f},
+      {"y", offsetof(Point, y), FieldType::FLOAT32, 0.001f},
+      {"z", offsetof(Point, z), FieldType::FLOAT32, 0.001f},
+      {"w", offsetof(Point, w), FieldType::FLOAT32, resolution}};
+  const uint32_t n = uint32_t(points.size());
+  PointcloudEncoder encoder(makeInfo(fields, n, 1, sizeof(Point), 6, CompressionOption::ZSTD));
+  for (int round = 0; round < 2; ++round) {
+    std::vector<uint8_t> encoded;
+    encoder.encode(ConstBufferView(reinterpret_cast<const uint8_t*>(points.data()), n * sizeof(Point)), encoded);
+    const auto decoded = decode(encoded);
+    ASSERT_EQ(decoded.size(), n * sizeof(Point));
+    for (size_t i = 0; i < points.size(); ++i) {
+      Point out;
+      std::memcpy(&out, decoded.data() + i * sizeof(Point), sizeof(Point));
+      if (std::isnan(points[i].w)) {
+        ASSERT_TRUE(std::isnan(out.w)) << "round " << round << " point " << i;
+      } else {
+        ASSERT_EQ(out.w, 0.0f) << "round " << round << " point " << i;
+      }
+    }
+  }
+}
+
+// The SSE4.1 block coder (4 values per step) with every predictor, mask kind and size modulo 4, and the
+// clouds it leaves to the other coders: points with some NaN axes, values beyond 2^22 steps.
+TEST(V6, BlockCoderPredictorsMasksAndTails) {
+  struct Point {
+    float x, y, z, w;
+  };
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  const float resolution = 0.001f, w_resolution = 0.01f;
+  const std::vector<PointField> fields = {
+      {"x", offsetof(Point, x), FieldType::FLOAT32, resolution},
+      {"y", offsetof(Point, y), FieldType::FLOAT32, resolution},
+      {"z", offsetof(Point, z), FieldType::FLOAT32, resolution},
+      {"w", offsetof(Point, w), FieldType::FLOAT32, w_resolution}};
+  enum Pattern { kWalk, kSegments, kPeriodic, kPlanes };  // Previous, SecondOrder, LagK, Median
+  enum Mask { kNoMask, kNaNMask, kZeroMask };
+  constexpr uint32_t kPeriod = 48;
+  for (int pattern = kWalk; pattern <= kPlanes; ++pattern) {
+    for (int mask = kNoMask; mask <= kZeroMask; ++mask) {
+      for (uint32_t tail = 0; tail < 4; ++tail) {
+        SCOPED_TRACE(
+            "pattern " + std::to_string(pattern) + " mask " + std::to_string(mask) + " tail " + std::to_string(tail));
+        std::mt19937 rng(100 + 16 * uint32_t(pattern) + 4 * uint32_t(mask) + tail);
+        std::uniform_real_distribution<float> noise(-1.0f, 1.0f);
+        // organized for the planes (the lag is the width): 48 x 105, 49 x 105, ... have sizes 0, 1, 2, 3 mod 4
+        const uint32_t width = pattern == kPlanes ? kPeriod + tail : 5000 + tail;
+        const uint32_t height = pattern == kPlanes ? 105 : 1;
+        const uint32_t n = width * height;
+        ASSERT_EQ(n % 4, tail);
+        std::vector<float> profile(3 * kPeriod);
+        for (float& value : profile) {
+          value = 20.0f * noise(rng);
+        }
+        PointcloudEncoder encoder(makeInfo(fields, width, height, sizeof(Point), 6, CompressionOption::ZSTD));
+        for (int round = 0; round < 6; ++round) {
+          std::vector<Point> points(n);
+          float x = 1.0f, y = 2.0f, z = 3.0f;
+          for (uint32_t i = 0; i < n; ++i) {
+            Point& p = points[i];
+            if (pattern == kWalk) {
+              x += 0.004f * noise(rng), y += 0.004f * noise(rng), z += 0.004f * noise(rng);
+              p = {x, y, z, 0.0f};
+            } else if (pattern == kSegments) {  // long steps along straight segments
+              if (i % 500 == 0) {
+                x = 5.0f * noise(rng), y = 5.0f * noise(rng), z = noise(rng);
+              }
+              x += 0.137f, y -= 0.211f, z += 0.093f;
+              p = {x + 0.0002f * noise(rng), y + 0.0002f * noise(rng), z, 0.0f};
+            } else if (pattern == kPeriodic) {  // the same profile every kPeriod points
+              const float* base = &profile[3 * (i % kPeriod)];
+              p = {
+                  base[0] + 0.0015f * noise(rng), base[1] + 0.0015f * noise(rng), base[2] + 0.0015f * noise(rng), 0.0f};
+            } else {  // two tilted planes on a grid, more than a one-byte residual apart from row to row
+              const float row = float(i / width), col = float(i % width), step = (i % width > width / 2) ? 3.0f : 0.0f;
+              p = {
+                  4.0f + 0.031f * col + 0.117f * row + step + 0.0004f * noise(rng),
+                  -2.0f + 0.023f * col - 0.111f * row + step, 0.5f + 0.007f * col + 0.129f * row - step, 0.0f};
+            }
+            p.w = 20.0f + 20.0f * noise(rng);
+          }
+          // Round 0 is probed: it sets the mask kind. Without a mask, NaN points only come in round 5.
+          const float invalid_value = mask == kZeroMask ? 0.0f : nan;
+          auto invalidate = [&](size_t i) { points[i].x = points[i].y = points[i].z = invalid_value; };
+          if (mask == kNoMask ? round == 5 : round != 1) {
+            for (size_t i = 0; i < n; ++i) {
+              if (rng() % 40 == 0) {
+                invalidate(i);
+              }
+            }
+          }
+          if (mask != kNoMask && round >= 2) {  // runs of invalid points, also at both ends
+            for (size_t i = 0; i < 9; ++i) {
+              invalidate(i);
+            }
+            for (size_t i = n - 6; i < n; ++i) {
+              invalidate(i);
+            }
+            for (int run = 0; run < 20; ++run) {
+              const size_t start = rng() % (n - 40);
+              const size_t length = 5 + rng() % 30;
+              for (size_t i = start; i < start + length; ++i) {
+                invalidate(i);
+              }
+            }
+          }
+          if (round == 3) {  // some but not all axes NaN: the point-by-point coder
+            points[n - 1].y = nan;
+            points[rng() % n].x = nan;
+            points[rng() % n].z = nan;
+            points[rng() % n].w = nan;
+          }
+          if (round == 4) {  // beyond 2^22 steps: the double-precision path, also from the last values
+            points[tail == 0 ? rng() % n : n - 1].x = 5000.0f;
+            points[n - 1].w = 50000.0f;
+          }
+
+          std::vector<uint8_t> encoded;
+          encoder.encode(ConstBufferView(reinterpret_cast<const uint8_t*>(points.data()), n * sizeof(Point)), encoded);
+          const auto decoded = decode(encoded);
+          ASSERT_EQ(decoded.size(), n * sizeof(Point));
+          for (size_t i = 0; i < n; ++i) {
+            Point out;
+            std::memcpy(&out, decoded.data() + i * sizeof(Point), sizeof(Point));
+            const float expected[4] = {points[i].x, points[i].y, points[i].z, points[i].w};
+            const float actual[4] = {out.x, out.y, out.z, out.w};
+            for (int k = 0; k < 4; ++k) {
+              if (std::isnan(expected[k])) {
+                ASSERT_TRUE(std::isnan(actual[k])) << "round " << round << " point " << i << " field " << k;
+              } else {
+                const float step = k < 3 ? resolution : w_resolution;
+                ASSERT_NEAR(actual[k], expected[k], 0.5f * step * 1.001f + 1e-6f * std::fabs(expected[k]))
+                    << "round " << round << " point " << i << " field " << k;
+              }
+            }
+            if (mask == kZeroMask && points[i].x == 0.0f && points[i].y == 0.0f && points[i].z == 0.0f) {
+              ASSERT_TRUE(out.x == 0.0f && out.y == 0.0f && out.z == 0.0f) << "round " << round << " point " << i;
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// Integer fields of every type keep their mode after the probe and are coded in blocks, with every mode.
+TEST(V6, CommittedIntegerRangesOfEveryTypeAndMode) {
+  const FieldType types[6] = {FieldType::INT16,  FieldType::UINT16, FieldType::INT32,
+                              FieldType::UINT32, FieldType::INT64,  FieldType::UINT64};
+  std::vector<PointField> fields = {
+      {"x", 0, FieldType::FLOAT32, 0.001f}, {"y", 4, FieldType::FLOAT32, 0.001f}, {"z", 8, FieldType::FLOAT32, 0.001f}};
+  uint32_t point_step = 12;
+  for (int t = 0; t < 6; ++t) {
+    for (int pattern = 0; pattern < 4; ++pattern) {
+      fields.push_back({"f" + std::to_string(t) + "_" + std::to_string(pattern), point_step, types[t], std::nullopt});
+      point_step += uint32_t(SizeOf(types[t]));
+    }
+  }
+  std::mt19937_64 rng(12);
+  // 62 bits: the difference of two values fits in an int64
+  auto random_value = [&] { return static_cast<uint64_t>(static_cast<int64_t>(rng()) >> 2); };
+  std::vector<uint64_t> palette(8);
+  for (auto& value : palette) {
+    value = random_value();
+  }
+  const uint32_t n = 40000;  // more than a chunk, and than the 4096 points the modes are chosen on
+  PointcloudEncoder encoder(makeInfo(fields, n, 1, point_step, 6, CompressionOption::ZSTD));
+  for (int round = 0; round < 3; ++round) {  // the modes are chosen in round 0 and kept afterwards
+    std::vector<uint8_t> cloud(size_t(n) * point_step);
+    uint64_t run_value = 0;
+    for (uint32_t i = 0; i < n; ++i) {
+      uint8_t* point = cloud.data() + size_t(i) * point_step;
+      const float xyz[3] = {0.01f * float(i % 200), 0.01f * float(i / 200), 0.001f * float(round)};
+      std::memcpy(point, xyz, sizeof(xyz));
+      if (i % 900 == 0) {
+        run_value = random_value();
+      }
+      uint32_t offset = 12;
+      for (int t = 0; t < 6; ++t) {
+        const size_t size = size_t(SizeOf(types[t]));
+        const uint64_t values[4] = {
+            random_value(),                                                 // noise: delta-varint
+            palette[rng() % palette.size()],                                // a few values: palette
+            run_value + uint64_t(t),                                        // runs: RLE
+            static_cast<uint64_t>(int64_t(i) * (17 + t) - 300000 + round),  // ramp: delta-RLE
+        };
+        for (const uint64_t value : values) {
+          std::memcpy(point + offset, &value, size);  // the low bytes (little endian)
+          offset += uint32_t(size);
+        }
+      }
+    }
+    std::vector<uint8_t> encoded;
+    encoder.encode(ConstBufferView(cloud.data(), cloud.size()), encoded);
+    const auto decoded = decode(encoded);
+    ASSERT_EQ(decoded.size(), cloud.size());
+    for (uint32_t i = 0; i < n; ++i) {
+      // everything after x, y, z is an integer field: exact
+      ASSERT_EQ(
+          std::memcmp(
+              decoded.data() + size_t(i) * point_step + 12, cloud.data() + size_t(i) * point_step + 12,
+              point_step - 12),
+          0)
+          << "round " << round << " point " << i;
+    }
+  }
+}
+
+// The modes of the integer fields are kept from cloud to cloud. When the data changes (here: fields that
+// are 0 in the first cloud, as from a sensor that is starting), the modes are chosen again on the next
+// cloud instead of staying wrong until the next re-probe.
+TEST(V6, KeptIntegerModesAreChosenAgainWhenTheDataChanges) {
+  struct Point {
+    float x, y, z;
+    uint16_t ring, reflectivity;
+    uint32_t t;
+  };
+  static_assert(sizeof(Point) == 20);
+  const std::vector<PointField> fields = {
+      {"x", offsetof(Point, x), FieldType::FLOAT32, 0.001f},
+      {"y", offsetof(Point, y), FieldType::FLOAT32, 0.001f},
+      {"z", offsetof(Point, z), FieldType::FLOAT32, 0.001f},
+      {"ring", offsetof(Point, ring), FieldType::UINT16, std::nullopt},
+      {"reflectivity", offsetof(Point, reflectivity), FieldType::UINT16, std::nullopt},
+      {"t", offsetof(Point, t), FieldType::UINT32, std::nullopt}};
+  const uint32_t n = 20000;
+  const auto info = makeInfo(fields, n, 1, sizeof(Point), 6, CompressionOption::ZSTD);
+  std::mt19937 rng(13);
+  PointcloudEncoder encoder(info);
+  std::vector<size_t> sizes, fresh_sizes;
+  for (int round = 0; round < 6; ++round) {
+    std::vector<Point> points(n);
+    for (uint32_t i = 0; i < n; ++i) {
+      auto& p = points[i];
+      p.x = 0.02f * float(i % 300), p.y = 0.02f * float(i / 300), p.z = 0.001f * float(rng() % 20);
+      p.ring = round == 0 ? 0 : uint16_t(i % 40);
+      p.reflectivity = round == 0 ? 0 : uint16_t(rng() % 4000);
+      p.t = round == 0 ? 0 : i * 55u + rng() % 8;
+    }
+    const ConstBufferView view(reinterpret_cast<const uint8_t*>(points.data()), n * sizeof(Point));
+    std::vector<uint8_t> encoded;
+    encoder.encode(view, encoded);
+    const auto decoded = decode(encoded);
+    ASSERT_EQ(decoded.size(), n * sizeof(Point));
+    for (uint32_t i = 0; i < n; ++i) {
+      Point out;
+      std::memcpy(&out, decoded.data() + i * sizeof(Point), sizeof(Point));
+      ASSERT_EQ(out.ring, points[i].ring) << "round " << round << " point " << i;
+      ASSERT_EQ(out.reflectivity, points[i].reflectivity) << "round " << round << " point " << i;
+      ASSERT_EQ(out.t, points[i].t) << "round " << round << " point " << i;
+    }
+    sizes.push_back(encoded.size());
+    fresh_sizes.push_back(encode(info, points.data(), n * sizeof(Point)).size());  // modes chosen on this cloud
+  }
+  // Cloud 1 is coded with the modes of cloud 0; from cloud 2 on they fit the data again.
+  for (size_t round = 2; round < sizes.size(); ++round) {
+    EXPECT_LE(double(sizes[round]), 1.05 * double(fresh_sizes[round])) << "round " << round;
   }
 }
 

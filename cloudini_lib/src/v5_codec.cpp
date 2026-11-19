@@ -115,10 +115,33 @@ int64_t readIntAsI64(const uint8_t* ptr, FieldType type) {
   }
 }
 
-uint64_t readRawBits(const uint8_t* ptr, size_t bytes) {
-  uint64_t out = 0;
-  std::memcpy(&out, ptr, bytes);
-  return out;
+// Fixed-size loads: a memcpy of a run-time size becomes a library call, and the 8-byte reload of the
+// narrower bytes it stored misses store-to-load forwarding.
+inline uint64_t readRawBits(const uint8_t* ptr, size_t bytes) {
+  switch (bytes) {
+    case 1:
+      return ptr[0];
+    case 2: {
+      uint16_t v;
+      std::memcpy(&v, ptr, 2);
+      return v;
+    }
+    case 4: {
+      uint32_t v;
+      std::memcpy(&v, ptr, 4);
+      return v;
+    }
+    case 8: {
+      uint64_t v;
+      std::memcpy(&v, ptr, 8);
+      return v;
+    }
+    default: {
+      uint64_t out = 0;
+      std::memcpy(&out, ptr, bytes);
+      return out;
+    }
+  }
 }
 
 void appendRawBits(BufferView& out, uint64_t value, size_t bytes) {
@@ -610,6 +633,70 @@ void appendCommittedValueToSection(V5AdaptiveIntField& field, const uint8_t* fie
   }
 }
 
+// Committed fields are coded field by field over blocks of this many points, which stay in L1.
+constexpr size_t kCommittedBlockPoints = 512;
+
+// appendCommittedValueToSection over the points [first, last) of a chunk, for a field of type T: the same
+// bytes, with the switches on the mode and on the type outside the loops.
+template <typename T>
+void appendCommittedRangeT(
+    V5AdaptiveIntField& field, const uint8_t* points, size_t point_step, size_t first, size_t last) {
+  const uint8_t* ptr = points + first * point_step + field.offset;
+  switch (field.committed_mode) {
+    case AdaptiveIntMode::DeltaVarint: {
+      int64_t prev = field.stream_prev_value;
+      uint8_t block[kCommittedBlockPoints * kMaxVarintBytes];  // not zero-filled, unlike a resized vector
+      while (first < last) {
+        const size_t count = std::min(last - first, kCommittedBlockPoints);
+        uint8_t* out = block;
+        for (size_t i = 0; i < count; ++i, ptr += point_step) {
+          const int64_t value = ToInt64<T>(ptr);
+          out += encodeVarint64(value - prev, out);
+          prev = value;
+        }
+        field.section_bytes.insert(field.section_bytes.end(), block, out);
+        first += count;
+      }
+      field.stream_prev_value = prev;
+    } break;
+    case AdaptiveIntMode::DeltaRle:
+      for (; first < last; ++first, ptr += point_step) {
+        appendDeltaRleValue(field, ToInt64<T>(ptr));
+      }
+      break;
+    case AdaptiveIntMode::Rle:
+      for (; first < last; ++first, ptr += point_step) {
+        appendRleValue(field, readRawBits(ptr, sizeof(T)));
+      }
+      break;
+    case AdaptiveIntMode::Palette:
+      for (; first < last; ++first, ptr += point_step) {
+        field.raw_values.push_back(readRawBits(ptr, sizeof(T)));
+      }
+      break;
+  }
+}
+
+void appendCommittedRange(
+    V5AdaptiveIntField& field, const uint8_t* points, size_t point_step, size_t first, size_t last) {
+  switch (field.type) {
+    case FieldType::INT16:
+      return appendCommittedRangeT<int16_t>(field, points, point_step, first, last);
+    case FieldType::UINT16:
+      return appendCommittedRangeT<uint16_t>(field, points, point_step, first, last);
+    case FieldType::INT32:
+      return appendCommittedRangeT<int32_t>(field, points, point_step, first, last);
+    case FieldType::UINT32:
+      return appendCommittedRangeT<uint32_t>(field, points, point_step, first, last);
+    case FieldType::INT64:
+      return appendCommittedRangeT<int64_t>(field, points, point_step, first, last);
+    case FieldType::UINT64:
+      return appendCommittedRangeT<uint64_t>(field, points, point_step, first, last);
+    default:
+      throw std::runtime_error("V5 adaptive int called on non-integer field");
+  }
+}
+
 void appendCommittedValueToSection(V5AdaptiveIntField& field, size_t index) {
   switch (field.committed_mode) {
     case AdaptiveIntMode::DeltaVarint: {
@@ -1074,7 +1161,18 @@ bool IsAdaptiveIntType(FieldType type) {
 
 struct AdaptiveIntSectionsEncoder::Impl {
   std::vector<V5AdaptiveIntField> fields;
+  // Size of the section of each field in the chunk its mode was chosen on, in bytes per point.
+  std::vector<double> probed_bytes_per_point;
+  bool stale = false;
 };
+
+namespace {
+// A section coded with a kept mode that is more than twice as large as in the chunk the mode was chosen on
+// (plus a quarter of a byte per point, and a few bytes for small chunks): the data has changed.
+bool isStaleSection(size_t bytes, size_t count, double probed_bytes_per_point) {
+  return static_cast<double>(bytes) > (2.0 * probed_bytes_per_point + 0.25) * static_cast<double>(count) + 64.0;
+}
+}  // namespace
 
 AdaptiveIntSectionsEncoder::AdaptiveIntSectionsEncoder(
     const EncodingInfo& info, std::span<const size_t> field_indexes, size_t points_per_chunk)
@@ -1095,6 +1193,17 @@ AdaptiveIntSectionsEncoder::AdaptiveIntSectionsEncoder(
 
 AdaptiveIntSectionsEncoder::~AdaptiveIntSectionsEncoder() = default;
 
+void AdaptiveIntSectionsEncoder::resetModes() {
+  for (auto& field : impl_->fields) {
+    field.committed = false;
+  }
+  impl_->stale = false;
+}
+
+bool AdaptiveIntSectionsEncoder::modesAreStale() const {
+  return impl_->stale;
+}
+
 void AdaptiveIntSectionsEncoder::encodeChunk(
     const uint8_t* points, size_t point_step, size_t count, CompressionOption compression, BufferView& out,
     const std::function<void()>& before_section) {
@@ -1102,10 +1211,19 @@ void AdaptiveIntSectionsEncoder::encodeChunk(
   for (auto& field : adaptive) {
     prepareAdaptiveIntFieldForChunk(field, count);
   }
+  // Field by field in blocks: each field writes a section of its own, so the order of the values within a
+  // field, and the bytes, are those of the point-by-point loop.
   auto collect_range = [&](size_t first, size_t last) {
-    for (size_t i = first; i < last; ++i) {
+    for (size_t block = first; block < last; block += kCommittedBlockPoints) {
+      const size_t block_end = std::min(last, block + kCommittedBlockPoints);
       for (auto& field : adaptive) {
-        collectAdaptiveIntValue(field, points + i * point_step + field.offset);
+        if (field.committed) {
+          appendCommittedRange(field, points, point_step, block, block_end);
+          continue;
+        }
+        for (size_t i = block; i < block_end; ++i) {
+          collectAdaptiveIntValue(field, points + i * point_step + field.offset);
+        }
       }
     }
   };
@@ -1123,9 +1241,18 @@ void AdaptiveIntSectionsEncoder::encodeChunk(
   } else {
     collect_range(0, count);
   }
-  for (auto& field : adaptive) {
+  impl_->probed_bytes_per_point.resize(adaptive.size());
+  for (size_t index = 0; index < adaptive.size(); ++index) {
     before_section();
-    appendCommittedAdaptiveIntSection(field, compression, out);
+    const size_t before = out.size();
+    appendCommittedAdaptiveIntSection(adaptive[index], compression, out);
+    const size_t bytes = before - out.size();
+    if (has_uncommitted) {  // the modes were chosen on this chunk
+      impl_->probed_bytes_per_point[index] =
+          static_cast<double>(bytes) / static_cast<double>(std::max<size_t>(count, 1));
+    } else if (isStaleSection(bytes, count, impl_->probed_bytes_per_point[index])) {
+      impl_->stale = true;
+    }
   }
 }
 
