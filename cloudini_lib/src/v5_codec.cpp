@@ -651,7 +651,7 @@ void appendCommittedRangeT(
         uint8_t* out = block;
         for (size_t i = 0; i < count; ++i, ptr += point_step) {
           const int64_t value = ToInt64<T>(ptr);
-          out += encodeVarint64(value - prev, out);
+          out += encodeVarint64(wrappingDiff(value, prev), out);
           prev = value;
         }
         field.section_bytes.insert(field.section_bytes.end(), block, out);
