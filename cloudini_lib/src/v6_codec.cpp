@@ -237,9 +237,9 @@ inline int64_t wrapV6(uint64_t value) {
 // Prediction of value i of one axis from the values already reconstructed (`history`, same axis only). The
 // arithmetic wraps around: values decoded from a corrupted stream can be anywhere in the int64 range (the
 // encoder's values stay below 2^50, where wrapping never happens). Interior: i >= lag + 2 is guaranteed,
-// so the boundary tests fold away.
-template <V6Predictor P, bool Interior = false>
-CLOUDINI_V6_INLINE int64_t v6Predict(const int64_t* history, size_t i, size_t lag) {
+// so the boundary tests fold away. T: int64_t, or int32_t for the encoder's block coder.
+template <V6Predictor P, bool Interior = false, typename T = int64_t>
+CLOUDINI_V6_INLINE int64_t v6Predict(const T* history, size_t i, size_t lag) {
   const int64_t previous = (Interior || i >= 1) ? history[i - 1] : 0;
   if constexpr (P == V6Predictor::Previous) {
     return previous;
@@ -535,30 +535,28 @@ struct V6VarintPack {
   alignas(16) uint8_t shuffle[16];
   uint8_t total;
 };
-const std::array<V6VarintPack, 625>& v6VarintPackTable() {
-  static const std::array<V6VarintPack, 625> table = [] {
-    std::array<V6VarintPack, 625> t{};
-    for (int index = 0; index < 625; ++index) {
-      int rest = index, pos = 0;
-      std::memset(t[index].shuffle, 0x80, 16);
-      for (int lane = 0; lane < 4; ++lane) {
-        const int len = rest % 5;
-        rest /= 5;
-        for (int b = 0; b < len; ++b) {
-          t[index].shuffle[pos++] = static_cast<uint8_t>(lane * 4 + b);
-        }
-      }
-      t[index].total = static_cast<uint8_t>(pos);
+constexpr std::array<V6VarintPack, 625> kV6VarintPacks = [] {
+  std::array<V6VarintPack, 625> table{};
+  for (int index = 0; index < 625; ++index) {
+    for (uint8_t& byte : table[index].shuffle) {
+      byte = 0x80;  // a zero byte in the output
     }
-    return t;
-  }();
+    int rest = index, pos = 0;
+    for (int lane = 0; lane < 4; ++lane) {
+      const int len = rest % 5;
+      rest /= 5;
+      for (int b = 0; b < len; ++b) {
+        table[index].shuffle[pos++] = static_cast<uint8_t>(lane * 4 + b);
+      }
+    }
+    table[index].total = static_cast<uint8_t>(pos);
+  }
   return table;
-}
+}();
 
 // Writes the varints of 4 residuals (encodeVarint64 of r: zigzag + 1), or a NaN marker byte 0 where `marker`
 // is set, or nothing where `skip` is set. Needs 16 writable bytes at `out`.
-CLOUDINI_V6_INLINE uint8_t* writeV6Varints4(
-    const V6VarintPack* table, __m128i residual, __m128i marker, __m128i skip, uint8_t* out) {
+CLOUDINI_V6_INLINE uint8_t* writeV6Varints4(__m128i residual, __m128i marker, __m128i skip, uint8_t* out) {
   const __m128i zigzag = _mm_xor_si128(_mm_slli_epi32(residual, 1), _mm_srai_epi32(residual, 31));
   const __m128i code = _mm_andnot_si128(marker, _mm_add_epi32(zigzag, _mm_set1_epi32(1)));
   // 7-bit groups into bytes
@@ -580,7 +578,7 @@ CLOUDINI_V6_INLINE uint8_t* writeV6Varints4(
   const __m128i weighted = _mm_mullo_epi32(len, _mm_setr_epi32(1, 5, 25, 125));
   const __m128i sum2 = _mm_add_epi32(weighted, _mm_shuffle_epi32(weighted, _MM_SHUFFLE(1, 0, 3, 2)));
   const int index = _mm_cvtsi128_si32(_mm_add_epi32(sum2, _mm_shuffle_epi32(sum2, _MM_SHUFFLE(2, 3, 0, 1))));
-  const V6VarintPack& pack = table[static_cast<size_t>(index)];
+  const V6VarintPack& pack = kV6VarintPacks[static_cast<size_t>(index)];
   const __m128i packed = _mm_shuffle_epi8(
       _mm_or_si128(bytes, continuation), _mm_load_si128(reinterpret_cast<const __m128i*>(pack.shuffle)));
   _mm_storeu_si128(reinterpret_cast<__m128i*>(out), packed);
@@ -610,26 +608,6 @@ CLOUDINI_V6_INLINE __m128i predictV6x4(const int32_t* h, size_t i, size_t lag) {
   }
 }
 
-// Scalar prediction from the filled column, the same as v6Predict on the history.
-template <V6Predictor P>
-CLOUDINI_V6_INLINE int32_t predictV6x1(const int32_t* h, size_t i, size_t lag) {
-  const int32_t previous = i >= 1 ? h[i - 1] : 0;
-  if constexpr (P == V6Predictor::Previous) {
-    return previous;
-  } else if constexpr (P == V6Predictor::LagK) {
-    return i >= lag ? h[i - lag] : previous;
-  } else if constexpr (P == V6Predictor::Median) {
-    if (i <= lag) {
-      return previous;
-    }
-    const int32_t left = previous, up = h[i - lag], up_left = h[i - lag - 1];
-    const int32_t high = std::max(left, up), low = std::min(left, up);
-    return up_left >= high ? low : (up_left <= low ? high : left + up - up_left);
-  } else {
-    return i >= 2 ? 2 * previous - h[i - 2] : previous;
-  }
-}
-
 // The residual stream of one filled column; points with valid[i] == 0 are skipped (valid may be null).
 template <V6Predictor P>
 uint8_t* encodeV6ColumnBlocks(const int32_t* h, const uint8_t* valid, size_t n, size_t lag, uint8_t* out) {
@@ -642,15 +620,17 @@ uint8_t* encodeV6ColumnBlocks(const int32_t* h, const uint8_t* valid, size_t n, 
     first_interior = 2;
   }
   first_interior = std::min(first_interior, n);
+  // the first values (not every neighbour exists yet) and the last ones (fewer than 4), one at a time
+  auto code_one = [&](size_t i) {
+    if (!valid || valid[i]) {
+      out += encodeVarint64(int64_t{h[i]} - v6Predict<P>(h, i, lag), out);
+    }
+  };
   size_t i = 0;
   for (; i < first_interior; ++i) {
-    if (valid && !valid[i]) {
-      continue;
-    }
-    out += encodeVarint64(int64_t{h[i]} - predictV6x1<P>(h, i, lag), out);
+    code_one(i);
   }
   const __m128i none = _mm_setzero_si128();
-  const V6VarintPack* table = v6VarintPackTable().data();
   for (; i + 4 <= n; i += 4) {
     const __m128i value = _mm_loadu_si128(reinterpret_cast<const __m128i*>(h + i));
     const __m128i residual = _mm_sub_epi32(value, predictV6x4<P>(h, i, lag));
@@ -663,15 +643,25 @@ uint8_t* encodeV6ColumnBlocks(const int32_t* h, const uint8_t* valid, size_t n, 
       }
       skip = _mm_cmpeq_epi32(_mm_cvtepu8_epi32(_mm_cvtsi32_si128(v4)), none);
     }
-    out = writeV6Varints4(table, residual, none, skip, out);
+    out = writeV6Varints4(residual, none, skip, out);
   }
   for (; i < n; ++i) {
-    if (valid && !valid[i]) {
-      continue;
-    }
-    out += encodeVarint64(int64_t{h[i]} - predictV6x1<P>(h, i, lag), out);
+    code_one(i);
   }
   return out;
+}
+
+// 4 values quantized in float precision: `q` (0 for NaN) and the NaN lanes. False when a value quantizes to
+// kV6FloatQuantized steps or more: the caller takes the double-precision path.
+CLOUDINI_V6_INLINE bool quantizeV6x4(__m128 v, __m128 inv_resolution, __m128i& q, __m128& is_nan) {
+  const __m128 scaled = _mm_round_ps(_mm_mul_ps(v, inv_resolution), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+  const __m128 magnitude = _mm_andnot_ps(_mm_set1_ps(-0.0f), scaled);
+  if (_mm_movemask_ps(_mm_cmpge_ps(magnitude, _mm_set1_ps(kV6FloatQuantized))) != 0) {
+    return false;  // NaN lanes compare false
+  }
+  is_nan = _mm_cmpunord_ps(v, v);
+  q = _mm_cvtps_epi32(_mm_andnot_ps(is_nan, scaled));
+  return true;
 }
 
 // x, y, z of points i to i + 3 as three vectors.
@@ -714,7 +704,6 @@ V6BlockResult encodeV6GeometryBlocks(
   const __m128 inv[3] = {
       _mm_set1_ps(geometry.inv_resolution_f[0]), _mm_set1_ps(geometry.inv_resolution_f[1]),
       _mm_set1_ps(geometry.inv_resolution_f[2])};
-  const __m128 sign = _mm_set1_ps(-0.0f), limit = _mm_set1_ps(kV6FloatQuantized);
   // 4 validity bits to 4 bytes of 0 / 1
   static constexpr std::array<uint32_t, 16> kNibbleBytes = [] {
     std::array<uint32_t, 16> t{};
@@ -733,16 +722,14 @@ V6BlockResult encodeV6GeometryBlocks(
     __m128i qv[3];
     int nan_bits[3], zero_bits[3];
     for (int axis = 0; axis < 3; ++axis) {
-      const __m128 scaled = _mm_round_ps(_mm_mul_ps(v[axis], inv[axis]), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
-      if (_mm_movemask_ps(_mm_cmpge_ps(_mm_andnot_ps(sign, scaled), limit)) != 0) {
-        return V6BlockResult::NeedsDouble;  // NaN lanes compare false
+      __m128 is_nan;
+      if (!quantizeV6x4(v[axis], inv[axis], qv[axis], is_nan)) {
+        return V6BlockResult::NeedsDouble;
       }
-      const __m128 is_nan = _mm_cmpunord_ps(v[axis], v[axis]);
       nan_bits[axis] = _mm_movemask_ps(is_nan);
       if constexpr (M == V6MaskKind::Zero) {
         zero_bits[axis] = _mm_movemask_ps(_mm_cmpeq_ps(v[axis], _mm_setzero_ps()));
       }
-      qv[axis] = _mm_cvtps_epi32(_mm_andnot_ps(is_nan, scaled));
     }
     const int lanes = (1 << count) - 1;
     const int all_nan = nan_bits[0] & nan_bits[1] & nan_bits[2];
@@ -830,10 +817,25 @@ V6BlockResult encodeV6GeometryBlocks(
 // Quantizes and codes the chunk in one pass, for a predictor and a mask kind already known. With a mask,
 // sets the validity bit of each valid point in `valid_bits` (zeroed by the caller). Returns false when a
 // value needs the double-precision path (quantizeV6Chunk). Same streams as encodeV6Axis on each axis.
+// With SSE4.1 the block coder does it, 4 values per step; point by point otherwise, and for chunks that
+// have points with some but not all axes NaN.
 template <V6Predictor P, V6MaskKind M>
 bool encodeV6GeometryFused(
     const V6Geometry& geometry, const uint8_t* points, size_t point_step, size_t n, size_t lag, V6Streams& streams,
     uint8_t* valid_bits) {
+#if defined(__SSE4_1__)
+  switch (encodeV6GeometryBlocks<P, M>(geometry, points, point_step, n, lag, streams, valid_bits)) {
+    case V6BlockResult::Coded:
+      return true;
+    case V6BlockResult::NeedsDouble:
+      return false;
+    case V6BlockResult::PartialNaN:
+      if constexpr (M != V6MaskKind::None) {
+        std::memset(valid_bits, 0, (n + 7) / 8);  // set again below
+      }
+      break;
+  }
+#endif
   int64_t* history[3] = {streams.history.data(), streams.history.data() + n, streams.history.data() + 2 * n};
   uint8_t* cursor[3] = {streams.data[0].data(), streams.data[1].data(), streams.data[2].data()};
   V6PointQuantized point;
@@ -874,34 +876,6 @@ bool buildV6StreamsFused(
   reserveV6Streams(streams, n);
   return withV6Predictor(predictor, [&](auto predictor_tag) {
     constexpr V6Predictor P = decltype(predictor_tag)::value;
-#if defined(__SSE4_1__)
-    {
-      V6BlockResult result = V6BlockResult::PartialNaN;
-      switch (mask) {
-        case V6MaskKind::None:
-          result =
-              encodeV6GeometryBlocks<P, V6MaskKind::None>(geometry, points, point_step, n, lag, streams, valid_bits);
-          break;
-        case V6MaskKind::NaN:
-          result =
-              encodeV6GeometryBlocks<P, V6MaskKind::NaN>(geometry, points, point_step, n, lag, streams, valid_bits);
-          break;
-        default:
-          result =
-              encodeV6GeometryBlocks<P, V6MaskKind::Zero>(geometry, points, point_step, n, lag, streams, valid_bits);
-          break;
-      }
-      if (result == V6BlockResult::Coded) {
-        return true;
-      }
-      if (result == V6BlockResult::NeedsDouble) {
-        return false;
-      }
-      if (mask != V6MaskKind::None) {  // partly NaN points: the per-point coder sets the bits again
-        std::memset(valid_bits, 0, (n + 7) / 8);
-      }
-    }
-#endif
     switch (mask) {
       case V6MaskKind::None:
         return encodeV6GeometryFused<P, V6MaskKind::None>(geometry, points, point_step, n, lag, streams, valid_bits);
@@ -1055,89 +1029,60 @@ void encodeV6FloatColumn(
   streams.history.ensure(n);
   streams.data[0].ensure(n * kMaxVarintBytes);
   const float inv_resolution_f = 1.0f / resolution;
+  uint8_t* cursor = streams.data[0].data();
+  int64_t previous = 0;
+  size_t i = 0;
 #if defined(__SSE4_1__)
-  {
-    // 4 values per step, the same stream as the loop below
-    uint8_t* cursor = streams.data[0].data();
-    const V6VarintPack* table = v6VarintPackTable().data();
+  {  // 4 values per step while they stay in float precision; the loop below codes the rest
     const __m128 inv = _mm_set1_ps(inv_resolution_f);
-    const __m128 sign = _mm_set1_ps(-0.0f), limit = _mm_set1_ps(kV6FloatQuantized);
     const __m128i none = _mm_setzero_si128();
-    int32_t previous = 0;
-    size_t i = 0;
-    bool coded = true;
+    int32_t previous4 = 0;
     for (; i + 4 <= n; i += 4) {
       const uint8_t* p = points + i * point_step + offset;
       const __m128 v =
           _mm_setr_ps(readF32(p), readF32(p + point_step), readF32(p + 2 * point_step), readF32(p + 3 * point_step));
-      const __m128 scaled = _mm_round_ps(_mm_mul_ps(v, inv), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
-      if (_mm_movemask_ps(_mm_cmpge_ps(_mm_andnot_ps(sign, scaled), limit)) != 0) {
-        coded = false;  // NaN lanes compare false
+      __m128i q;
+      __m128 is_nan;
+      if (!quantizeV6x4(v, inv, q, is_nan)) {
         break;
       }
-      const __m128 is_nan = _mm_cmpunord_ps(v, v);
-      const __m128i q = _mm_cvtps_epi32(_mm_andnot_ps(is_nan, scaled));
       const int nan_bits = _mm_movemask_ps(is_nan);
       __m128i predicted;
       if (nan_bits == 0) {  // previous value of each lane: the lane before, the last value for lane 0
-        predicted = _mm_alignr_epi8(q, _mm_set1_epi32(previous), 12);  // previous in lane 3
-        previous = _mm_extract_epi32(q, 3);
+        predicted = _mm_alignr_epi8(q, _mm_set1_epi32(previous4), 12);  // previous4 in lane 3
+        previous4 = _mm_extract_epi32(q, 3);
       } else {  // a NaN keeps the prediction
         int32_t lane[4], pred[4];
         _mm_storeu_si128(reinterpret_cast<__m128i*>(lane), q);
         for (int k = 0; k < 4; ++k) {
-          pred[k] = previous;
-          previous = ((nan_bits >> k) & 1) ? previous : lane[k];
+          pred[k] = previous4;
+          previous4 = ((nan_bits >> k) & 1) ? previous4 : lane[k];
         }
         predicted = _mm_loadu_si128(reinterpret_cast<const __m128i*>(pred));
       }
-      cursor = writeV6Varints4(table, _mm_sub_epi32(q, predicted), _mm_castps_si128(is_nan), none, cursor);
+      cursor = writeV6Varints4(_mm_sub_epi32(q, predicted), _mm_castps_si128(is_nan), none, cursor);
     }
-    for (; coded && i < n; ++i) {
-      const float v = readF32(points + i * point_step + offset);
-      if (std::isnan(v)) {
-        *cursor++ = 0;
-        continue;
-      }
-      const float scaled = std::nearbyint(v * inv_resolution_f);
-      if (!(std::fabs(scaled) < kV6FloatQuantized)) {
-        coded = false;
-        break;
-      }
-      const auto q = static_cast<int32_t>(scaled);
-      cursor += encodeVarint64(int64_t{q} - previous, cursor);
-      previous = q;
-    }
-    if (coded) {
-      appendByte(out, static_cast<uint8_t>(V6GeometryMode::Predicted));
-      appendBytes(out, streams.data[0].data(), static_cast<size_t>(cursor - streams.data[0].data()));
-      return;
-    }
+    previous = previous4;
   }
 #endif
-  {
-    uint8_t* cursor = streams.data[0].data();
-    int64_t previous = 0;
-    size_t i = 0;
-    for (; i < n; ++i) {
-      const float v = readF32(points + i * point_step + offset);
-      if (std::isnan(v)) {
-        *cursor++ = 0;  // NaN marker; the prediction stays
-        continue;
-      }
-      const float scaled = std::nearbyint(v * inv_resolution_f);
-      if (!(std::fabs(scaled) < kV6FloatQuantized)) {
-        break;
-      }
-      const auto q = static_cast<int64_t>(scaled);
-      cursor += encodeVarint64(q - previous, cursor);
-      previous = q;
+  for (; i < n; ++i) {
+    const float v = readF32(points + i * point_step + offset);
+    if (std::isnan(v)) {
+      *cursor++ = 0;  // NaN marker; the prediction stays
+      continue;
     }
-    if (i == n) {
-      appendByte(out, static_cast<uint8_t>(V6GeometryMode::Predicted));
-      appendBytes(out, streams.data[0].data(), static_cast<size_t>(cursor - streams.data[0].data()));
-      return;
+    const float scaled = std::nearbyint(v * inv_resolution_f);
+    if (!(std::fabs(scaled) < kV6FloatQuantized)) {
+      break;
     }
+    const auto q = static_cast<int64_t>(scaled);
+    cursor += encodeVarint64(q - previous, cursor);
+    previous = q;
+  }
+  if (i == n) {
+    appendByte(out, static_cast<uint8_t>(V6GeometryMode::Predicted));
+    appendBytes(out, streams.data[0].data(), static_cast<size_t>(cursor - streams.data[0].data()));
+    return;
   }
   quantized.resize(n);
   nan.resize(n);
