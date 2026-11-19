@@ -656,10 +656,12 @@ uint8_t* encodeV6ColumnBlocks(const int32_t* h, const uint8_t* valid, size_t n, 
 CLOUDINI_V6_INLINE bool quantizeV6x4(__m128 v, __m128 inv_resolution, __m128i& q, __m128& is_nan) {
   const __m128 scaled = _mm_round_ps(_mm_mul_ps(v, inv_resolution), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
   const __m128 magnitude = _mm_andnot_ps(_mm_set1_ps(-0.0f), scaled);
-  if (_mm_movemask_ps(_mm_cmpge_ps(magnitude, _mm_set1_ps(kV6FloatQuantized))) != 0) {
-    return false;  // NaN lanes compare false
-  }
   is_nan = _mm_cmpunord_ps(v, v);
+  // Not below the limit. That includes a NaN product of a value that is not NaN: 0 times the infinite
+  // inverse of a resolution below 1 / FLT_MAX, which the double-precision path quantizes to 0.
+  if (_mm_movemask_ps(_mm_andnot_ps(is_nan, _mm_cmpnlt_ps(magnitude, _mm_set1_ps(kV6FloatQuantized)))) != 0) {
+    return false;
+  }
   q = _mm_cvtps_epi32(_mm_andnot_ps(is_nan, scaled));
   return true;
 }

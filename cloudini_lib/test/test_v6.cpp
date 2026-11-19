@@ -363,6 +363,43 @@ TEST(V6, FloatColumnsNaNFractionalAndHuge) {
   }
 }
 
+// A float column with a resolution below 1 / FLT_MAX: the inverse is infinite in float precision and
+// 0 * inf is NaN, which is not the NaN of a value. Such a column takes the double-precision path.
+TEST(V6, FloatColumnResolutionWithInfiniteFloatInverse) {
+  struct Point {
+    float x, y, z, w;
+  };
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  const float resolution = 1e-40f;
+  ASSERT_TRUE(std::isinf(1.0f / resolution));
+  std::vector<Point> points(1000);  // a multiple of 4: no value is left to the scalar loop
+  for (size_t i = 0; i < points.size(); ++i) {
+    points[i] = {0.01f * float(i % 50), 0.02f * float(i / 50), 1.0f, (i % 7 == 3) ? nan : 0.0f};
+  }
+  const std::vector<PointField> fields = {
+      {"x", offsetof(Point, x), FieldType::FLOAT32, 0.001f},
+      {"y", offsetof(Point, y), FieldType::FLOAT32, 0.001f},
+      {"z", offsetof(Point, z), FieldType::FLOAT32, 0.001f},
+      {"w", offsetof(Point, w), FieldType::FLOAT32, resolution}};
+  const uint32_t n = uint32_t(points.size());
+  PointcloudEncoder encoder(makeInfo(fields, n, 1, sizeof(Point), 6, CompressionOption::ZSTD));
+  for (int round = 0; round < 2; ++round) {
+    std::vector<uint8_t> encoded;
+    encoder.encode(ConstBufferView(reinterpret_cast<const uint8_t*>(points.data()), n * sizeof(Point)), encoded);
+    const auto decoded = decode(encoded);
+    ASSERT_EQ(decoded.size(), n * sizeof(Point));
+    for (size_t i = 0; i < points.size(); ++i) {
+      Point out;
+      std::memcpy(&out, decoded.data() + i * sizeof(Point), sizeof(Point));
+      if (std::isnan(points[i].w)) {
+        ASSERT_TRUE(std::isnan(out.w)) << "round " << round << " point " << i;
+      } else {
+        ASSERT_EQ(out.w, 0.0f) << "round " << round << " point " << i;
+      }
+    }
+  }
+}
+
 TEST(V6, EncoderReuse) {
   std::mt19937 rng(8);
   const auto fields = ousterFields(0.001f);
