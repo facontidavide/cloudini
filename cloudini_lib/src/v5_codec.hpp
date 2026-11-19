@@ -58,6 +58,9 @@ class AdaptiveIntSectionsEncoder {
 
   // The next chunk chooses the modes again.
   void resetModes();
+  // True when a section coded with a kept mode came out much larger than in the chunk the mode was chosen
+  // on: the data has changed and the modes should be chosen again.
+  bool modesAreStale() const;
 
  private:
   struct Impl;

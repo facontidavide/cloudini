@@ -1181,6 +1181,9 @@ class V6CloudEncoder {
       state_.scratch->adaptive->resetModes();
     } else {
       state_.chunks.resize(chunks_count);
+      if (state_.scratch->adaptive->modesAreStale()) {  // the integer fields changed: choose their modes again
+        state_.scratch->adaptive->resetModes();
+      }
     }
     if (info.height > 1) {  // organized clouds: the point one row up
       state_.lag = info.width;

@@ -587,6 +587,58 @@ TEST(V6, CommittedIntegerRangesOfEveryTypeAndMode) {
   }
 }
 
+// The modes of the integer fields are kept from cloud to cloud. When the data changes (here: fields that
+// are 0 in the first cloud, as from a sensor that is starting), the modes are chosen again on the next
+// cloud instead of staying wrong until the next re-probe.
+TEST(V6, KeptIntegerModesAreChosenAgainWhenTheDataChanges) {
+  struct Point {
+    float x, y, z;
+    uint16_t ring, reflectivity;
+    uint32_t t;
+  };
+  static_assert(sizeof(Point) == 20);
+  const std::vector<PointField> fields = {
+      {"x", offsetof(Point, x), FieldType::FLOAT32, 0.001f},
+      {"y", offsetof(Point, y), FieldType::FLOAT32, 0.001f},
+      {"z", offsetof(Point, z), FieldType::FLOAT32, 0.001f},
+      {"ring", offsetof(Point, ring), FieldType::UINT16, std::nullopt},
+      {"reflectivity", offsetof(Point, reflectivity), FieldType::UINT16, std::nullopt},
+      {"t", offsetof(Point, t), FieldType::UINT32, std::nullopt}};
+  const uint32_t n = 20000;
+  const auto info = makeInfo(fields, n, 1, sizeof(Point), 6, CompressionOption::ZSTD);
+  std::mt19937 rng(13);
+  PointcloudEncoder encoder(info);
+  std::vector<size_t> sizes, fresh_sizes;
+  for (int round = 0; round < 6; ++round) {
+    std::vector<Point> points(n);
+    for (uint32_t i = 0; i < n; ++i) {
+      auto& p = points[i];
+      p.x = 0.02f * float(i % 300), p.y = 0.02f * float(i / 300), p.z = 0.001f * float(rng() % 20);
+      p.ring = round == 0 ? 0 : uint16_t(i % 40);
+      p.reflectivity = round == 0 ? 0 : uint16_t(rng() % 4000);
+      p.t = round == 0 ? 0 : i * 55u + rng() % 8;
+    }
+    const ConstBufferView view(reinterpret_cast<const uint8_t*>(points.data()), n * sizeof(Point));
+    std::vector<uint8_t> encoded;
+    encoder.encode(view, encoded);
+    const auto decoded = decode(encoded);
+    ASSERT_EQ(decoded.size(), n * sizeof(Point));
+    for (uint32_t i = 0; i < n; ++i) {
+      Point out;
+      std::memcpy(&out, decoded.data() + i * sizeof(Point), sizeof(Point));
+      ASSERT_EQ(out.ring, points[i].ring) << "round " << round << " point " << i;
+      ASSERT_EQ(out.reflectivity, points[i].reflectivity) << "round " << round << " point " << i;
+      ASSERT_EQ(out.t, points[i].t) << "round " << round << " point " << i;
+    }
+    sizes.push_back(encoded.size());
+    fresh_sizes.push_back(encode(info, points.data(), n * sizeof(Point)).size());  // modes chosen on this cloud
+  }
+  // Cloud 1 is coded with the modes of cloud 0; from cloud 2 on they fit the data again.
+  for (size_t round = 2; round < sizes.size(); ++round) {
+    EXPECT_LE(double(sizes[round]), 1.05 * double(fresh_sizes[round])) << "round " << round;
+  }
+}
+
 TEST(V6, EncoderReuse) {
   std::mt19937 rng(8);
   const auto fields = ousterFields(0.001f);

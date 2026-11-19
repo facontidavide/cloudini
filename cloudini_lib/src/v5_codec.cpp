@@ -1161,7 +1161,18 @@ bool IsAdaptiveIntType(FieldType type) {
 
 struct AdaptiveIntSectionsEncoder::Impl {
   std::vector<V5AdaptiveIntField> fields;
+  // Size of the section of each field in the chunk its mode was chosen on, in bytes per point.
+  std::vector<double> probed_bytes_per_point;
+  bool stale = false;
 };
+
+namespace {
+// A section coded with a kept mode that is more than twice as large as in the chunk the mode was chosen on
+// (plus a quarter of a byte per point, and a few bytes for small chunks): the data has changed.
+bool isStaleSection(size_t bytes, size_t count, double probed_bytes_per_point) {
+  return static_cast<double>(bytes) > (2.0 * probed_bytes_per_point + 0.25) * static_cast<double>(count) + 64.0;
+}
+}  // namespace
 
 AdaptiveIntSectionsEncoder::AdaptiveIntSectionsEncoder(
     const EncodingInfo& info, std::span<const size_t> field_indexes, size_t points_per_chunk)
@@ -1186,6 +1197,11 @@ void AdaptiveIntSectionsEncoder::resetModes() {
   for (auto& field : impl_->fields) {
     field.committed = false;
   }
+  impl_->stale = false;
+}
+
+bool AdaptiveIntSectionsEncoder::modesAreStale() const {
+  return impl_->stale;
 }
 
 void AdaptiveIntSectionsEncoder::encodeChunk(
@@ -1225,9 +1241,18 @@ void AdaptiveIntSectionsEncoder::encodeChunk(
   } else {
     collect_range(0, count);
   }
-  for (auto& field : adaptive) {
+  impl_->probed_bytes_per_point.resize(adaptive.size());
+  for (size_t index = 0; index < adaptive.size(); ++index) {
     before_section();
-    appendCommittedAdaptiveIntSection(field, compression, out);
+    const size_t before = out.size();
+    appendCommittedAdaptiveIntSection(adaptive[index], compression, out);
+    const size_t bytes = before - out.size();
+    if (has_uncommitted) {  // the modes were chosen on this chunk
+      impl_->probed_bytes_per_point[index] =
+          static_cast<double>(bytes) / static_cast<double>(std::max<size_t>(count, 1));
+    } else if (isStaleSection(bytes, count, impl_->probed_bytes_per_point[index])) {
+      impl_->stale = true;
+    }
   }
 }
 
