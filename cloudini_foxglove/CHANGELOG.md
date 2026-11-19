@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.0] - 2026-11-19
+
+Follows Cloudini 1.5.0.
+
+### Changed
+- Faster decoding of lossless fields and of float fields without a resolution.
+- Updated dependencies (`@foxglove/extension` 3.3.0, `@foxglove/schemas` 2.3.1).
+
+### Fixed
+- A cloud whose header has a subnormal resolution (below 1.2e-38) failed with
+  "Failed to parse float value".
+
 ## [1.4.1] - 2026-09-29
 
 Follows Cloudini 1.4.1 (an MSVC build fix); no changes in the extension.

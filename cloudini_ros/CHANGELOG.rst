@@ -2,6 +2,15 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.5.0 (2026-11-19)
+------------------
+* The topic converter and the point_cloud_transport plugin encode V6 faster on x86
+  (19% to 57% less time on nine sensor-like streams), with cloudini_lib 1.5.0
+  (`#170 <https://github.com/facontidavide/cloudini/issues/170>`_, `#172 <https://github.com/facontidavide/cloudini/issues/172>`_). No parameter changes.
+* cloudini_ros declares its PCL dependencies (``common`` and ``io``) itself: cloudini_lib
+  no longer depends on PCL nor exports it (`#166 <https://github.com/facontidavide/cloudini/issues/166>`_)
+* Contributors: Davide Faconti, Finn Weithoff, Jose Luis Blanco-Claraco
+
 1.4.1 (2026-09-29)
 ------------------
 * Follows cloudini_lib 1.4.1 (MSVC build fix); no changes in this package.
