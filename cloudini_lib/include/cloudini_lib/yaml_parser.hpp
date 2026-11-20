@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cctype>
+#include <limits>
+#include <type_traits>
 #include <locale>
 #include <map>
 #include <memory>
@@ -100,14 +102,23 @@ class Node {
 
   template <typename T>
   static T parseScalar(const std::string& str) {
-    std::istringstream iss(str);
-    iss.imbue(std::locale::classic());  // locale-independent parsing of numbers
-    T value;
-    iss >> value;
-    if (iss.fail()) {
-      throw std::runtime_error("Failed to convert scalar: " + str);
+    if constexpr (std::is_integral_v<T> && sizeof(T) == 1) {
+      // operator>> reads a 1-byte integer as a character ("6" -> 54): read an int and narrow it
+      const int value = parseScalar<int>(str);
+      if (value < std::numeric_limits<T>::min() || value > std::numeric_limits<T>::max()) {
+        throw std::runtime_error("Scalar out of range: " + str);
+      }
+      return static_cast<T>(value);
+    } else {
+      std::istringstream iss(str);
+      iss.imbue(std::locale::classic());  // locale-independent parsing of numbers
+      T value;
+      iss >> value;
+      if (iss.fail()) {
+        throw std::runtime_error("Failed to convert scalar: " + str);
+      }
+      return value;
     }
-    return value;
   }
 };
 

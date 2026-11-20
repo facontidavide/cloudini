@@ -79,7 +79,8 @@ Changelog for package cloudini_lib
   The call also refines the resolutions to the data first, like the other encode paths (`#41 <https://github.com/facontidavide/cloudini/issues/41>`_)
 * feat: Python encoder ``cloudini_py/cloudini_encoder.py``: a structured NumPy array to a Cloudini
   payload (a ``.cldn`` file, or the ``data`` of a CompressedPointCloud2), through the WebAssembly
-  module. ``CloudiniDecoder.decode_data`` reads such a payload back (`#41 <https://github.com/facontidavide/cloudini/issues/41>`_)
+  module. ``CloudiniDecoder.decode_data`` reads such a payload back. The Python loader now lets the module's
+  memory grow (clouds over about 4 MB failed) and turns a C++ error into a ``RuntimeError`` (`#41 <https://github.com/facontidavide/cloudini/issues/41>`_)
 * fix: ``basic_types.hpp`` and ``intrinsics.hpp`` did not compile when included first (missing
   ``<limits>`` and ``<cassert>``); ``pcl_conversion_impl.hpp`` lacked ``<map>``. The tests now
   compile every public header on its own (`#169 <https://github.com/facontidavide/cloudini/issues/169>`_)

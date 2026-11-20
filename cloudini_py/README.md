@@ -14,7 +14,7 @@ Python decoder and encoder for Cloudini-compressed point clouds that uses WebAss
 ## File Structure
 
 - **`cloudini_decoder.py`**: Reusable `CloudiniDecoder` class for decoding CompressedPointCloud2 DDS messages
-- **`cloudini_encoder.py`**: `CloudiniEncoder` class: structured NumPy array to a Cloudini payload
+- **`cloudini_encoder.py`**: `CloudiniEncoder` class (a `CloudiniDecoder` that also encodes): structured NumPy array to a Cloudini payload
 - **`decode_mcap.py`**: Command-line tool for decoding from MCAP files with statistics
 - **`requirements.txt`**: Python dependencies (wasmtime, mcap, numpy)
 - **`IMPLEMENTATION_NOTES.md`**: Technical documentation and architecture details
@@ -154,7 +154,7 @@ payload = encoder.encode(points, resolution=0.001, field_resolutions={'intensity
 open("lidar.cldn", "wb").write(payload)
 
 # A 2D array is an organized cloud (height, width). version=5 writes for readers on 1.3.1 or earlier.
-decoded = encoder.decode(payload)  # same as CloudiniDecoder.decode_data(payload)[0]
+decoded, header = encoder.decode_data(payload)  # CloudiniEncoder is a CloudiniDecoder too
 ```
 
 `python cloudini_encoder.py cloudini_wasm.wasm` runs a round-trip self-check. Clouds of a few

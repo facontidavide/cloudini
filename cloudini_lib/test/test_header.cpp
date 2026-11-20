@@ -35,6 +35,7 @@
 
 #include "cloudini_lib/cloudini.hpp"
 #include "cloudini_lib/ros_message_definitions.hpp"  // second includer: see test_ros_msg.cpp
+#include "cloudini_lib/yaml_parser.hpp"
 
 namespace {
 
@@ -372,6 +373,9 @@ TEST(Cloudini, YAMLRoundTripKeepsVersion) {
     info.fields.push_back({"x", 0, FieldType::FLOAT32, 0.001F});
     EXPECT_EQ(EncodingInfoFromYAML(EncodingInfoToYAML(info)).version, version);
   }
+  EXPECT_EQ(YAML::parse("v: 200")["v"].as<uint8_t>(), 200);
+  EXPECT_EQ(YAML::parse("v: -5")["v"].as<int8_t>(), -5);
+  EXPECT_THROW(YAML::parse("v: 300")["v"].as<uint8_t>(), std::runtime_error);
 }
 
 // Regression tests for issue #123: the YAML header must be written and parsed

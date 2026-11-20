@@ -66,9 +66,6 @@ class CloudiniPointcloudConverter : public rclcpp::Node {
   // generic publisher for sensor_msgs/msg/PointCloud2 (but... raw DDS message)
   rclcpp::GenericPublisher::SharedPtr point_cloud_publisher_;
 
-  // callback for point cloud messages
-  void point_cloud_callback(const rclcpp::SerializedMessage& serialized_msg);
-
   std::vector<uint8_t> output_raw_message_;
   rclcpp::SerializedMessage output_message_;
   bool compressing_ = true;
@@ -168,8 +165,13 @@ void CloudiniPointcloudConverter::adaptToPublishers() {
   if (publishers.empty()) {
     return;  // nothing to adapt to: keep the current subscription, if any
   }
-  const rclcpp::QoS qos = adapt_request_to_offers(input_topic_, publishers);
-  if (input_qos_ && input_qos_->reliability() == qos.reliability() && input_qos_->durability() == qos.durability()) {
+  rclcpp::QoS qos = adapt_request_to_offers(input_topic_, publishers);
+  if (input_qos_ && input_qos_->durability() == rclcpp::DurabilityPolicy::Volatile) {
+    // A VOLATILE reader matches every publisher: subscribing again as TRANSIENT_LOCAL would only receive
+    // the clouds already converted a second time.
+    qos.durability_volatile();
+  }
+  if (input_qos_ == qos) {
     return;
   }
   const bool reliable = qos.reliability() == rclcpp::ReliabilityPolicy::Reliable;
@@ -177,21 +179,22 @@ void CloudiniPointcloudConverter::adaptToPublishers() {
   RCLCPP_INFO(
       this->get_logger(), "Subscribing to topic '%s' of type '%s' (%s, %s)", input_topic_.c_str(),
       input_topic_type_.c_str(), reliable ? "RELIABLE" : "BEST_EFFORT", transient_local ? "TRANSIENT_LOCAL" : "VOLATILE");
-  point_cloud_subscriber_ = this->create_generic_subscription(
-      input_topic_, input_topic_type_, qos,
-      std::bind(&CloudiniPointcloudConverter::callback, this, std::placeholders::_1));
-  input_qos_ = qos;
-
-  if (!point_cloud_publisher_) {  // its QoS stays, so that the subscribers of the output keep matching
+  // The publisher exists before the first message arrives. Its QoS stays, so that the subscribers of the
+  // output keep matching.
+  if (!point_cloud_publisher_) {
     RCLCPP_INFO(
         this->get_logger(), "Publishing to topic '%s' of type '%s'", output_topic_.c_str(), output_topic_type_.c_str());
     point_cloud_publisher_ = this->create_generic_publisher(output_topic_, output_topic_type_, qos);
   }
+  point_cloud_subscriber_ = this->create_generic_subscription(
+      input_topic_, input_topic_type_, qos,
+      std::bind(&CloudiniPointcloudConverter::callback, this, std::placeholders::_1));
+  input_qos_ = qos;
 }
 
 void CloudiniPointcloudConverter::callback(std::shared_ptr<rclcpp::SerializedMessage> msg) {
   // Skip processing if there are no subscribers
-  if (!point_cloud_publisher_ || point_cloud_publisher_->get_subscription_count() == 0) {
+  if (point_cloud_publisher_->get_subscription_count() == 0) {
     return;
   }
 

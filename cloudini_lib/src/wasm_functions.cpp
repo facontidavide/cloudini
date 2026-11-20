@@ -223,8 +223,7 @@ uint32_t cldn_EncodePointcloudData(
     Cloudini::EncodingInfo encoding_info = Cloudini::EncodingInfoFromYAML(header_as_yaml);
 
     // Verify data size matches expected size
-    const uint64_t expected_size =
-        uint64_t(encoding_info.width) * uint64_t(encoding_info.height) * uint64_t(encoding_info.point_step);
+    const uint64_t expected_size = uint64_t(encoding_info.width) * encoding_info.height * encoding_info.point_step;
 
     if (pc_data_size != expected_size) {
       EM_ASM({ console.error('Data size mismatch: expected', $0, 'but got', $1); }, double(expected_size), pc_data_size);

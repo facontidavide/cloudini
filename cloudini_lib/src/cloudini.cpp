@@ -259,7 +259,7 @@ EncodingInfo EncodingInfoFromYAML(std::string_view yaml) {
   auto root = YAML::parse(yaml);
 
   // Read top-level fields
-  info.version = static_cast<uint8_t>(root["version"].as<int>());  // as<uint8_t> would read the character '6'
+  info.version = root["version"].as<uint8_t>();
   info.width = root["width"].as<uint32_t>();
   info.height = root["height"].as<uint32_t>();
   info.point_step = root["point_step"].as<uint32_t>();
