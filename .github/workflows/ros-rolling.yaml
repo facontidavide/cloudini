@@ -17,7 +17,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: rostooling/setup-ros-docker:ubuntu-noble-ros-rolling-ros-base-latest
+      image: rostooling/setup-ros-docker:ubuntu-resolute-ros-rolling-ros-base-latest
     steps:
       # action-ros-ci checks the repo out to its own ros_ws/src, not to
       # ${{ github.workspace }}. Do an explicit checkout first so the

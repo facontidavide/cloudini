@@ -24,6 +24,8 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
+#include "make_point_cloud_transport.hpp"
+
 /**
  * @brief Test node that demonstrates usage of point_cloud_transport plugin
  *        with manual conversion to pcl::PointCloud2
@@ -48,10 +50,7 @@ class CloudiniPluginTestNode : public rclcpp::Node {
     RCLCPP_INFO(this->get_logger(), "Subscribing to topic: %s", topic.c_str());
     RCLCPP_INFO(this->get_logger(), "Using transport: %s", transport.c_str());
 
-    // PointCloudTransport binds the node by non-const lvalue ref (rclcpp::NodeInterfaces),
-    // so pass a named lvalue — Rolling dropped the deprecated by-value Node::SharedPtr ctor.
-    std::shared_ptr<rclcpp::Node> node = shared_from_this();
-    pct_ = std::make_shared<point_cloud_transport::PointCloudTransport>(node);
+    pct_ = makePointCloudTransport(shared_from_this());
 
     // Create transport hints to specify which compression to use
     auto transport_hint = std::make_shared<point_cloud_transport::TransportHints>(transport);
