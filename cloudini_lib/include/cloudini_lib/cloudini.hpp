@@ -96,8 +96,13 @@ struct EncodingInfo {
   CompressionOption compression_opt = CompressionOption::ZSTD;
 
   // When false, compression runs in the calling thread instead of a worker thread.
-  // Ignored when compression_opt == NONE.
+  // Ignored when compression_opt == NONE. False by default in WebAssembly builds without pthreads, where
+  // starting a thread throws.
+#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
+  bool use_threads = false;
+#else
   bool use_threads = true;
+#endif
 
   uint8_t version = kEncodingVersion;
 

@@ -20,6 +20,7 @@
 #include <array>
 #include <bit>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <optional>

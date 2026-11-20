@@ -34,6 +34,13 @@ option(CLOUDINI_BUILD_TOOLS "Build Tools" ${CLOUDINI_IS_TOP_LEVEL})
 option(CLOUDINI_FORCE_VENDORED_DEPS "Force vendored dependencies" ON)
 option(CLOUDINI_WITH_PCL "Build the tests, tools and benchmarks of the (header-only) PCL conversions when PCL is found" ${CLOUDINI_IS_TOP_LEVEL})
 option(CLOUDINI_INSTALL "Generate install rules" ${CLOUDINI_IS_TOP_LEVEL})
+option(CLOUDINI_WASM_SIMD "WebAssembly: use WASM SIMD (the SSE4.1 code paths, translated by Emscripten)" ON)
+
+# Every target, including LZ4 and ZSTD. Engines without WASM SIMD (Safari before 16.4) cannot load the module:
+# build with -DCLOUDINI_WASM_SIMD=OFF for them.
+if(EMSCRIPTEN AND CLOUDINI_WASM_SIMD)
+  add_compile_options(-msimd128 -msse4.1)
+endif()
 
 
 # create compile_commands.json

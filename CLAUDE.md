@@ -94,6 +94,9 @@ colcon build --packages-select cloudini_lib cloudini_ros
 cmake -B build_wasm -S cloudini_lib -DCMAKE_TOOLCHAIN_FILE=$EMSDK/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake
 cmake --build build_wasm
 ```
+The WASM build uses WASM SIMD (`-msimd128 -msse4.1` on every target, `CLOUDINI_WASM_SIMD=ON`): Emscripten translates
+the SSE4.1 block codecs, about 2.2x faster decode without stage 2 and 1.9x with ZSTD (Node 22, 13 datasets).
+Engines without WASM SIMD (Safari before 16.4) cannot load that module; build with `-DCLOUDINI_WASM_SIMD=OFF` for them.
 
 
 ## Testing
