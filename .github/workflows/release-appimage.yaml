@@ -5,6 +5,15 @@ on:
   push:
     tags:
     - '[0-9]+.[0-9]+.[0-9]+'  # Push events to matching semantic version tags, i.e. 0.1.2, 1.0.0
+  # Pull requests build every asset as a release would (create-release runs only for tags), so a
+  # break such as the Emscripten 7 node:fs import in the .foxe shows up before the tag.
+  pull_request:
+    branches: [ main ]
+    paths-ignore: ['**.md', '**.svg', '**.png', 'docs/**', 'LICENSE']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build-appimage:
