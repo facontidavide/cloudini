@@ -96,8 +96,13 @@ struct EncodingInfo {
   CompressionOption compression_opt = CompressionOption::ZSTD;
 
   // When false, compression runs in the calling thread instead of a worker thread.
-  // Ignored when compression_opt == NONE.
+  // Ignored when compression_opt == NONE. False by default in WebAssembly builds without pthreads, where
+  // starting a thread throws.
+#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
+  bool use_threads = false;
+#else
   bool use_threads = true;
+#endif
 
   uint8_t version = kEncodingVersion;
 
@@ -254,8 +259,9 @@ class PointcloudEncoder {
  * @brief Keeps one PointcloudEncoder for a stream of clouds (e.g. one topic).
  *
  * The encoder is reused while the fields, point step, options and version stay the same; a change of
- * width or height only updates its header. Reuse matters for V6: the encoder keeps the lag, predictor and
- * mask kind it chose for each chunk, and codes the next clouds in a single pass.
+ * width or height only updates its header. Reuse matters for V6: the encoder keeps the lag, the predictor
+ * and mask kind it chose for each chunk and the coding modes of the integer fields, and codes the next
+ * clouds in a single pass.
  */
 class PointcloudEncoderCache {
  public:
@@ -296,7 +302,7 @@ class PointcloudDecoder {
       const EncodingInfo& info, ConstBufferView compressed_data, BufferView& output, size_t expected_points);
 
   std::vector<std::unique_ptr<FieldDecoder>> decoders_;
-  std::vector<uint8_t> decompressed_buffer_;
+  std::vector<uint8_t> decompressed_buffer_;  // stage 2 output of very large chunks only
   size_t min_encoded_point_bytes_ = 0;
 };
 }  // namespace Cloudini

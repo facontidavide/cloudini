@@ -16,6 +16,10 @@
 
 #include "cloudini_lib/cloudini.hpp"
 
+#if defined(__SSE4_1__)
+#include <immintrin.h>
+#endif
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -54,6 +58,28 @@ void ensureScratchBuffer(std::unique_ptr<uint8_t[]>& buffer, size_t& capacity, s
 // std::from_chars for floats, because those are not available on every
 // standard library we support (e.g. older libc++ used by Emscripten / macOS).
 
+// Parses a number in the classic locale; trailing whitespace is allowed. False when `str` is not a number
+// or is too large for a float.
+bool ParseFloat(const std::string& str, float& value) {
+  std::istringstream iss(str);
+  iss.imbue(std::locale::classic());
+  iss >> value;
+  if (iss.fail()) {
+    // libc++ (macOS, Emscripten) also fails when the value is a subnormal float, which libstdc++ reads:
+    // parse it as a double, where it is a normal number.
+    iss = std::istringstream(str);
+    iss.imbue(std::locale::classic());
+    double wide = 0.0;
+    iss >> wide;
+    if (iss.fail() || !(std::fabs(wide) < static_cast<double>(std::numeric_limits<float>::min()))) {
+      return false;
+    }
+    value = static_cast<float>(wide);
+  }
+  iss >> std::ws;
+  return iss.eof();
+}
+
 // Shortest representation that parses back to exactly the same float.
 std::string FloatToString(float value) {
   std::string out;
@@ -63,10 +89,8 @@ std::string FloatToString(float value) {
     oss << std::setprecision(precision) << value;
     out = oss.str();
 
-    std::istringstream iss(out);
-    iss.imbue(std::locale::classic());
     float parsed = 0.0F;
-    if ((iss >> parsed) && parsed == value) {
+    if (ParseFloat(out, parsed) && parsed == value) {
       break;
     }
   }
@@ -74,16 +98,8 @@ std::string FloatToString(float value) {
 }
 
 float FloatFromString(const std::string& str) {
-  std::istringstream iss(str);
-  iss.imbue(std::locale::classic());
   float value = 0.0F;
-  iss >> value;
-  if (iss.fail()) {
-    throw std::runtime_error("Failed to parse float value: " + str);
-  }
-  // allow trailing whitespace only
-  iss >> std::ws;
-  if (!iss.eof()) {
+  if (!ParseFloat(str, value)) {
     throw std::runtime_error("Failed to parse float value: " + str);
   }
   return value;
@@ -319,7 +335,37 @@ float refinedResolution(const PointField& field, float resolution, ConstBufferVi
   // Integer values: stored exactly with resolution 1.
   bool all_integers = true;
   bool any_value = false;
-  for (size_t i = 0; i < points; ++i) {
+  size_t first = 0;
+#if defined(__SSE4_1__)
+  // FLOAT32, 4 values per step: the same answers as the loop below (an infinity returns `resolution`
+  // wherever it is, so the order of the checks does not matter).
+  if (field.type == FieldType::FLOAT32) {
+    const uint8_t* base = cloud_data.data() + field.offset;
+    const __m128 sign = _mm_set1_ps(-0.0f), infinity = _mm_set1_ps(INFINITY);
+    int any_value_bits = 0;
+    for (; first + 4 <= points; first += 4) {
+      // built in registers: a 16-byte load of 4 separate 4-byte stores would miss store-to-load forwarding
+      const uint8_t* p = base + first * point_step;
+      float f0, f1, f2, f3;
+      memcpy(&f0, p, sizeof(float));
+      memcpy(&f1, p + point_step, sizeof(float));
+      memcpy(&f2, p + 2 * point_step, sizeof(float));
+      memcpy(&f3, p + 3 * point_step, sizeof(float));
+      const __m128 v = _mm_setr_ps(f0, f1, f2, f3);
+      const __m128 is_value = _mm_cmpord_ps(v, v);
+      if (_mm_movemask_ps(_mm_cmpeq_ps(_mm_andnot_ps(sign, v), infinity)) != 0) {
+        return resolution;
+      }
+      any_value_bits |= _mm_movemask_ps(is_value);
+      const __m128 is_integer = _mm_cmpeq_ps(_mm_round_ps(v, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC), v);
+      if (_mm_movemask_ps(_mm_andnot_ps(is_integer, is_value)) != 0) {
+        break;  // a fraction among these 4 values: the loop below stops at it
+      }
+    }
+    any_value = any_value_bits != 0;
+  }
+#endif
+  for (size_t i = first; i < points; ++i) {
     const double value = value_at(i);
     if (std::isnan(value)) {
       continue;

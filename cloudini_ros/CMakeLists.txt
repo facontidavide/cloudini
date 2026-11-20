@@ -12,7 +12,7 @@ find_package(pluginlib REQUIRED)
 find_package(point_cloud_interfaces REQUIRED)
 find_package(point_cloud_transport REQUIRED)
 find_package(Draco QUIET)
-find_package(PCL COMPONENTS common REQUIRED)
+find_package(PCL COMPONENTS common io REQUIRED)
 find_package(pcl_conversions REQUIRED)
 
 set(PLUGIN_DEPS
@@ -41,6 +41,7 @@ target_link_libraries(cloudini_ros
   PUBLIC
     ${PLUGIN_DEPS}
     ${PCL_COMMON_LIBRARIES}
+    ${PCL_IO_LIBRARIES}
 )
 
 install(TARGETS cloudini_ros

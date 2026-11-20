@@ -19,6 +19,10 @@ if(ament_cmake_FOUND)
       data_path
       ${ament_LIBRARIES})
 
+    if(PCL_FOUND)
+      target_link_libraries(test_cloudini ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES})
+    endif()
+
 else()
 
     find_package(GTest REQUIRED)
@@ -39,3 +43,5 @@ else()
 endif()
 
 target_link_libraries(test_cloudini cloudini_lib)
+# the internal headers, for the switches that only tests use
+target_include_directories(test_cloudini PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)

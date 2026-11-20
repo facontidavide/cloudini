@@ -63,7 +63,8 @@ Key components:
 - `convertCompressedCloudToPointCloud2()`: Decompress + convert
 - `toEncodingInfo()`: Extract encoding metadata from point cloud
 
-**PCL Integration** (`cloudini_lib/include/cloudini_lib/pcl_conversion.hpp`):
+**PCL Integration** (`cloudini_lib/include/cloudini_lib/pcl_conversion.hpp`, header-only, so
+`cloudini_lib` does not depend on PCL; code including it must find and link PCL `common` and `io`):
 - `PCLPointCloudEncode()`: Encode `pcl::PCLPointCloud2` to Cloudini format
 - `PCLPointCloudDecode()`: Decode Cloudini format to `pcl::PCLPointCloud2`
 - Direct conversion without intermediate ROS message types
@@ -93,6 +94,9 @@ colcon build --packages-select cloudini_lib cloudini_ros
 cmake -B build_wasm -S cloudini_lib -DCMAKE_TOOLCHAIN_FILE=$EMSDK/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake
 cmake --build build_wasm
 ```
+The WASM build uses WASM SIMD (`-msimd128 -msse4.1` on every target, `CLOUDINI_WASM_SIMD=ON`): Emscripten translates
+the SSE4.1 block codecs, about 2.2x faster decode without stage 2 and 1.9x with ZSTD (Node 22, 13 datasets).
+Engines without WASM SIMD (Safari before 16.4) cannot load that module; build with `-DCLOUDINI_WASM_SIMD=OFF` for them.
 
 
 ## Testing
@@ -276,10 +280,15 @@ otherwise), with an optional validity mask for NaN or all-zero points. Other
 FLOAT32 fields with a resolution get their own residual stream. The layout
 is used only when x, y, z are the first three FLOAT32 fields with a
 resolution in (0, 1e18); other version-6 clouds use the V5 layout. The
-encoder caches lag, predictor and mask kind per cloud size (re-probed every
-16 clouds, also across clouds of different size) and quantizes and codes in
-one SSE pass; the first encode probes a prefix of each chunk, then codes it the
-same way. Keep one encoder per stream to benefit: `Cloudini::PointcloudEncoderCache`
+encoder caches lag, predictor and mask kind per cloud size, and the coding modes
+of the integer fields (re-probed every 16 clouds, also across clouds of different
+size) and quantizes and codes with SSE4.1, 4 values per step; the first encode
+probes a prefix of each chunk, then codes it the same way. With SSE4.1 the decoder works in blocks too
+(`cloudini_lib/src/varint_block.hpp`): it unpacks up to 4 varints per byte shuffle (3 streams or 4 chains of
+one stream in the same loop), predicts x, y, z as the lanes of one register and stores the floats in the same
+pass, 64 points at a time; float columns and 16/32-bit delta-varint integer sections likewise. Chunks it does
+not take (NaN markers, varints over 4 bytes, values of 2^29 steps or more) go to the per-point decoder, with
+the same output. Keep one encoder per stream to benefit: `Cloudini::PointcloudEncoderCache`
 (used by the rosbag converter, `mcap_codec_benchmark`, the topic converter and
 the point_cloud_transport plugin). Selecting V5 instead: `--encoding-version 5`
 (rosbag converter), `encoding_version:=5` (topic converter),
@@ -645,7 +654,8 @@ include/cloudini_lib/
 ├── field_encoder.hpp         # Field-specific encoder implementations
 ├── field_decoder.hpp         # Field-specific decoder implementations
 ├── intrinsics.hpp            # SIMD intrinsics wrappers (Vector4f, Vector4i)
-├── pcl_conversion.hpp        # PCL ↔ Cloudini conversion
+├── pcl_conversion.hpp        # PCL ↔ Cloudini conversion (header-only)
+├── pcl_conversion_impl.hpp   # Its implementation
 └── ros_msg_utils.hpp         # ROS2 message parsing/conversion utilities
 
 src/
@@ -655,9 +665,9 @@ src/
 ├── v4_codec.cpp              # V4 point-by-point codec
 ├── v5_codec.cpp              # V5 adaptive integer sections
 ├── v6_codec.cpp              # V6 residual streams (see docs/v6_format.html)
+├── varint_block.hpp          # SSE4.1 block varint unpacking used by the V5/V6 decoders
 ├── field_encoder.cpp         # Encoder implementations (FloatN, Int, XOR)
 ├── field_decoder.cpp         # Decoder implementations
-├── pcl_conversion.cpp        # PCL integration
 ├── ros_msg_utils.cpp         # ROS message utilities
 └── wasm_functions.cpp        # WebAssembly exports (cldn_*)
 

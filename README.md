@@ -36,9 +36,9 @@ V6 at 1 mm resolution, refined to the data, followed by ZSTD. "ZSTD alone" is ZS
 
 ![Compressed size per sensor](compression_ratio.svg)
 
-Cloudini adds little or no time on top of ZSTD, because ZSTD has much less data left to compress:
-encoding is 1.4–2× faster than ZSTD alone on the Velodyne clouds, the PCD sample and the stereo cloud, and 0.87–1.05× its speed on Ouster and Hesai.
-Decoding runs at 0.67× (Hesai) to 1.42× (KITTI) the speed of ZSTD alone.
+Cloudini is faster than ZSTD alone, because ZSTD has much less data left to compress and decompress:
+encoding is 2.1–2.6× faster than ZSTD alone on the Ouster, Velodyne, PCD and stereo clouds, and 1.3× on Hesai;
+decoding is 1.3–2× faster on the same clouds, and as fast as ZSTD alone on Hesai.
 
 ![Encode and decode throughput per sensor](compression_speed.svg)
 

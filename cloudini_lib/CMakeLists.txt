@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 # NOTE: keep the default languages (C and CXX). The vendored zstd/lz4 fallback
 # compiles .c sources, so restricting to CXX only would break standalone builds.
-project(cloudini_lib VERSION 1.4.1)
+project(cloudini_lib VERSION 1.5.0)
 
 # When another project embeds this one (add_subdirectory / FetchContent), build
 # only the library: no forced build type, no ament packaging, no tests, tools,
@@ -32,8 +32,15 @@ message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 
 option(CLOUDINI_BUILD_TOOLS "Build Tools" ${CLOUDINI_IS_TOP_LEVEL})
 option(CLOUDINI_FORCE_VENDORED_DEPS "Force vendored dependencies" ON)
-option(CLOUDINI_WITH_PCL "Build the PCL conversions when PCL is found" ${CLOUDINI_IS_TOP_LEVEL})
+option(CLOUDINI_WITH_PCL "Build the tests, tools and benchmarks of the (header-only) PCL conversions when PCL is found" ${CLOUDINI_IS_TOP_LEVEL})
 option(CLOUDINI_INSTALL "Generate install rules" ${CLOUDINI_IS_TOP_LEVEL})
+option(CLOUDINI_WASM_SIMD "WebAssembly: use WASM SIMD (the SSE4.1 code paths, translated by Emscripten)" ON)
+
+# Every target, including LZ4 and ZSTD. Engines without WASM SIMD (Safari before 16.4) cannot load the module:
+# build with -DCLOUDINI_WASM_SIMD=OFF for them.
+if(EMSCRIPTEN AND CLOUDINI_WASM_SIMD)
+  add_compile_options(-msimd128 -msse4.1)
+endif()
 
 
 # create compile_commands.json
@@ -79,10 +86,11 @@ if(CLOUDINI_WITH_PCL)
   find_package(PCL COMPONENTS common io QUIET)
 endif()
 
+# The PCL conversions (cloudini_lib/pcl_conversion.hpp) are header-only, so the
+# library itself does not depend on PCL: only its tests, tools and benchmarks.
 if(PCL_FOUND)
   message(STATUS "PCL found in system")
   add_definitions(${PCL_DEFINITIONS})
-  set(PCL_SRC src/pcl_conversion.cpp)
 else()
   message(STATUS "PCL NOT found")
 endif()
@@ -117,13 +125,11 @@ if(ament_cmake_FOUND)
   # ROS/ament always builds shared so the plugin pluginlib can dlopen it.
   add_library(cloudini_lib SHARED
     ${CLOUDINI_SRC}
-    ${PCL_SRC}
   )
 else()
   # Standalone builds honor BUILD_SHARED_LIBS (static by default).
   add_library(cloudini_lib
     ${CLOUDINI_SRC}
-    ${PCL_SRC}
   )
 endif()
 
@@ -135,6 +141,9 @@ target_compile_features(cloudini_lib PUBLIC cxx_std_20)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   target_compile_options(cloudini_lib PRIVATE -Wall -Wextra)
+  # The codec runs much faster with -O3 than with the -O2 of RelWithDebInfo
+  # (the default of ROS/colcon builds) or of distribution packages:
+  target_compile_options(cloudini_lib PRIVATE $<$<NOT:$<CONFIG:Debug>>:-O3>)
 endif()
 
 target_include_directories(cloudini_lib
@@ -171,8 +180,6 @@ target_link_libraries(cloudini_lib
     $<BUILD_INTERFACE:${CLOUDINI_ZSTD_TARGET}>
   PUBLIC
     Threads::Threads
-    ${PCL_COMMON_LIBRARIES}
-    ${PCL_IO_LIBRARIES}
 )
 
 if(NOT EMSCRIPTEN)
@@ -262,7 +269,7 @@ if(CLOUDINI_INSTALL)
 
   if(ament_cmake_FOUND)
     ament_export_targets(cloudini_libTargets HAS_LIBRARY_TARGET)
-    ament_export_dependencies(PCL Threads)
+    ament_export_dependencies(Threads)
     ament_package()
   else()
     # Standalone (non-ament) install: generate a CMake package config so downstream
@@ -294,10 +301,6 @@ if(CLOUDINI_INSTALL)
       NAMESPACE cloudini::
       DESTINATION lib/cmake/cloudini_lib)
 
-    set(CLOUDINI_HAS_PCL 0)
-    if(PCL_FOUND)
-      set(CLOUDINI_HAS_PCL 1)
-    endif()
 
     configure_package_config_file(
       ${CMAKE_CURRENT_SOURCE_DIR}/cmake/cloudini_libConfig.cmake.in

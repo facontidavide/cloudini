@@ -517,6 +517,27 @@ TEST(FieldEncoders, FloatGorilla_EdgeCases_Float32) {
       input, /*chunk_points=*/input.size() + 1, 7);
 }
 
+// Corrupted Gorilla records are rejected instead of shifting out of range.
+TEST(FieldEncoders, FloatGorilla_RejectsInvalidWindows) {
+  using namespace Cloudini;
+  auto decodeSecond = [](std::vector<uint8_t> record) {
+    std::vector<uint8_t> bytes(8, 0);  // first value: raw 64 bits
+    bytes.insert(bytes.end(), record.begin(), record.end());
+    FieldDecoderFloat_Gorilla<double> decoder(0);
+    double value = 0;
+    ConstBufferView input(bytes.data(), bytes.size());
+    BufferView out(reinterpret_cast<uint8_t*>(&value), sizeof(value));
+    decoder.decode(input, out);
+    decoder.decode(input, out);
+  };
+  // flag 1, control 0: reuses a window that no record has set
+  EXPECT_THROW(decodeSecond({0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}), std::runtime_error);
+  // flag 1, control 1, leading 31, meaningful 64: wider than the value
+  EXPECT_THROW(decodeSecond(std::vector<uint8_t>(10, 0xFF)), std::runtime_error);
+  // the largest valid window: leading 0, meaningful 64
+  EXPECT_NO_THROW(decodeSecond({0x83, 0x1F, 0, 0, 0, 0, 0, 0, 0, 0}));
+}
+
 // Full PointcloudEncoder/Decoder round-trip in LOSSLESS mode across multiple
 // kPointsPerChunk-sized chunks; exercises the chunk-flush integration.
 TEST(FieldEncoders, PointcloudLossless_Gorilla_MultiChunk) {
@@ -1522,4 +1543,77 @@ TEST(FieldEncoders, RefineResolutionsToDataKeepsErrorBoundForLargeValues) {
         << "temperature of point " << i << " (" << input[i].temperature << ")";
   }
   EXPECT_LE(max_error_odometer, 0.0005 + 1e-6);
+}
+
+// Single-field clouds take the bulk encodePoints()/decodePoints() paths: they must produce the same stream
+// as encoding point by point, for contiguous (point_step == field size) and padded points.
+TEST(FieldEncoders, SingleFieldBulkMatchesPerPoint) {
+  using namespace Cloudini;
+  std::mt19937 rng(3);
+  std::uniform_real_distribution<float> dist(-50.0f, 50.0f);
+  const size_t kNumPoints = 70000;  // more than one chunk
+
+  for (const size_t point_step : {size_t{4}, size_t{12}}) {
+    for (const bool lossless : {true, false}) {
+      std::vector<uint8_t> points(kNumPoints * point_step, 0);
+      for (size_t i = 0; i < kNumPoints; ++i) {
+        const float v = dist(rng);
+        memcpy(points.data() + i * point_step, &v, sizeof(v));
+      }
+      const std::optional<float> resolution = lossless ? std::nullopt : std::optional<float>(1e-3f);
+
+      // Reference: one FieldEncoder::encode() call per point.
+      std::unique_ptr<FieldEncoder> ref_encoder;
+      if (lossless) {
+        ref_encoder = std::make_unique<FieldEncoderCopy>(0, FieldType::FLOAT32);
+      } else {
+        ref_encoder = std::make_unique<FieldEncoderFloat_Lossy<float>>(0, *resolution);
+      }
+      std::vector<uint8_t> ref(kNumPoints * 16);
+      BufferView ref_view(ref.data(), ref.size());
+      size_t ref_size = 0;
+      for (size_t i = 0; i < kNumPoints; ++i) {
+        ref_size += ref_encoder->encode(ConstBufferView(points.data() + i * point_step, point_step), ref_view);
+      }
+
+      std::unique_ptr<FieldEncoder> bulk_encoder;
+      if (lossless) {
+        bulk_encoder = std::make_unique<FieldEncoderCopy>(0, FieldType::FLOAT32);
+      } else {
+        bulk_encoder = std::make_unique<FieldEncoderFloat_Lossy<float>>(0, *resolution);
+      }
+      std::vector<uint8_t> bulk(kNumPoints * 16);
+      BufferView bulk_view(bulk.data(), bulk.size());
+      const size_t bulk_size = bulk_encoder->encodePoints(points.data(), point_step, kNumPoints, bulk_view);
+      ASSERT_EQ(ref_size, bulk_size);
+      ASSERT_EQ(0, memcmp(ref.data(), bulk.data(), ref_size));
+
+      // Whole-cloud round trip:
+      EncodingInfo info;
+      info.fields = {{"v", 0, FieldType::FLOAT32, resolution}};
+      info.width = kNumPoints;
+      info.height = 1;
+      info.point_step = static_cast<uint32_t>(point_step);
+      info.encoding_opt = EncodingOptions::LOSSY;
+      info.compression_opt = CompressionOption::ZSTD;
+      std::vector<uint8_t> encoded;
+      PointcloudEncoder(info).encode(ConstBufferView(points.data(), points.size()), encoded);
+
+      std::vector<uint8_t> decoded(points.size(), 0);
+      ConstBufferView input(encoded.data(), encoded.size());
+      const EncodingInfo header = DecodeHeader(input);
+      PointcloudDecoder().decode(header, input, BufferView(decoded.data(), decoded.size()));
+      for (size_t i = 0; i < kNumPoints; ++i) {
+        float a = 0;
+        float b = 0;
+        memcpy(&a, points.data() + i * point_step, sizeof(a));
+        memcpy(&b, decoded.data() + i * point_step, sizeof(b));
+        if (lossless) {
+          ASSERT_EQ(a, b) << "point " << i;
+        } else {
+          ASSERT_NEAR(a, b, 0.5e-3f + 1e-5f) << "point " << i;
+        }
+      }
+    }
+  }
 }

@@ -40,11 +40,11 @@ std::map<std::string, FieldType> ReadEncodingInfoFromPCD(std::istream& stream);
 // IMPORTANT: currently we specialized only these point types.
 // If you need to add more specializations, look at the implmentation to see how it is done.
 template <>
-EncodingInfo ConvertToEncodingInfo<pcl::PointXYZ>(  //
+inline EncodingInfo ConvertToEncodingInfo<pcl::PointXYZ>(  //
     const pcl::PointCloud<pcl::PointXYZ>& cloud, double resolution_XYZ);
 
 template <>
-EncodingInfo ConvertToEncodingInfo<pcl::PointXYZI>(  //
+inline EncodingInfo ConvertToEncodingInfo<pcl::PointXYZI>(  //
     const pcl::PointCloud<pcl::PointXYZI>& cloud, double resolution_XYZ);
 
 //-------------------------------------------------------------------
@@ -162,3 +162,5 @@ inline void PointcloudDecode(ConstBufferView serialized_data, pcl::PointCloud<Po
 }
 
 };  // namespace Cloudini
+
+#include <cloudini_lib/pcl_conversion_impl.hpp>

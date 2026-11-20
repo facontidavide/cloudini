@@ -23,9 +23,11 @@
 
 #include <algorithm>
 #include <clocale>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <locale>
 #include <stdexcept>
 #include <string>
@@ -192,6 +194,31 @@ TEST(Cloudini, Header) {
     ASSERT_EQ(decoded_header.fields[i].offset, header.fields[i].offset);
     ASSERT_EQ(decoded_header.fields[i].type, header.fields[i].type);
     ASSERT_EQ(decoded_header.fields[i].resolution, header.fields[i].resolution);
+  }
+}
+
+// The YAML header stores a resolution as text. libc++ (macOS, Emscripten) does not read a subnormal float
+// from a stream, which libstdc++ does: the header must still parse.
+TEST(Cloudini, HeaderSubnormalResolution) {
+  using namespace Cloudini;
+
+  EncodingInfo header;
+  header.width = 10;
+  header.height = 1;
+  header.point_step = sizeof(float) * 4;
+  header.fields.push_back({"x", 0, FieldType::FLOAT32, 1e-40F});
+  header.fields.push_back({"y", 4, FieldType::FLOAT32, std::numeric_limits<float>::denorm_min()});
+  header.fields.push_back({"z", 8, FieldType::FLOAT32, std::nextafter(std::numeric_limits<float>::min(), 0.0F)});
+  header.fields.push_back({"w", 12, FieldType::FLOAT32, std::numeric_limits<float>::min()});
+
+  std::vector<uint8_t> buffer;
+  EncodeHeader(header, buffer);
+  ConstBufferView input(buffer.data(), buffer.size());
+  const auto decoded_header = DecodeHeader(input);
+
+  ASSERT_EQ(decoded_header.fields.size(), header.fields.size());
+  for (size_t i = 0; i < header.fields.size(); ++i) {
+    ASSERT_EQ(decoded_header.fields[i].resolution, header.fields[i].resolution) << header.fields[i].name;
   }
 }
 

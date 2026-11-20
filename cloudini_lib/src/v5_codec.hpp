@@ -45,7 +45,7 @@ void DecodeV5Stage1Chunk(
 bool IsAdaptiveIntType(FieldType type);
 
 // Codes the integer fields `field_indexes` of each chunk as V5 adaptive sections. The coding mode of each
-// field is chosen on the first chunk and kept for the next ones, as in V5.
+// field is chosen on the first chunk and kept for the next ones, as in V5, until resetModes().
 class AdaptiveIntSectionsEncoder {
  public:
   AdaptiveIntSectionsEncoder(const EncodingInfo& info, std::span<const size_t> field_indexes, size_t points_per_chunk);
@@ -55,6 +55,12 @@ class AdaptiveIntSectionsEncoder {
   void encodeChunk(
       const uint8_t* points, size_t point_step, size_t count, CompressionOption compression, BufferView& out,
       const std::function<void()>& before_section);
+
+  // The next chunk chooses the modes again.
+  void resetModes();
+  // True when a section coded with a kept mode came out much larger than in the chunk the mode was chosen
+  // on: the data has changed and the modes should be chosen again.
+  bool modesAreStale() const;
 
  private:
   struct Impl;

@@ -69,6 +69,13 @@ size_t EncodeV4Stage1Chunk(
 
   size_t points_in_current_chunk = 0;
   size_t serialized_size = 0;
+  if (encoders.size() == 1 && info.point_step > 0) {
+    // A single field: encode the whole chunk at once.
+    const size_t count = std::min(points_per_chunk, cloud_data.size() / info.point_step);
+    serialized_size += encoders.front()->encodePoints(cloud_data.data(), info.point_step, count, output);
+    cloud_data.trim_front(count * info.point_step);
+    points_in_current_chunk = count;
+  }
   while (!cloud_data.empty() && points_in_current_chunk < points_per_chunk) {
     for (auto& encoder : encoders) {
       serialized_size += encoder->encode(cloud_data, output);

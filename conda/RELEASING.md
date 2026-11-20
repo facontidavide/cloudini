@@ -107,8 +107,8 @@ pixi run cloudini_rosbag_converter --help
 Notes for the conda-forge review:
 - Windows is explicitly skipped in the recipe; enabling it requires a supported
   Windows build script and a passing package test.
-- PCL is intentionally not a dependency, so `pcl_conversion.hpp` ships but is
-  only usable by consumers that bring their own PCL.
+- PCL is intentionally not a dependency: `pcl_conversion.hpp` is header-only, so
+  it ships and is usable by consumers that bring their own PCL.
 
 ## Local dry-run without a tag
 
