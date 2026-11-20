@@ -14,8 +14,10 @@
  * limitations under the License.
  */
 
+#include <chrono>
 #include <cloudini_lib/cloudini.hpp>
 #include <cloudini_lib/ros_msg_utils.hpp>
+#include <optional>
 #include <rclcpp/generic_publisher.hpp>
 #include <rclcpp/generic_subscription.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -46,14 +48,23 @@ class CloudiniPointcloudConverter : public rclcpp::Node {
   }
 
  private:
+  // Subscribes with the QoS that the publishers of the input topic offer, once there is one, and subscribes
+  // again when what they offer changes: a reader's QoS cannot change, and a RELIABLE reader receives nothing
+  // from a BEST_EFFORT publisher. Called at start and by a timer.
+  void adaptToPublishers();
+
+  std::string input_topic_;
+  std::string input_topic_type_;
+  std::string output_topic_;
+  std::string output_topic_type_;
+  rclcpp::TimerBase::SharedPtr graph_poll_timer_;
+  std::optional<rclcpp::QoS> input_qos_;  // of the current subscription
+
   // generic subscriber for compressed point cloud messages
   rclcpp::GenericSubscription::SharedPtr point_cloud_subscriber_;
 
   // generic publisher for sensor_msgs/msg/PointCloud2 (but... raw DDS message)
   rclcpp::GenericPublisher::SharedPtr point_cloud_publisher_;
-
-  // callback for point cloud messages
-  void point_cloud_callback(const rclcpp::SerializedMessage& serialized_msg);
 
   std::vector<uint8_t> output_raw_message_;
   rclcpp::SerializedMessage output_message_;
@@ -126,44 +137,59 @@ CloudiniPointcloudConverter::CloudiniPointcloudConverter(const rclcpp::NodeOptio
   }
   encoding_version_ = static_cast<uint8_t>(encoding_version);
 
-  const std::string input_topic = this->get_parameter("topic_input").as_string();
-  if (input_topic.empty()) {
+  input_topic_ = this->get_parameter("topic_input").as_string();
+  if (input_topic_.empty()) {
     RCLCPP_ERROR(this->get_logger(), "Input topic is not set");
     throw std::runtime_error("Input topic is not set");
   }
-  std::string output_topic = this->get_parameter("topic_output").as_string();
-  if (output_topic.empty()) {
-    output_topic = input_topic + (compressing_ ? "/compressed" : "/decompressed");
-    RCLCPP_WARN(this->get_logger(), "Output topic is not set, using default: %s", output_topic.c_str());
+  output_topic_ = this->get_parameter("topic_output").as_string();
+  if (output_topic_.empty()) {
+    output_topic_ = input_topic_ + (compressing_ ? "/compressed" : "/decompressed");
+    RCLCPP_WARN(this->get_logger(), "Output topic is not set, using default: %s", output_topic_.c_str());
   }
-
-  // Initialize point cloud type support
-  auto publisher_info = this->get_publishers_info_by_topic(input_topic);
-  auto detected_qos = adapt_request_to_offers(input_topic, publisher_info);
-
-  std::function<void(std::shared_ptr<rclcpp::SerializedMessage>)> callback =
-      std::bind(&CloudiniPointcloudConverter::callback, this, std::placeholders::_1);
 
   const std::string compressed_topic_type = "point_cloud_interfaces/msg/CompressedPointCloud2";
   const std::string pointcloud_topic_type = "sensor_msgs/msg/PointCloud2";
+  input_topic_type_ = compressing_ ? pointcloud_topic_type : compressed_topic_type;
+  output_topic_type_ = compressing_ ? compressed_topic_type : pointcloud_topic_type;
 
-  const std::string input_topic_type = compressing_ ? pointcloud_topic_type : compressed_topic_type;
-  const std::string output_topic_type = compressing_ ? compressed_topic_type : pointcloud_topic_type;
+  adaptToPublishers();
+  if (!input_qos_) {
+    RCLCPP_INFO(this->get_logger(), "Waiting for a publisher on topic '%s'", input_topic_.c_str());
+  }
+  graph_poll_timer_ = this->create_wall_timer(std::chrono::milliseconds(500), [this] { adaptToPublishers(); });
+}
 
+void CloudiniPointcloudConverter::adaptToPublishers() {
+  const auto publishers = this->get_publishers_info_by_topic(input_topic_);
+  if (publishers.empty()) {
+    return;  // nothing to adapt to: keep the current subscription, if any
+  }
+  rclcpp::QoS qos = adapt_request_to_offers(input_topic_, publishers);
+  if (input_qos_ && input_qos_->durability() == rclcpp::DurabilityPolicy::Volatile) {
+    // A VOLATILE reader matches every publisher: subscribing again as TRANSIENT_LOCAL would only receive
+    // the clouds already converted a second time.
+    qos.durability_volatile();
+  }
+  if (input_qos_ == qos) {
+    return;
+  }
+  const bool reliable = qos.reliability() == rclcpp::ReliabilityPolicy::Reliable;
+  const bool transient_local = qos.durability() == rclcpp::DurabilityPolicy::TransientLocal;
   RCLCPP_INFO(
-      this->get_logger(), "Subscribing to topic '%s' of type '%s'", input_topic.c_str(), input_topic_type.c_str());
-
-  // Create a generic subscriber for point cloud messages
+      this->get_logger(), "Subscribing to topic '%s' of type '%s' (%s, %s)", input_topic_.c_str(),
+      input_topic_type_.c_str(), reliable ? "RELIABLE" : "BEST_EFFORT", transient_local ? "TRANSIENT_LOCAL" : "VOLATILE");
+  // The publisher exists before the first message arrives. Its QoS stays, so that the subscribers of the
+  // output keep matching.
+  if (!point_cloud_publisher_) {
+    RCLCPP_INFO(
+        this->get_logger(), "Publishing to topic '%s' of type '%s'", output_topic_.c_str(), output_topic_type_.c_str());
+    point_cloud_publisher_ = this->create_generic_publisher(output_topic_, output_topic_type_, qos);
+  }
   point_cloud_subscriber_ = this->create_generic_subscription(
-      input_topic,       //
-      input_topic_type,  //
-      detected_qos,      //
-      callback);
-
-  RCLCPP_INFO(
-      this->get_logger(), "Publishing to topic '%s' of type '%s'", output_topic.c_str(), output_topic_type.c_str());
-  // Create a generic publisher for point cloud messages
-  point_cloud_publisher_ = this->create_generic_publisher(output_topic, output_topic_type, detected_qos);
+      input_topic_, input_topic_type_, qos,
+      std::bind(&CloudiniPointcloudConverter::callback, this, std::placeholders::_1));
+  input_qos_ = qos;
 }
 
 void CloudiniPointcloudConverter::callback(std::shared_ptr<rclcpp::SerializedMessage> msg) {

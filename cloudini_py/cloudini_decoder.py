@@ -10,7 +10,13 @@ Licensed under the Apache License, Version 2.0
 """
 
 import numpy as np
-from wasmtime import Store, Module, Linker, WasiConfig, Func, Engine, Config
+from wasmtime import Store, Module, Linker, WasiConfig, Func, Engine, Config, Trap
+
+# Cloudini field types and their numpy dtypes
+NUMPY_TYPES = {
+    'INT8': np.int8, 'UINT8': np.uint8, 'INT16': np.int16, 'UINT16': np.uint16,
+    'INT32': np.int32, 'UINT32': np.uint32, 'FLOAT32': np.float32, 'FLOAT64': np.float64,
+}
 
 
 class CloudiniDecoder:
@@ -71,7 +77,7 @@ class CloudiniDecoder:
                         return None
                     return stub
 
-                stub_func = make_stub(func_type)
+                stub_func = self._resize_heap if import_.name == "emscripten_resize_heap" else make_stub(func_type)
                 func = Func(self.store, func_type, stub_func)
                 linker.define(self.store, module_name, import_.name, func)
 
@@ -108,8 +114,12 @@ class CloudiniDecoder:
         # Get the cloudini functions
         self.decode_compressed_msg = exports.get('cldn_DecodeCompressedMessage')
         self.get_header_as_yaml = exports.get('cldn_GetHeaderAsYAMLFromDDS')
+        self.get_payload_header_as_yaml = exports.get('cldn_GetHeaderAsYAML')
+        self.decode_compressed_data = exports.get('cldn_DecodeCompressedData')
+        self.encode_data = exports.get('cldn_EncodePointcloudData')  # used by CloudiniEncoder
 
-        if not all([self.decode_compressed_msg, self.get_header_as_yaml]):
+        if not all([self.decode_compressed_msg, self.get_header_as_yaml, self.get_payload_header_as_yaml,
+                    self.decode_compressed_data]):
             raise RuntimeError("Could not find required Cloudini functions in WASM module")
 
         # Initialize WASM module (call constructors)
@@ -120,9 +130,33 @@ class CloudiniDecoder:
         # Simple allocator offset (start at 2MB to avoid stack/heap)
         self.alloc_offset = 2 * 1024 * 1024
 
-        self.output_ptr = self.allocate(32 * 1024 * 1024) # allocate 32 megabytes as worst case scenario
+        # A C++ exception traps in this module (built without exception catching): _call restores the stack
+        self._stack_get = exports.get('emscripten_stack_get_current')
+        self._stack_restore = exports.get('_emscripten_stack_restore')
+
+        self.output_ptr = 0  # 32 MB for decode_message, allocated on its first call
 
         print("WASM module loaded successfully!")
+
+    def _resize_heap(self, requested_size: int) -> int:
+        """emscripten_resize_heap: grow the memory to `requested_size` bytes (up to the module maximum)."""
+        missing = (requested_size & 0xFFFFFFFF) - self.memory.data_len(self.store)
+        try:
+            if missing > 0:
+                self.memory.grow(self.store, (missing + 65535) // 65536)
+            return 1
+        except Exception:
+            return 0  # malloc returns null, as in a browser
+
+    def _call(self, export, *args):
+        """Call a Cloudini export; a C++ error (a trap here) becomes a RuntimeError."""
+        sp = self._stack_get(self.store) if self._stack_get else None
+        try:
+            return export(self.store, *args)
+        except Trap as e:
+            if sp is not None:
+                self._stack_restore(self.store, sp)  # the trap left the C++ stack frames allocated
+            raise RuntimeError(f"Cloudini failed (invalid input, or out of memory): {e.message.splitlines()[0]}") from e
 
     def allocate(self, size: int) -> int:
         """Simple allocation strategy - just increment offset."""
@@ -168,8 +202,11 @@ class CloudiniDecoder:
             self.write_bytes(input_ptr, compressed_msg)
 
 
+            if not self.output_ptr:
+                self.output_ptr = self.allocate(32 * 1024 * 1024)  # worst case scenario
+
             # Convert compressed message to PointCloud2 message
-            actual_size = self.decode_compressed_msg(self.store, input_ptr, len(compressed_msg), self.output_ptr)
+            actual_size = self._call(self.decode_compressed_msg, input_ptr, len(compressed_msg), self.output_ptr)
 
             if actual_size == 0:
                 raise RuntimeError("Failed to convert compressed message to PointCloud2")
@@ -221,70 +258,94 @@ class CloudiniDecoder:
         Returns:
             Dictionary with header info including 'fields' list
         """
-        # Allocate memory for input and output
         input_ptr = self.allocate(len(compressed_msg))
-        yaml_buffer_size = 4096  # Should be enough for YAML header
-        yaml_ptr = self.allocate(yaml_buffer_size)
-
         try:
             self.write_bytes(input_ptr, compressed_msg)
-
-            # Get header as YAML
-            yaml_size = self.get_header_as_yaml(self.store, input_ptr, len(compressed_msg), yaml_ptr)
-            if yaml_size == 0:
-                return {}
-
-            yaml_str = self.read_bytes(yaml_ptr, yaml_size).decode('utf-8')
-
-            #print(f"Extracted YAML header:\n{yaml_str}")
-
-            # Parse YAML (handles nested fields structure)
-            header = {}
-            fields = []
-            current_field = None
-            in_fields_section = False
-
-            for line in yaml_str.split('\n'):
-                stripped = line.strip()
-
-                # Check if we're in the fields section
-                if stripped.startswith('fields:'):
-                    in_fields_section = True
-                    continue
-
-                if in_fields_section:
-                    # New field starts with '- name:'
-                    if stripped.startswith('- name:'):
-                        if current_field:
-                            fields.append(current_field)
-                        current_field = {'name': stripped.split(':', 1)[1].strip()}
-                    elif stripped and ':' in stripped and not stripped.startswith('-'):
-                        # Field property
-                        key, value = stripped.split(':', 1)
-                        key = key.strip()
-                        value = value.strip()
-
-                        if current_field is not None:
-                            current_field[key] = self._parse_yaml_value(value)
-                else:
-                    # Top-level properties
-                    if ':' in stripped:
-                        key, value = stripped.split(':', 1)
-                        key = key.strip()
-                        value = value.strip()
-
-                        header[key] = self._parse_yaml_value(value)
-
-            # Add last field if exists
-            if current_field:
-                fields.append(current_field)
-
-            header['fields'] = fields
-            return header
-
+            return self._read_header(self.get_header_as_yaml, input_ptr, len(compressed_msg))
         finally:
             self.deallocate(input_ptr)
+
+    def _read_header(self, export, input_ptr: int, input_size: int) -> dict:
+        """Header of the input already in WASM memory, read by `export` as YAML; {} when it fails."""
+        yaml_ptr = self.allocate(input_size + 4096)  # the export does not bound its output: the header is in the input
+        try:
+            yaml_size = self._call(export, input_ptr, input_size, yaml_ptr)
+            if yaml_size == 0:
+                return {}
+            return self._parse_header_yaml(self.read_bytes(yaml_ptr, yaml_size).decode('utf-8'))
+        finally:
             self.deallocate(yaml_ptr)
+
+    @classmethod
+    def _parse_header_yaml(cls, yaml_str: str) -> dict:
+        """Parse the YAML header written by Cloudini (handles the nested fields structure)."""
+        header = {}
+        fields = []
+        current_field = None
+        in_fields_section = False
+
+        for line in yaml_str.split('\n'):
+            stripped = line.strip()
+
+            # Check if we're in the fields section
+            if stripped.startswith('fields:'):
+                in_fields_section = True
+                continue
+
+            if in_fields_section:
+                # New field starts with '- name:'
+                if stripped.startswith('- name:'):
+                    if current_field:
+                        fields.append(current_field)
+                    current_field = {'name': stripped.split(':', 1)[1].strip()}
+                elif stripped and ':' in stripped and not stripped.startswith('-'):
+                    # Field property
+                    key, value = stripped.split(':', 1)
+                    key = key.strip()
+                    value = value.strip()
+
+                    if current_field is not None:
+                        current_field[key] = cls._parse_yaml_value(value)
+            else:
+                # Top-level properties
+                if ':' in stripped:
+                    key, value = stripped.split(':', 1)
+                    key = key.strip()
+                    value = value.strip()
+
+                    header[key] = cls._parse_yaml_value(value)
+
+        # Add last field if exists
+        if current_field:
+            fields.append(current_field)
+
+        header['fields'] = fields
+        return header
+
+    def decode_data(self, payload: bytes) -> tuple[np.ndarray, dict]:
+        """
+        Decode a Cloudini payload: the content of a .cldn file, or the `data` field of a
+        CompressedPointCloud2 (what CloudiniEncoder.encode returns).
+
+        Returns:
+            Tuple of (numpy array of point cloud data, header info dict)
+        """
+        input_ptr = self.allocate(len(payload))
+        output_ptr = 0
+        try:
+            self.write_bytes(input_ptr, payload)
+            header = self._read_header(self.get_payload_header_as_yaml, input_ptr, len(payload))
+            if not header:
+                raise RuntimeError("Not a Cloudini payload: cannot read its header")
+            size = header['width'] * header['height'] * header['point_step']
+            output_ptr = self.allocate(max(size, 1))
+            if self._call(self.decode_compressed_data, input_ptr, len(payload), output_ptr) != size:
+                raise RuntimeError("Failed to decode the Cloudini payload")
+            return self.bytes_to_numpy(self.read_bytes(output_ptr, size), header), header
+        finally:
+            self.deallocate(input_ptr)
+            if output_ptr:
+                self.deallocate(output_ptr)
 
     def extract_data_from_pc2_msg(self, pc2_msg: bytes, header_info: dict) -> np.ndarray:
         """
@@ -336,17 +397,6 @@ class CloudiniDecoder:
         if len(data) != num_points * point_step:
             print(f"Warning: Data size mismatch. Expected {num_points * point_step}, got {len(data)}")
 
-        # Map Cloudini types to numpy dtypes
-        type_map = {
-            'FLOAT32': np.float32,
-            'FLOAT64': np.float64,
-            'UINT8': np.uint8,
-            'UINT16': np.uint16,
-            'UINT32': np.uint32,
-            'INT8': np.int8,
-            'INT16': np.int16,
-            'INT32': np.int32,
-        }
 
         # Create structured dtype from fields
         if fields:
@@ -357,7 +407,7 @@ class CloudiniDecoder:
                 # Build dtype specification with explicit offsets
                 dtype_spec = {
                     'names': [f.get('name', f'field_{i}') for i, f in enumerate(sorted_fields)],
-                    'formats': [type_map.get(f.get('type', 'UINT8'), np.uint8) for f in sorted_fields],
+                    'formats': [NUMPY_TYPES.get(f.get('type', 'UINT8'), np.uint8) for f in sorted_fields],
                     'offsets': [f.get('offset', 0) for f in sorted_fields],
                     'itemsize': point_step
                 }

@@ -74,6 +74,16 @@ Changelog for package cloudini_lib
   false by default there (`#176 <https://github.com/facontidavide/cloudini/issues/176>`_)
 * fix: the Gorilla FLOAT64 decoder shifted out of range on corrupted input; it now rejects
   it (`#175 <https://github.com/facontidavide/cloudini/issues/175>`_)
+* fix: ``cldn_EncodePointcloudData`` (WebAssembly) failed on every call: the version in the YAML
+  header was read as a character (``6`` -> 54). ``EncodingInfoFromYAML`` now reads it as a number.
+  The call also refines the resolutions to the data first, like the other encode paths (`#41 <https://github.com/facontidavide/cloudini/issues/41>`_)
+* feat: Python encoder ``cloudini_py/cloudini_encoder.py``: a structured NumPy array to a Cloudini
+  payload (a ``.cldn`` file, or the ``data`` of a CompressedPointCloud2), through the WebAssembly
+  module. ``CloudiniDecoder.decode_data`` reads such a payload back. The Python loader now lets the module's
+  memory grow (clouds over about 4 MB failed) and turns a C++ error into a ``RuntimeError`` (`#41 <https://github.com/facontidavide/cloudini/issues/41>`_)
+* fix: ``basic_types.hpp`` and ``intrinsics.hpp`` did not compile when included first (missing
+  ``<limits>`` and ``<cassert>``); ``pcl_conversion_impl.hpp`` lacked ``<map>``. The tests now
+  compile every public header on its own (`#169 <https://github.com/facontidavide/cloudini/issues/169>`_)
 * Contributors: Davide Faconti, Finn Weithoff, Jose Luis Blanco-Claraco
 
 1.4.1 (2026-09-29)
