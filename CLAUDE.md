@@ -280,7 +280,12 @@ resolution in (0, 1e18); other version-6 clouds use the V5 layout. The
 encoder caches lag, predictor and mask kind per cloud size, and the coding modes
 of the integer fields (re-probed every 16 clouds, also across clouds of different
 size) and quantizes and codes with SSE4.1, 4 values per step; the first encode
-probes a prefix of each chunk, then codes it the same way. Keep one encoder per stream to benefit: `Cloudini::PointcloudEncoderCache`
+probes a prefix of each chunk, then codes it the same way. With SSE4.1 the decoder works in blocks too
+(`cloudini_lib/src/varint_block.hpp`): it unpacks up to 4 varints per byte shuffle (3 streams or 4 chains of
+one stream in the same loop), predicts x, y, z as the lanes of one register and stores the floats in the same
+pass, 64 points at a time; float columns and 16/32-bit delta-varint integer sections likewise. Chunks it does
+not take (NaN markers, varints over 4 bytes, values of 2^29 steps or more) go to the per-point decoder, with
+the same output. Keep one encoder per stream to benefit: `Cloudini::PointcloudEncoderCache`
 (used by the rosbag converter, `mcap_codec_benchmark`, the topic converter and
 the point_cloud_transport plugin). Selecting V5 instead: `--encoding-version 5`
 (rosbag converter), `encoding_version:=5` (topic converter),
@@ -657,6 +662,7 @@ src/
 ├── v4_codec.cpp              # V4 point-by-point codec
 ├── v5_codec.cpp              # V5 adaptive integer sections
 ├── v6_codec.cpp              # V6 residual streams (see docs/v6_format.html)
+├── varint_block.hpp          # SSE4.1 block varint unpacking used by the V5/V6 decoders
 ├── field_encoder.cpp         # Encoder implementations (FloatN, Int, XOR)
 ├── field_decoder.cpp         # Decoder implementations
 ├── ros_msg_utils.cpp         # ROS message utilities

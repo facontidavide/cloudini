@@ -26,6 +26,7 @@
 #include "cloudini_lib/encoding_utils.hpp"
 #include "cloudini_lib/field_encoder.hpp"
 #include "codec_common.hpp"
+#include "varint_block.hpp"
 
 namespace Cloudini::detail {
 namespace {
@@ -852,12 +853,42 @@ void writeValueToPoint(uint64_t value, uint8_t* dst) {
   }
 }
 
+#if defined(CLOUDINI_HAS_VARINT_BLOCKS)
+// A delta-varint section of n values of at most 4 bytes: the varints unpacked into a column (see
+// varint_block.hpp), then running sums and stores, 4 values per step. The sums wrap around like the 64-bit
+// ones of the value-by-value loop, whose low bytes they are. False, with `input` untouched, when that loop
+// must decode the section: a varint longer than 4 bytes, or a malformed stream.
+template <size_t Bytes>
+bool decodeDeltaVarintBlocks(ConstBufferView& input, uint8_t* out, size_t point_step, size_t n) {
+  const uint8_t* stream_end = nullptr;
+  const int32_t* const diffs = readVarintColumn(input, n, stream_end);
+  if (!diffs) {
+    return false;
+  }
+  __m128i carry = _mm_setzero_si128();
+  for (size_t i = 0; i < n; i += 4) {
+    const __m128i sums = prefixSum4(_mm_loadu_si128(reinterpret_cast<const __m128i*>(diffs + i)), carry);
+    storeLanes<Bytes>(out + i * point_step, point_step, sums, std::min<size_t>(4, n - i));
+  }
+  input.trim_front(static_cast<size_t>(stream_end - input.data()));
+  return true;
+}
+#endif
+
 template <size_t Bytes, bool Store>
 void decodeV5AdaptiveIntValues(
     const V5AdaptiveIntField& field, AdaptiveIntMode mode, ConstBufferView& input, uint8_t* output_base,
     size_t point_step, size_t expected_points) {
   switch (mode) {
     case AdaptiveIntMode::DeltaVarint: {
+#if defined(CLOUDINI_HAS_VARINT_BLOCKS)
+      if constexpr (Store && Bytes <= 4) {
+        if (g_block_decoders &&
+            decodeDeltaVarintBlocks<Bytes>(input, output_base + field.offset, point_step, expected_points)) {
+          break;
+        }
+      }
+#endif
       uint64_t prev = 0;
       size_t i = 0;
       // While a longest-possible varint is readable, skip the per-byte bounds checks.
@@ -885,14 +916,12 @@ void decodeV5AdaptiveIntValues(
       if (palette_count == 0) {
         throw std::runtime_error("V5 adaptive int: empty palette");
       }
-      std::vector<uint64_t> palette(palette_count, 0);
-      for (uint64_t& value : palette) {
-        if (input.size() < field.bytes_per_value) {
-          throw std::runtime_error("V5 adaptive int: truncated palette");
-        }
-        value = readRawBits(input.data(), field.bytes_per_value);
-        input.trim_front(field.bytes_per_value);
+      // the values stay where they are in the input: palette_count of Bytes each
+      if (input.size() < palette_count * Bytes) {
+        throw std::runtime_error("V5 adaptive int: truncated palette");
       }
+      const uint8_t* const pal = input.data();
+      input.trim_front(palette_count * Bytes);
       const uint8_t bits = bitsForPaletteIndex(palette_count);
       const size_t index_bytes = (static_cast<size_t>(bits) * expected_points + 7u) / 8u;
       if (input.size() < index_bytes) {
@@ -902,8 +931,6 @@ void decodeV5AdaptiveIntValues(
       // read at its byte: no loop-carried state. The last indexes, whose window would run past the
       // index bytes, are read the same way from a zero-padded copy (fewer than 8 bytes).
       const uint64_t mask = (uint64_t{1} << bits) - 1u;
-      const uint64_t* pal = palette.data();
-      const size_t pal_count = palette.size();
       uint8_t* out = output_base + field.offset;
       auto decode_indexes = [&](const uint8_t* index_bits, size_t first_bit, size_t from, size_t to) {
         for (size_t i = from; i < to; ++i) {
@@ -911,10 +938,12 @@ void decodeV5AdaptiveIntValues(
           uint64_t word;
           std::memcpy(&word, index_bits + (bitpos >> 3), sizeof(word));
           const uint32_t idx = static_cast<uint32_t>((word >> (bitpos & 7)) & mask);
-          if (idx >= pal_count) {
+          if (idx >= palette_count) {
             throw std::runtime_error("V5 adaptive int: palette index out of range");
           }
-          writeValueToPoint<Bytes, Store>(pal[idx], out + i * point_step);
+          if constexpr (Store) {
+            std::memcpy(out + i * point_step, pal + size_t{idx} * Bytes, Bytes);
+          }
         }
       };
       // first index whose window is not inside the index bytes (index_bytes == 0 when bits == 0)
@@ -958,11 +987,7 @@ void decodeV5AdaptiveIntValues(
       decode(input, run_count);
       uint64_t prev = 0;
       size_t out_index = 0;
-      for (uint32_t r = 0; r < run_count; ++r) {
-        int64_t diff = 0;
-        const auto consumed = decodeVarint(input.data(), input.size(), diff);
-        input.trim_front(consumed);
-        const uint64_t run_len = readUVarint(input);
+      auto apply_run = [&](int64_t diff, uint64_t run_len) {
         if (run_len > expected_points - out_index) {  // out_index <= expected_points: no wrap-around
           throw std::runtime_error("V5 adaptive int: Delta-RLE run exceeds point count");
         }
@@ -971,6 +996,31 @@ void decodeV5AdaptiveIntValues(
           writeValueToPoint<Bytes, Store>(prev, output_base + out_index * point_step + field.offset);
           ++out_index;
         }
+      };
+      uint32_t r = 0;
+      {  // While the longest difference and run length are readable, skip the per-byte bounds checks.
+        const uint8_t* ptr = input.data();
+        const uint8_t* const end = input.data() + input.size();
+        for (; r < run_count && static_cast<size_t>(end - ptr) >= 2 * kMaxVarintBytes; ++r) {
+          int64_t diff = 0;
+          ptr += decodeVarintUnchecked(ptr, diff);
+          uint64_t run_len = *ptr;
+          if (run_len < 0x80u) {
+            ++ptr;
+          } else {
+            ConstBufferView rest(ptr, static_cast<size_t>(end - ptr));
+            run_len = readUVarint(rest);
+            ptr = rest.data();
+          }
+          apply_run(diff, run_len);
+        }
+        input.trim_front(static_cast<size_t>(ptr - input.data()));
+      }
+      for (; r < run_count; ++r) {
+        int64_t diff = 0;
+        const auto consumed = decodeVarint(input.data(), input.size(), diff);
+        input.trim_front(consumed);
+        apply_run(diff, readUVarint(input));
       }
       if (out_index != expected_points) {
         throw std::runtime_error("V5 adaptive int: Delta-RLE run count does not fill chunk");
