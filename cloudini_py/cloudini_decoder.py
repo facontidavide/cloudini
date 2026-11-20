@@ -80,6 +80,7 @@ class CloudiniDecoder:
 
         # Get exports
         exports = self.instance.exports(self.store)
+        self.exports = exports  # CloudiniEncoder uses the same module
 
         # List all exports with their types
         export_info = {}
@@ -108,8 +109,11 @@ class CloudiniDecoder:
         # Get the cloudini functions
         self.decode_compressed_msg = exports.get('cldn_DecodeCompressedMessage')
         self.get_header_as_yaml = exports.get('cldn_GetHeaderAsYAMLFromDDS')
+        self.get_payload_header_as_yaml = exports.get('cldn_GetHeaderAsYAML')
+        self.decode_compressed_data = exports.get('cldn_DecodeCompressedData')
 
-        if not all([self.decode_compressed_msg, self.get_header_as_yaml]):
+        if not all([self.decode_compressed_msg, self.get_header_as_yaml, self.get_payload_header_as_yaml,
+                    self.decode_compressed_data]):
             raise RuntimeError("Could not find required Cloudini functions in WASM module")
 
         # Initialize WASM module (call constructors)
@@ -234,57 +238,85 @@ class CloudiniDecoder:
             if yaml_size == 0:
                 return {}
 
-            yaml_str = self.read_bytes(yaml_ptr, yaml_size).decode('utf-8')
-
-            #print(f"Extracted YAML header:\n{yaml_str}")
-
-            # Parse YAML (handles nested fields structure)
-            header = {}
-            fields = []
-            current_field = None
-            in_fields_section = False
-
-            for line in yaml_str.split('\n'):
-                stripped = line.strip()
-
-                # Check if we're in the fields section
-                if stripped.startswith('fields:'):
-                    in_fields_section = True
-                    continue
-
-                if in_fields_section:
-                    # New field starts with '- name:'
-                    if stripped.startswith('- name:'):
-                        if current_field:
-                            fields.append(current_field)
-                        current_field = {'name': stripped.split(':', 1)[1].strip()}
-                    elif stripped and ':' in stripped and not stripped.startswith('-'):
-                        # Field property
-                        key, value = stripped.split(':', 1)
-                        key = key.strip()
-                        value = value.strip()
-
-                        if current_field is not None:
-                            current_field[key] = self._parse_yaml_value(value)
-                else:
-                    # Top-level properties
-                    if ':' in stripped:
-                        key, value = stripped.split(':', 1)
-                        key = key.strip()
-                        value = value.strip()
-
-                        header[key] = self._parse_yaml_value(value)
-
-            # Add last field if exists
-            if current_field:
-                fields.append(current_field)
-
-            header['fields'] = fields
-            return header
+            return self._parse_header_yaml(self.read_bytes(yaml_ptr, yaml_size).decode('utf-8'))
 
         finally:
             self.deallocate(input_ptr)
             self.deallocate(yaml_ptr)
+
+    @classmethod
+    def _parse_header_yaml(cls, yaml_str: str) -> dict:
+        """Parse the YAML header written by Cloudini (handles the nested fields structure)."""
+        header = {}
+        fields = []
+        current_field = None
+        in_fields_section = False
+
+        for line in yaml_str.split('\n'):
+            stripped = line.strip()
+
+            # Check if we're in the fields section
+            if stripped.startswith('fields:'):
+                in_fields_section = True
+                continue
+
+            if in_fields_section:
+                # New field starts with '- name:'
+                if stripped.startswith('- name:'):
+                    if current_field:
+                        fields.append(current_field)
+                    current_field = {'name': stripped.split(':', 1)[1].strip()}
+                elif stripped and ':' in stripped and not stripped.startswith('-'):
+                    # Field property
+                    key, value = stripped.split(':', 1)
+                    key = key.strip()
+                    value = value.strip()
+
+                    if current_field is not None:
+                        current_field[key] = cls._parse_yaml_value(value)
+            else:
+                # Top-level properties
+                if ':' in stripped:
+                    key, value = stripped.split(':', 1)
+                    key = key.strip()
+                    value = value.strip()
+
+                    header[key] = cls._parse_yaml_value(value)
+
+        # Add last field if exists
+        if current_field:
+            fields.append(current_field)
+
+        header['fields'] = fields
+        return header
+
+    def decode_data(self, payload: bytes) -> tuple[np.ndarray, dict]:
+        """
+        Decode a Cloudini payload: the content of a .cldn file, or the `data` field of a
+        CompressedPointCloud2 (what CloudiniEncoder.encode returns).
+
+        Returns:
+            Tuple of (numpy array of point cloud data, header info dict)
+        """
+        input_ptr = self.allocate(len(payload))
+        yaml_ptr = self.allocate(4096)
+        output_ptr = 0
+        try:
+            self.write_bytes(input_ptr, payload)
+            yaml_size = self.get_payload_header_as_yaml(self.store, input_ptr, len(payload), yaml_ptr)
+            if yaml_size == 0:
+                raise RuntimeError("Not a Cloudini payload: cannot read its header")
+            header = self._parse_header_yaml(self.read_bytes(yaml_ptr, yaml_size).decode('utf-8'))
+            size = header['width'] * header['height'] * header['point_step']
+            output_ptr = self.allocate(max(size, 1))
+            if self.decode_compressed_data(self.store, input_ptr, len(payload), output_ptr) != size:
+                raise RuntimeError("Failed to decode the Cloudini payload")
+            return self.bytes_to_numpy(self.read_bytes(output_ptr, size), header), header
+        finally:
+            self.deallocate(input_ptr)
+            self.deallocate(yaml_ptr)
+            if output_ptr:
+                self.deallocate(output_ptr)
 
     def extract_data_from_pc2_msg(self, pc2_msg: bytes, header_info: dict) -> np.ndarray:
         """

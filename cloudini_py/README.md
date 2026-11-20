@@ -1,6 +1,6 @@
-# Cloudini Python Decoder
+# Cloudini Python Decoder and Encoder
 
-Python decoder for Cloudini-compressed point clouds that uses WebAssembly (via wasmtime) and outputs structured NumPy arrays with named fields.
+Python decoder and encoder for Cloudini-compressed point clouds that uses WebAssembly (via wasmtime) and outputs structured NumPy arrays with named fields.
 
 ## Features
 
@@ -14,6 +14,7 @@ Python decoder for Cloudini-compressed point clouds that uses WebAssembly (via w
 ## File Structure
 
 - **`cloudini_decoder.py`**: Reusable `CloudiniDecoder` class for decoding CompressedPointCloud2 DDS messages
+- **`cloudini_encoder.py`**: `CloudiniEncoder` class: structured NumPy array to a Cloudini payload
 - **`decode_mcap.py`**: Command-line tool for decoding from MCAP files with statistics
 - **`requirements.txt`**: Python dependencies (wasmtime, mcap, numpy)
 - **`IMPLEMENTATION_NOTES.md`**: Technical documentation and architecture details
@@ -131,6 +132,33 @@ for msg in message_stream:
     point_cloud, header = decoder.decode_message(msg)
     # Process point_cloud...
 ```
+
+### Encoding
+
+`CloudiniEncoder` encodes a structured NumPy array (one named field per PointCloud2 field, as the
+decoder returns) into a Cloudini payload: the content of a `.cldn` file, or the `data` field of a
+`point_cloud_interfaces/msg/CompressedPointCloud2`.
+
+```python
+from cloudini_encoder import CloudiniEncoder
+import numpy as np
+
+encoder = CloudiniEncoder("cloudini_wasm.wasm")
+
+points = np.zeros(1000, dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('intensity', '<f4')])
+# ... fill points ...
+
+# FLOAT32 fields are quantized to `resolution` (lossy: within resolution / 2); other types,
+# and packed colors such as 'rgb', are lossless. Integer-valued floats are stored exactly.
+payload = encoder.encode(points, resolution=0.001, field_resolutions={'intensity': 0.1})
+open("lidar.cldn", "wb").write(payload)
+
+# A 2D array is an organized cloud (height, width). version=5 writes for readers on 1.3.1 or earlier.
+decoded = encoder.decode(payload)  # same as CloudiniDecoder.decode_data(payload)[0]
+```
+
+`python cloudini_encoder.py cloudini_wasm.wasm` runs a round-trip self-check. Clouds of a few
+points, whose encoding is larger than their raw size, are not supported.
 
 ### Output Format
 

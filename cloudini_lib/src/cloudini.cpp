@@ -259,7 +259,7 @@ EncodingInfo EncodingInfoFromYAML(std::string_view yaml) {
   auto root = YAML::parse(yaml);
 
   // Read top-level fields
-  info.version = root["version"].as<uint8_t>();
+  info.version = static_cast<uint8_t>(root["version"].as<int>());  // as<uint8_t> would read the character '6'
   info.width = root["width"].as<uint32_t>();
   info.height = root["height"].as<uint32_t>();
   info.point_step = root["point_step"].as<uint32_t>();
@@ -629,8 +629,7 @@ EncodingInfo DecodeHeader(ConstBufferView& input) {
     yaml_str = yaml_str.substr(0, null_pos);
     input.trim_front(null_pos + 1);  // consume header + null terminator
     EncodingInfo yaml_header = EncodingInfoFromYAML(yaml_str);
-    // The magic-header version is authoritative. YAML's parseScalar<uint8_t> reads a
-    // single character (e.g. "3" -> 51), so the YAML-parsed info.version is unreliable.
+    // The magic-header version is authoritative.
     yaml_header.version = version;
     return yaml_header;
   }

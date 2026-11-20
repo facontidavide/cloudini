@@ -13,7 +13,7 @@ The project consists of these components:
 - **cloudini_lib/**: Core compression library (C++20) with field encoders/decoders, the tools, and the WebAssembly bindings (`src/wasm_functions.cpp`)
 - **cloudini_ros/**: ROS2 integration with point_cloud_transport plugins and conversion utilities
 - **cloudini_foxglove/**: Foxglove extension (`.foxe`) that decodes CompressedPointCloud2 through the WASM module; published in the Foxglove extension registry
-- **cloudini_py/**: Python decoder that loads the WASM module through wasmtime
+- **cloudini_py/**: Python decoder and encoder that load the WASM module through wasmtime
 - **cloudini_web/**: browser demo, unmaintained since 2025-07 and no longer hosted; not mentioned in the README
 
 ### Core Library (cloudini_lib)
@@ -717,7 +717,9 @@ test/
 
 ### QoS Profile Auto-Detection
 
-`topic_converter.cpp` uses `adapt_request_to_offers()` to auto-detect publisher QoS:
+`topic_converter.cpp` uses `adapt_request_to_offers()` to auto-detect publisher QoS. It subscribes only once
+the input topic has a publisher, checks the publishers every 0.5 s and subscribes again when the QoS they offer
+changes (#158); the output publisher keeps the QoS of the first subscription:
 - **Reliability**: Uses RELIABLE if all publishers are RELIABLE, else BEST_EFFORT
 - **Durability**: Uses TRANSIENT_LOCAL if all publishers are TRANSIENT_LOCAL (for latched topics), else VOLATILE
 

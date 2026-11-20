@@ -12,6 +12,10 @@ Changelog for package cloudini_ros
   (`#175 <https://github.com/facontidavide/cloudini/issues/175>`_). No parameter changes.
 * cloudini_ros declares its PCL dependencies (``common`` and ``io``) itself: cloudini_lib
   no longer depends on PCL nor exports it (`#166 <https://github.com/facontidavide/cloudini/issues/166>`_)
+* fix: the topic converter received nothing from a BEST_EFFORT publisher that started after it, or
+  whose QoS differed from the one detected at start. It now subscribes once a publisher appears,
+  with the QoS the publishers offer, and subscribes again when that changes (checked every
+  0.5 s). The output topic keeps its QoS (`#158 <https://github.com/facontidavide/cloudini/issues/158>`_)
 * Contributors: Davide Faconti, Finn Weithoff, Jose Luis Blanco-Claraco
 
 1.4.1 (2026-09-29)

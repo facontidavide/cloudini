@@ -45,3 +45,22 @@ endif()
 target_link_libraries(test_cloudini cloudini_lib)
 # the internal headers, for the switches that only tests use
 target_include_directories(test_cloudini PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+
+# Every public header compiles on its own, as a user's first include (#169)
+file(GLOB CLOUDINI_PUBLIC_HEADERS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/../include
+     ${CMAKE_CURRENT_SOURCE_DIR}/../include/cloudini_lib/*.hpp)
+set(HEADER_CHECK_SOURCES "")
+foreach(header ${CLOUDINI_PUBLIC_HEADERS})
+  # *_impl.hpp are included by their header, not on their own
+  if(header MATCHES "_impl\\.hpp$" OR (header MATCHES "pcl_conversion" AND NOT PCL_FOUND))
+    continue()
+  endif()
+  string(MAKE_C_IDENTIFIER ${header} name)
+  file(CONFIGURE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/header_check/${name}.cpp CONTENT "#include <${header}>\n")
+  list(APPEND HEADER_CHECK_SOURCES ${CMAKE_CURRENT_BINARY_DIR}/header_check/${name}.cpp)
+endforeach()
+add_library(header_check OBJECT ${HEADER_CHECK_SOURCES})
+target_link_libraries(header_check PRIVATE cloudini_lib)
+if(PCL_FOUND)
+  target_link_libraries(header_check PRIVATE ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES})
+endif()

@@ -360,6 +360,20 @@ TEST(Cloudini, HeaderMissingYamlTerminator) {
   EXPECT_THROW(DecodeHeader(input), std::runtime_error);
 }
 
+// cldn_EncodePointcloudData (WebAssembly, the Python encoder) reads the EncodingInfo from YAML, with no
+// magic header to take the version from.
+TEST(Cloudini, YAMLRoundTripKeepsVersion) {
+  using namespace Cloudini;
+  for (uint8_t version : {uint8_t(5), uint8_t(6)}) {
+    EncodingInfo info;
+    info.version = version;
+    info.width = 10;
+    info.point_step = 4;
+    info.fields.push_back({"x", 0, FieldType::FLOAT32, 0.001F});
+    EXPECT_EQ(EncodingInfoFromYAML(EncodingInfoToYAML(info)).version, version);
+  }
+}
+
 // Regression tests for issue #123: the YAML header must be written and parsed
 // independently of the process locale (C locale and global C++ locale).
 static void expectHeaderRoundTripUnderCurrentLocale() {

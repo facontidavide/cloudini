@@ -20,6 +20,7 @@
 
 #include <pcl/io/pcd_io.h>
 
+#include <map>
 #include <sstream>
 #include <string_view>
 
