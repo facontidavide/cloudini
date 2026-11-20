@@ -2,6 +2,80 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.5.0 (2026-11-20)
+------------------
+* perf: faster V6 encoder on x86 (`#170 <https://github.com/facontidavide/cloudini/issues/170>`_, `#172 <https://github.com/facontidavide/cloudini/issues/172>`_)
+
+  * Encoding takes 19% to 57% less time on nine sensor-like streams (single thread,
+    eight synthetic and the Hesai sample), with the same compressed size. The gain is
+    largest for clouds of x, y, z only and for clouds with integer fields.
+  * A block coder (SSE4.1) quantizes, predicts and writes x, y, z and the other float
+    columns four values at a time. Chunks that have points with some but not all axes
+    NaN, or values beyond 2^22 quantization steps, keep the previous coder. Same bytes.
+  * Integer fields whose coding mode is chosen are coded field by field in blocks,
+    pass-through fields are copied in one loop, and ``RefineResolutionsToData`` checks
+    FLOAT32 fields four values at a time. Same bytes.
+  * The encoder keeps the coding modes of the integer fields between the clouds of a
+    stream, as it does for the predictor and the mask kind. They are chosen again
+    every 16 clouds, and on the next cloud when a section comes out more than twice as
+    large as on the cloud they were chosen on. For clouds with integer fields the bytes
+    can differ from 1.4.1; the format does not change and decoders from 1.4.0 read it.
+  * ARM builds keep the previous coder for float columns; WebAssembly builds use the
+    block coder since they are built with WASM SIMD (`#176 <https://github.com/facontidavide/cloudini/issues/176>`_).
+* perf: faster V6 and V5 decoder on x86 (`#175 <https://github.com/facontidavide/cloudini/issues/175>`_)
+
+  * Decoding is 1.67x faster without stage-2 compression and 1.52x faster with ZSTD
+    (geometric mean of 13 sensors, single thread). Same decoded bytes.
+  * A block decoder (SSE4.1) unpacks up to four varints per byte shuffle, predicts x, y, z
+    as the lanes of one register and stores the floats in the same pass, 64 points at a
+    time; float columns and 16/32-bit delta-varint integer sections likewise. Chunks it
+    does not take (NaN markers, varints over 4 bytes, values of 2^29 quantization steps
+    or more) keep the previous decoder.
+  * Stage 2 decompresses into a buffer of the decoding thread instead of a new one per
+    message. A thread that decodes keeps up to about 10 MB of such buffers.
+* perf: the WebAssembly modules are built with WASM SIMD (`#176 <https://github.com/facontidavide/cloudini/issues/176>`_)
+
+  * The SSE4.1 block coders above run in WebAssembly too: decoding is 2.2x faster without
+    stage 2 and 1.9x faster with ZSTD than in a module built without SIMD (Node 22).
+  * Engines without WASM SIMD (Safari before 16.4) cannot load the module. Build with
+    ``-DCLOUDINI_WASM_SIMD=OFF`` for them.
+  * The release modules are built with Emscripten 7.0.0 instead of 3.1.51.
+* perf: faster single-field and lossless encoding/decoding (`#167 <https://github.com/facontidavide/cloudini/issues/167>`_)
+
+  * The codec is built with ``-O3`` in non-Debug builds. RelWithDebInfo, the default of
+    ROS/colcon builds, and distribution packages build with ``-O2``, where lossy float
+    fields decoded about 1.5x slower.
+  * Lossless fields, and lossy float fields without a resolution, are decoded in bulk:
+    a single-field cloud decodes 37x faster without compression and 2.4x faster with
+    ZSTD.
+  * New ``FieldEncoder::encodePoints()``, used for single-field clouds: with ZSTD, a
+    lossless float field encodes 2x faster and a lossy one 1.37x. Same bytes.
+* refactor: the PCL conversions are header-only and cloudini_lib no longer depends on
+  PCL (`#166 <https://github.com/facontidavide/cloudini/issues/166>`_)
+
+  * ``cloudini_lib/pcl_conversion.hpp`` keeps its API; code that includes it finds and
+    links PCL (``common`` and ``io``) itself.
+  * The library only depends on zstd, lz4 and threads. The ROS cloudini_lib package no
+    longer pulls libpcl-dev into every package that only needs the codec; PCL is a test
+    dependency.
+  * The conda package, built without PCL, now ships a usable ``pcl_conversion.hpp``.
+* fix: undefined behaviour in the integer delta encoders (`#171 <https://github.com/facontidavide/cloudini/issues/171>`_, `#173 <https://github.com/facontidavide/cloudini/issues/173>`_).
+  The difference of two 64-bit values was computed as an int64, which overflows for
+  INT64 / UINT64 fields with large jumps. It now wraps around, as in the decoders.
+  Same bytes.
+* fix: V6 with a resolution below 1 / FLT_MAX (about 2.9e-39). Its inverse is infinite
+  in float precision, and a 0 value could be quantized wrongly by the SSE path: it did
+  not decode as 0 (`#171 <https://github.com/facontidavide/cloudini/issues/171>`_)
+* fix: a header with a subnormal resolution could not be read by builds that use
+  libc++ (macOS, WebAssembly): "Failed to parse float value" (`#171 <https://github.com/facontidavide/cloudini/issues/171>`_)
+* fix: encoding through the WebAssembly API (``cldn_EncodePointcloudMessage``,
+  ``cldn_EncodePointcloudData``) aborted the module: the encoder tried to start a worker
+  thread, which a build without pthreads cannot. ``EncodingInfo::use_threads`` is now
+  false by default there (`#176 <https://github.com/facontidavide/cloudini/issues/176>`_)
+* fix: the Gorilla FLOAT64 decoder shifted out of range on corrupted input; it now rejects
+  it (`#175 <https://github.com/facontidavide/cloudini/issues/175>`_)
+* Contributors: Davide Faconti, Finn Weithoff, Jose Luis Blanco-Claraco
+
 1.4.1 (2026-09-29)
 ------------------
 * fix: build with MSVC. The V6 encoder called the GCC/Clang builtin ``__builtin_clzll``;
