@@ -418,7 +418,10 @@ inline void FieldDecoderFloat_Gorilla<FloatType>::decode(ConstBufferView& input,
       const uint64_t control = getBits(1, input);
       IntType xor_val;
       if (control == 0) {
-        // Reuse previous window.
+        // Reuse previous window. The encoder writes a new window first.
+        if (prev_leading_ == kLeadingSentinel) {
+          throw std::runtime_error("FieldDecoderFloat_Gorilla: window reused before it is set");
+        }
         const uint8_t meaningful = static_cast<uint8_t>(kTypeBits - prev_leading_ - prev_trailing_);
         const uint64_t bits = getBits(meaningful, input);
         xor_val = static_cast<IntType>(bits << prev_trailing_);
@@ -426,6 +429,9 @@ inline void FieldDecoderFloat_Gorilla<FloatType>::decode(ConstBufferView& input,
         // New window: read leading(5), meaningful-1(6), meaningful bits.
         const uint8_t stored_leading = static_cast<uint8_t>(getBits(5, input));
         const uint8_t meaningful = static_cast<uint8_t>(getBits(6, input) + 1);
+        if (stored_leading + meaningful > kTypeBits) {
+          throw std::runtime_error("FieldDecoderFloat_Gorilla: window larger than the value");
+        }
         const uint64_t bits = getBits(meaningful, input);
         const uint8_t trailing = static_cast<uint8_t>(kTypeBits - stored_leading - meaningful);
         xor_val = static_cast<IntType>(bits << trailing);

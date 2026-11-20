@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "cloudini_lib/cloudini.hpp"
+#include "codec_common.hpp"
 
 using namespace Cloudini;
 
@@ -156,6 +157,18 @@ void expectGeometryAndFields(
     ASSERT_EQ(a.ring, b.ring) << i;
     ASSERT_EQ(a.reflectivity, b.reflectivity) << i;
   }
+}
+
+// The value a V6 decoder returns for v: the quantized step (in float precision below 2^22 steps, in double
+// precision beyond) times the resolution, see docs/v6_format.html. Not for values stored raw.
+float v6Decoded(float v, float resolution) {
+  if (std::isnan(v)) {
+    return v;
+  }
+  const float scaled = std::nearbyint(v * (1.0f / resolution));
+  const double q =
+      std::fabs(scaled) < 4194304.0f ? double(scaled) : std::nearbyint(double(v) * (1.0 / double(resolution)));
+  return float(q * double(resolution));
 }
 
 }  // namespace
@@ -403,7 +416,9 @@ TEST(V6, FloatColumnResolutionWithInfiniteFloatInverse) {
 }
 
 // The SSE4.1 block coder (4 values per step) with every predictor, mask kind and size modulo 4, and the
-// clouds it leaves to the other coders: points with some NaN axes, values beyond 2^22 steps.
+// clouds it leaves to the other coders: points with some NaN axes, values beyond 2^22 steps. The block
+// decoder reads all of them but the ones with NaN axes, with long varints or beyond 2^29 steps, and every
+// decoded value is exactly the quantized step times the resolution, whichever decoder returned it.
 TEST(V6, BlockCoderPredictorsMasksAndTails) {
   struct Point {
     float x, y, z, w;
@@ -435,7 +450,7 @@ TEST(V6, BlockCoderPredictorsMasksAndTails) {
           value = 20.0f * noise(rng);
         }
         PointcloudEncoder encoder(makeInfo(fields, width, height, sizeof(Point), 6, CompressionOption::ZSTD));
-        for (int round = 0; round < 6; ++round) {
+        for (int round = 0; round < 9; ++round) {
           std::vector<Point> points(n);
           float x = 1.0f, y = 2.0f, z = 3.0f;
           for (uint32_t i = 0; i < n; ++i) {
@@ -496,6 +511,20 @@ TEST(V6, BlockCoderPredictorsMasksAndTails) {
             points[tail == 0 ? rng() % n : n - 1].x = 5000.0f;
             points[n - 1].w = 50000.0f;
           }
+          if (round == 6) {  // beyond 2^24 steps: not exact in a float
+            points[rng() % n].y = -20000.0f;
+            points[rng() % n].w = 400000.0f;
+          }
+          if (round == 7) {  // beyond 2^29 steps, a residual of 5 bytes: the point-by-point decoder
+            points[rng() % n].z = 700000.0f;
+            points[rng() % n].w = -7.0e6f;
+          }
+          if (round == 8) {  // up to the last point, beyond 2^29 and 2^31 steps in residuals of 4 bytes
+            for (size_t k = 0; k < 20; ++k) {
+              points[n - 20 + k].x = 120000.0f * float(k + 1);
+              points[n - 20 + k].w = 1.2e6f * float(k + 1);
+            }
+          }
 
           std::vector<uint8_t> encoded;
           encoder.encode(ConstBufferView(reinterpret_cast<const uint8_t*>(points.data()), n * sizeof(Point)), encoded);
@@ -513,6 +542,8 @@ TEST(V6, BlockCoderPredictorsMasksAndTails) {
                 const float step = k < 3 ? resolution : w_resolution;
                 ASSERT_NEAR(actual[k], expected[k], 0.5f * step * 1.001f + 1e-6f * std::fabs(expected[k]))
                     << "round " << round << " point " << i << " field " << k;
+                ASSERT_EQ(actual[k], v6Decoded(expected[k], step))
+                    << "round " << round << " point " << i << " field " << k;
               }
             }
             if (mask == kZeroMask && points[i].x == 0.0f && points[i].y == 0.0f && points[i].z == 0.0f) {
@@ -520,6 +551,162 @@ TEST(V6, BlockCoderPredictorsMasksAndTails) {
             }
           }
         }
+      }
+    }
+  }
+}
+
+// The block decoder with x, y, z apart from each other, padding, another resolution per axis and a float
+// column: every value is exact, and the bytes of no field stay as they were. With a subnormal z resolution
+// (the double path), then with normal ones and values beyond 2^24 steps (floats, then the block again).
+TEST(V6, BlockDecoderLayoutsAndResolutions) {
+  struct Point {
+    float y;
+    uint8_t pad0[3];
+    uint8_t flag;
+    float x;
+    float w;
+    uint8_t pad1[8];
+    float z;
+    uint8_t pad2[4];
+  };
+  static_assert(sizeof(Point) == 32);
+  for (const float z_resolution : {1.0e-40f, 0.001f}) {
+    const float resolutions[4] = {0.002f, 0.0005f, z_resolution, 0.25f};  // x, y, z, w
+    const std::vector<PointField> fields = {
+        {"x", offsetof(Point, x), FieldType::FLOAT32, resolutions[0]},
+        {"y", offsetof(Point, y), FieldType::FLOAT32, resolutions[1]},
+        {"z", offsetof(Point, z), FieldType::FLOAT32, resolutions[2]},
+        {"w", offsetof(Point, w), FieldType::FLOAT32, resolutions[3]},
+        {"flag", offsetof(Point, flag), FieldType::UINT8, std::nullopt}};
+    std::mt19937 rng(21);
+    std::uniform_real_distribution<float> noise(-1.0f, 1.0f);
+    for (uint32_t n : {1u, 3u, 4u, 63u, 64u, 65u, 130u, 5001u, 40003u}) {
+      SCOPED_TRACE("points " + std::to_string(n));
+      std::vector<Point> points(n);
+      float x = 0.0f, y = 0.0f;
+      for (uint32_t i = 0; i < n; ++i) {
+        x += 0.01f * noise(rng), y += 0.01f * noise(rng);
+        points[i] = Point{};
+        points[i].x = x;
+        points[i].y = y;
+        points[i].z = 1000.0f * z_resolution * noise(rng);  // some 1000 steps
+        points[i].w = 100.0f * noise(rng);
+        points[i].flag = uint8_t(i % 3);
+      }
+      points[n / 2].x = 40000.0f;  // 2e7 steps
+      const auto encoded =
+          encode(makeInfo(fields, n, 1, sizeof(Point), 6, CompressionOption::ZSTD), points.data(), n * sizeof(Point));
+      ConstBufferView view(encoded.data(), encoded.size());
+      const EncodingInfo header = DecodeHeader(view);
+      std::vector<uint8_t> decoded(n * sizeof(Point), 0xAB);
+      PointcloudDecoder().decode(header, view, BufferView(decoded.data(), decoded.size()));
+      for (uint32_t i = 0; i < n; ++i) {
+        Point out;
+        std::memcpy(&out, decoded.data() + i * sizeof(Point), sizeof(Point));
+        ASSERT_EQ(out.x, v6Decoded(points[i].x, resolutions[0])) << i;
+        ASSERT_EQ(out.y, v6Decoded(points[i].y, resolutions[1])) << i;
+        ASSERT_EQ(out.z, v6Decoded(points[i].z, resolutions[2])) << i;
+        ASSERT_EQ(out.w, v6Decoded(points[i].w, resolutions[3])) << i;
+        ASSERT_EQ(out.flag, points[i].flag) << i;
+        for (uint8_t byte : out.pad0) {
+          ASSERT_EQ(byte, 0xAB) << i;
+        }
+        for (uint8_t byte : out.pad1) {
+          ASSERT_EQ(byte, 0xAB) << i;
+        }
+        for (uint8_t byte : out.pad2) {
+          ASSERT_EQ(byte, 0xAB) << i;
+        }
+      }
+    }
+  }
+}
+
+// A crafted header can make z overhang point_step, so that the points overlap: the values must be written
+// point after point, as the per-point decoder does, also when a block is stored again through doubles.
+TEST(V6, OverlappingPointsAreWrittenInOrder) {
+  constexpr uint32_t kPoints = 300, kStep = 10;  // z at offset 8 overhangs a point by 2 bytes
+  const float resolution = 0.001f;
+  std::vector<float> xyz(3 * kPoints, 0.0f);  // the odd points are zero: invalid with a zero mask
+  for (uint32_t i = 0; i < kPoints; i += 2) {
+    xyz[3 * i] = 20000.0f + 0.01f * float(i);  // 2e7 steps: beyond 2^24
+    xyz[3 * i + 1] = -3.0f + 0.002f * float(i);
+    xyz[3 * i + 2] = 1.5f;
+  }
+  const std::vector<PointField> fields = {
+      {"x", 0, FieldType::FLOAT32, resolution},
+      {"y", 4, FieldType::FLOAT32, resolution},
+      {"z", 8, FieldType::FLOAT32, resolution}};
+  EncodingInfo info = makeInfo(fields, kPoints, 1, 12, 6, CompressionOption::NONE);
+  const auto encoded = encode(info, xyz.data(), xyz.size() * sizeof(float));
+  ConstBufferView payload(encoded.data(), encoded.size());
+  DecodeHeader(payload);
+  info.point_step = kStep;
+
+  std::vector<uint8_t> expected(kPoints * kStep + 2, 0);
+  for (uint32_t i = 0; i < kPoints; ++i) {
+    for (uint32_t k = 0; k < 3; ++k) {
+      const float value = v6Decoded(xyz[3 * i + k], resolution);
+      std::memcpy(expected.data() + i * kStep + 4 * k, &value, sizeof(value));
+    }
+  }
+  expected.resize(kPoints * kStep);
+  std::vector<uint8_t> decoded(kPoints * kStep, 0xAB);
+  PointcloudDecoder().decode(info, payload, BufferView(decoded.data(), decoded.size()));
+  for (uint32_t i = 0; i < kPoints * kStep; ++i) {
+    ASSERT_EQ(decoded[i], expected[i]) << "point " << i / kStep << " byte " << i % kStep;
+  }
+}
+
+// Delta-varint sections of 16- and 32-bit fields, which are decoded in blocks: sizes around the block
+// sizes, small and negative steps, wrap-around, and steps of more than 4 bytes (decoded value by value).
+TEST(V6, DeltaVarintSectionsOfEverySize) {
+#pragma pack(push, 1)
+  struct Point {
+    float x, y, z;
+    uint16_t a;
+    uint32_t b;
+    int32_t c;
+    uint32_t d;
+    int16_t e;
+  };
+#pragma pack(pop)
+  const std::vector<PointField> fields = {{"x", offsetof(Point, x), FieldType::FLOAT32, 0.001f},
+                                          {"y", offsetof(Point, y), FieldType::FLOAT32, 0.001f},
+                                          {"z", offsetof(Point, z), FieldType::FLOAT32, 0.001f},
+                                          {"a", offsetof(Point, a), FieldType::UINT16, std::nullopt},
+                                          {"b", offsetof(Point, b), FieldType::UINT32, std::nullopt},
+                                          {"c", offsetof(Point, c), FieldType::INT32, std::nullopt},
+                                          {"d", offsetof(Point, d), FieldType::UINT32, std::nullopt},
+                                          {"e", offsetof(Point, e), FieldType::INT16, std::nullopt}};
+  std::mt19937 rng(22);
+  for (uint32_t n : {1u, 2u, 3u, 4u, 5u, 15u, 16u, 17u, 63u, 64u, 65u, 66u, 67u, 255u, 257u, 1000u, 4099u, 40001u}) {
+    for (int variant = 0; variant < 2; ++variant) {
+      SCOPED_TRACE("points " + std::to_string(n) + " variant " + std::to_string(variant));
+      std::vector<Point> points(n);
+      uint32_t a = 65000, b = 4000000000u, c = 0, d = 0, e = 0;
+      for (uint32_t i = 0; i < n; ++i) {
+        a += rng() % 601 - 300;        // wraps around 16 bits
+        b += rng() % 200001 - 100000;  // wraps around 32 bits
+        c += rng() % 2097153 - 1048576;
+        d += rng() % 1001;
+        if (variant == 1 && rng() % 50 == 0) {
+          d += 3000000000u;  // a step of 5 bytes
+        }
+        e += rng() % 60001 - 30000;  // 3-byte steps
+        points[i] = {0.001f * float(i), 1.0f, 2.0f, uint16_t(a), b, int32_t(c), d, int16_t(e)};
+      }
+      const auto decoded = decode(
+          encode(makeInfo(fields, n, 1, sizeof(Point), 6, CompressionOption::NONE), points.data(), n * sizeof(Point)));
+      ASSERT_EQ(decoded.size(), n * sizeof(Point));
+      for (uint32_t i = 0; i < n; ++i) {
+        ASSERT_EQ(
+            std::memcmp(
+                decoded.data() + i * sizeof(Point) + 12, reinterpret_cast<const uint8_t*>(&points[i]) + 12,
+                sizeof(Point) - 12),
+            0)
+            << "point " << i;
       }
     }
   }
@@ -734,7 +921,9 @@ TEST(V6, SteadyStateEncodeMatchesFirstEncode) {
 
 // Corrupted payloads (byte flips, bursts of 0xFF / 0x80, long varints, truncation) of real V4, V5 and V6
 // messages: the decoder either throws or decodes, and never reads or writes out of bounds nor hits
-// undefined behaviour (run under ASan/UBSan). CLOUDINI_FUZZ_ITERATIONS raises the iteration count.
+// undefined behaviour (run under ASan/UBSan). With and without the SIMD block decoders, the outcome is the
+// same: both throw, or both write the same bytes. The first payload of each message is not mutated.
+// CLOUDINI_FUZZ_ITERATIONS raises the iteration count.
 TEST(V6, MutatedPayloadsNeverCrash) {
   size_t iterations = 150;
   if (const char* env = std::getenv("CLOUDINI_FUZZ_ITERATIONS")) {
@@ -768,9 +957,10 @@ TEST(V6, MutatedPayloadsNeverCrash) {
         const EncodingInfo header = DecodeHeader(header_view);
         const size_t body = original.size() - header_view.size();
         std::vector<uint8_t> out(c.points->size() * sizeof(OusterPoint));
+        std::vector<uint8_t> out_per_value(out.size());
         for (size_t it = 0; it < iterations; ++it) {
           auto msg = original;
-          const int edits = 1 + int(rng() % 4);
+          const int edits = it == 0 ? 0 : 1 + int(rng() % 4);
           for (int e = 0; e < edits; ++e) {
             const size_t len = msg.size() - body;  // current size: an earlier edit may have truncated msg
             const size_t pos = body + rng() % len;
@@ -800,13 +990,24 @@ TEST(V6, MutatedPayloadsNeverCrash) {
               break;
             }
           }
-          ConstBufferView payload(msg.data() + body, msg.size() - body);
-          try {
-            PointcloudDecoder().decode(header, payload, BufferView(out.data(), out.size()));
-            ++decoded_ok;
-          } catch (const std::exception&) {
-            ++rejected;
-          }
+          const auto decodes = [&](std::vector<uint8_t>& points, bool block_decoders) {
+            detail::g_block_decoders = block_decoders;
+            std::fill(points.begin(), points.end(), uint8_t{0xAB});
+            ConstBufferView payload(msg.data() + body, msg.size() - body);
+            try {
+              PointcloudDecoder().decode(header, payload, BufferView(points.data(), points.size()));
+              return true;
+            } catch (const std::exception&) {
+              return false;
+            }
+          };
+          const bool ok = decodes(out, true);
+          const bool ok_per_value = decodes(out_per_value, false);
+          detail::g_block_decoders = true;
+          ASSERT_EQ(ok, ok_per_value) << "version " << int(version) << " iteration " << it;
+          ASSERT_TRUE(!ok || out == out_per_value) << "version " << int(version) << " iteration " << it;
+          ASSERT_TRUE(ok || it > 0) << "version " << int(version);
+          ok ? ++decoded_ok : ++rejected;
         }
       }
     }

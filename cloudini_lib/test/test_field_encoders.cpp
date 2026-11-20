@@ -517,6 +517,27 @@ TEST(FieldEncoders, FloatGorilla_EdgeCases_Float32) {
       input, /*chunk_points=*/input.size() + 1, 7);
 }
 
+// Corrupted Gorilla records are rejected instead of shifting out of range.
+TEST(FieldEncoders, FloatGorilla_RejectsInvalidWindows) {
+  using namespace Cloudini;
+  auto decodeSecond = [](std::vector<uint8_t> record) {
+    std::vector<uint8_t> bytes(8, 0);  // first value: raw 64 bits
+    bytes.insert(bytes.end(), record.begin(), record.end());
+    FieldDecoderFloat_Gorilla<double> decoder(0);
+    double value = 0;
+    ConstBufferView input(bytes.data(), bytes.size());
+    BufferView out(reinterpret_cast<uint8_t*>(&value), sizeof(value));
+    decoder.decode(input, out);
+    decoder.decode(input, out);
+  };
+  // flag 1, control 0: reuses a window that no record has set
+  EXPECT_THROW(decodeSecond({0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}), std::runtime_error);
+  // flag 1, control 1, leading 31, meaningful 64: wider than the value
+  EXPECT_THROW(decodeSecond(std::vector<uint8_t>(10, 0xFF)), std::runtime_error);
+  // the largest valid window: leading 0, meaningful 64
+  EXPECT_NO_THROW(decodeSecond({0x83, 0x1F, 0, 0, 0, 0, 0, 0, 0, 0}));
+}
+
 // Full PointcloudEncoder/Decoder round-trip in LOSSLESS mode across multiple
 // kPointsPerChunk-sized chunks; exercises the chunk-flush integration.
 TEST(FieldEncoders, PointcloudLossless_Gorilla_MultiChunk) {
