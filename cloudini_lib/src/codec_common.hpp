@@ -30,6 +30,26 @@ namespace Cloudini::detail {
 
 constexpr size_t kPointsPerChunk = 32 * 1024;
 
+// Scratch array that grows without zero-filling: its contents are always written before they are read,
+// and are not kept when it grows.
+template <typename T>
+class ScratchArray {
+ public:
+  T* data() {
+    return data_.get();
+  }
+  void ensure(size_t count) {
+    if (count > size_) {
+      data_ = std::make_unique_for_overwrite<T[]>(count);
+      size_ = count;
+    }
+  }
+
+ private:
+  std::unique_ptr<T[]> data_;
+  size_t size_ = 0;
+};
+
 size_t MaxSerializedFieldSize(const PointField& field, EncodingOptions encoding_opt);
 size_t MaxSerializedPointSize(const EncodingInfo& info);
 
@@ -61,8 +81,13 @@ size_t CompressBound(CompressionOption compression, size_t input_size);
 uint32_t CompressChunk(
     CompressionOption compression, ConstBufferView input, BufferView& output,
     std::span<const size_t> block_starts = {});
+
+// Stage 2 in reverse. The view is `chunk_data` itself without compression. Otherwise it is a buffer of this
+// thread, shared by its decoders and never zero-filled, that stays valid until the next call on the thread;
+// or `large_buffer`, for more than kThreadScratchBytes (the thread keeps its buffer, so it stays small).
+constexpr size_t kThreadScratchBytes = size_t{8} << 20;
 ConstBufferView DecompressChunk(
-    CompressionOption compression, ConstBufferView chunk_data, std::vector<uint8_t>& decompressed_buffer,
+    CompressionOption compression, ConstBufferView chunk_data, std::vector<uint8_t>& large_buffer,
     size_t max_decompressed_size);
 
 // Byte writers and readers of the V5 and V6 stage-1 sections.

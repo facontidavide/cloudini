@@ -423,8 +423,20 @@ uint32_t CompressChunk(
 }
 
 ConstBufferView DecompressChunk(
-    CompressionOption compression, ConstBufferView chunk_data, std::vector<uint8_t>& decompressed_buffer,
+    CompressionOption compression, ConstBufferView chunk_data, std::vector<uint8_t>& large_buffer,
     size_t max_decompressed_size) {
+  // A chunk of kPointsPerChunk points fits the buffer of the thread, unless its points are very large.
+  auto buffer = [&]() -> uint8_t* {
+    if (max_decompressed_size <= kThreadScratchBytes) {
+      thread_local ScratchArray<uint8_t> thread_buffer;
+      thread_buffer.ensure(max_decompressed_size);
+      return thread_buffer.data();
+    }
+    if (large_buffer.size() < max_decompressed_size) {
+      large_buffer.resize(max_decompressed_size);
+    }
+    return large_buffer.data();
+  };
   switch (compression) {
     case CompressionOption::NONE:
       return chunk_data;
@@ -434,28 +446,24 @@ ConstBufferView DecompressChunk(
           max_decompressed_size > static_cast<size_t>(std::numeric_limits<int>::max())) {
         throw std::runtime_error("Chunk size too large for LZ4");
       }
-      if (decompressed_buffer.size() < max_decompressed_size) {
-        decompressed_buffer.resize(max_decompressed_size);
-      }
+      uint8_t* const decompressed = buffer();
       const int decompressed_size = LZ4_decompress_safe(
-          reinterpret_cast<const char*>(chunk_data.data()), reinterpret_cast<char*>(decompressed_buffer.data()),
+          reinterpret_cast<const char*>(chunk_data.data()), reinterpret_cast<char*>(decompressed),
           static_cast<int>(chunk_data.size()), static_cast<int>(max_decompressed_size));
       if (decompressed_size < 0) {
         throw std::runtime_error("LZ4 decompression failed");
       }
-      return ConstBufferView(decompressed_buffer.data(), static_cast<size_t>(decompressed_size));
+      return ConstBufferView(decompressed, static_cast<size_t>(decompressed_size));
     }
 
     case CompressionOption::ZSTD: {
-      if (decompressed_buffer.size() < max_decompressed_size) {
-        decompressed_buffer.resize(max_decompressed_size);
-      }
-      const size_t decompressed_size = ZSTD_decompressDCtx(
-          threadDCtx(), decompressed_buffer.data(), max_decompressed_size, chunk_data.data(), chunk_data.size());
+      uint8_t* const decompressed = buffer();
+      const size_t decompressed_size =
+          ZSTD_decompressDCtx(threadDCtx(), decompressed, max_decompressed_size, chunk_data.data(), chunk_data.size());
       if (ZSTD_isError(decompressed_size)) {
         throw std::runtime_error("ZSTD decompression failed: " + std::string(ZSTD_getErrorName(decompressed_size)));
       }
-      return ConstBufferView(decompressed_buffer.data(), decompressed_size);
+      return ConstBufferView(decompressed, decompressed_size);
     }
   }
 

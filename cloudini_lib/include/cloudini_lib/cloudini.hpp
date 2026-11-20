@@ -297,7 +297,7 @@ class PointcloudDecoder {
       const EncodingInfo& info, ConstBufferView compressed_data, BufferView& output, size_t expected_points);
 
   std::vector<std::unique_ptr<FieldDecoder>> decoders_;
-  std::vector<uint8_t> decompressed_buffer_;
+  std::vector<uint8_t> decompressed_buffer_;  // stage 2 output of very large chunks only
   size_t min_encoded_point_bytes_ = 0;
 };
 }  // namespace Cloudini
