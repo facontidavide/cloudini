@@ -2,11 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.5.0] - 2026-11-19
+## [1.5.0] - 2026-11-20
 
 Follows Cloudini 1.5.0.
 
 ### Changed
+- Faster decoding: the WebAssembly module uses WASM SIMD and decodes typical lidar clouds
+  about 2x faster (1.3x to 4x depending on the sensor).
+- Needs an engine with WASM SIMD: the Foxglove desktop app, Chrome or Edge 91+, Firefox 89+,
+  Safari 16.4+.
 - Faster decoding of lossless fields and of float fields without a resolution.
 - Updated dependencies (`@foxglove/extension` 3.3.0, `@foxglove/schemas` 2.3.1).
 
