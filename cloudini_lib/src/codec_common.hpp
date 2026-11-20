@@ -26,6 +26,12 @@
 #include "cloudini_lib/field_decoder.hpp"
 #include "cloudini_lib/field_encoder.hpp"
 
+#if defined(__GNUC__)
+#define CLOUDINI_FORCE_INLINE inline __attribute__((always_inline))
+#else
+#define CLOUDINI_FORCE_INLINE inline
+#endif
+
 namespace Cloudini::detail {
 
 constexpr size_t kPointsPerChunk = 32 * 1024;
@@ -38,11 +44,13 @@ class ScratchArray {
   T* data() {
     return data_.get();
   }
-  void ensure(size_t count) {
+  // Room for `count` elements; returns data().
+  T* ensure(size_t count) {
     if (count > size_) {
       data_ = std::make_unique_for_overwrite<T[]>(count);
       size_ = count;
     }
+    return data_.get();
   }
 
  private:
@@ -86,6 +94,10 @@ uint32_t CompressChunk(
 // thread, shared by its decoders and never zero-filled, that stays valid until the next call on the thread;
 // or `large_buffer`, for more than kThreadScratchBytes (the thread keeps its buffer, so it stays small).
 constexpr size_t kThreadScratchBytes = size_t{8} << 20;
+
+// Test only: false makes the decoders skip their SIMD block paths, so that a test can compare them with the
+// value-by-value ones. Change it only while no decode runs.
+extern bool g_block_decoders;
 ConstBufferView DecompressChunk(
     CompressionOption compression, ConstBufferView chunk_data, std::vector<uint8_t>& large_buffer,
     size_t max_decompressed_size);

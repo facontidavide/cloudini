@@ -860,33 +860,15 @@ void writeValueToPoint(uint64_t value, uint8_t* dst) {
 // must decode the section: a varint longer than 4 bytes, or a malformed stream.
 template <size_t Bytes>
 bool decodeDeltaVarintBlocks(ConstBufferView& input, uint8_t* out, size_t point_step, size_t n) {
-  int32_t* const diffs = threadVarintColumn(n + 8);
   const uint8_t* stream_end = nullptr;
-  if (!readVarintStream(input.data(), input.data() + input.size(), n, diffs, stream_end)) {
+  const int32_t* const diffs = readVarintColumn(input, n, stream_end);
+  if (!diffs) {
     return false;
   }
-  std::memset(diffs + n, 0, 4 * sizeof(int32_t));  // the last group of 4 may be partial
   __m128i carry = _mm_setzero_si128();
-  alignas(16) uint32_t lane[4];
-  auto sums = [&](size_t i) {
-    _mm_store_si128(
-        reinterpret_cast<__m128i*>(lane),
-        prefixSum4(_mm_loadu_si128(reinterpret_cast<const __m128i*>(diffs + i)), carry));
-  };
-  size_t i = 0;
-  for (; i + 4 <= n; i += 4) {
-    sums(i);
-    uint8_t* const point = out + i * point_step;
-    std::memcpy(point, &lane[0], Bytes);
-    std::memcpy(point + point_step, &lane[1], Bytes);
-    std::memcpy(point + 2 * point_step, &lane[2], Bytes);
-    std::memcpy(point + 3 * point_step, &lane[3], Bytes);
-  }
-  if (i < n) {  // the last values
-    sums(i);
-    for (size_t k = 0; i + k < n; ++k) {
-      std::memcpy(out + (i + k) * point_step, &lane[k], Bytes);
-    }
+  for (size_t i = 0; i < n; i += 4) {
+    const __m128i sums = prefixSum4(_mm_loadu_si128(reinterpret_cast<const __m128i*>(diffs + i)), carry);
+    storeLanes<Bytes>(out + i * point_step, point_step, sums, std::min<size_t>(4, n - i));
   }
   input.trim_front(static_cast<size_t>(stream_end - input.data()));
   return true;
@@ -901,7 +883,8 @@ void decodeV5AdaptiveIntValues(
     case AdaptiveIntMode::DeltaVarint: {
 #if defined(CLOUDINI_HAS_VARINT_BLOCKS)
       if constexpr (Store && Bytes <= 4) {
-        if (decodeDeltaVarintBlocks<Bytes>(input, output_base + field.offset, point_step, expected_points)) {
+        if (g_block_decoders &&
+            decodeDeltaVarintBlocks<Bytes>(input, output_base + field.offset, point_step, expected_points)) {
           break;
         }
       }
@@ -934,12 +917,11 @@ void decodeV5AdaptiveIntValues(
         throw std::runtime_error("V5 adaptive int: empty palette");
       }
       // the values stay where they are in the input: palette_count of Bytes each
-      const size_t pal_count = palette_count;
-      if (input.size() < pal_count * Bytes) {
+      if (input.size() < palette_count * Bytes) {
         throw std::runtime_error("V5 adaptive int: truncated palette");
       }
       const uint8_t* const pal = input.data();
-      input.trim_front(pal_count * Bytes);
+      input.trim_front(palette_count * Bytes);
       const uint8_t bits = bitsForPaletteIndex(palette_count);
       const size_t index_bytes = (static_cast<size_t>(bits) * expected_points + 7u) / 8u;
       if (input.size() < index_bytes) {
@@ -956,7 +938,7 @@ void decodeV5AdaptiveIntValues(
           uint64_t word;
           std::memcpy(&word, index_bits + (bitpos >> 3), sizeof(word));
           const uint32_t idx = static_cast<uint32_t>((word >> (bitpos & 7)) & mask);
-          if (idx >= pal_count) {
+          if (idx >= palette_count) {
             throw std::runtime_error("V5 adaptive int: palette index out of range");
           }
           if constexpr (Store) {
@@ -1005,6 +987,16 @@ void decodeV5AdaptiveIntValues(
       decode(input, run_count);
       uint64_t prev = 0;
       size_t out_index = 0;
+      auto apply_run = [&](int64_t diff, uint64_t run_len) {
+        if (run_len > expected_points - out_index) {  // out_index <= expected_points: no wrap-around
+          throw std::runtime_error("V5 adaptive int: Delta-RLE run exceeds point count");
+        }
+        for (uint64_t k = 0; k < run_len; ++k) {
+          prev += static_cast<uint64_t>(diff);
+          writeValueToPoint<Bytes, Store>(prev, output_base + out_index * point_step + field.offset);
+          ++out_index;
+        }
+      };
       uint32_t r = 0;
       {  // While the longest difference and run length are readable, skip the per-byte bounds checks.
         const uint8_t* ptr = input.data();
@@ -1020,20 +1012,7 @@ void decodeV5AdaptiveIntValues(
             run_len = readUVarint(rest);
             ptr = rest.data();
           }
-          if (run_len > expected_points - out_index) {  // out_index <= expected_points: no wrap-around
-            throw std::runtime_error("V5 adaptive int: Delta-RLE run exceeds point count");
-          }
-          if (run_len == 1) {  // most runs of a field that rarely repeats its step
-            prev += static_cast<uint64_t>(diff);
-            writeValueToPoint<Bytes, Store>(prev, output_base + out_index * point_step + field.offset);
-            ++out_index;
-            continue;
-          }
-          for (uint64_t k = 0; k < run_len; ++k) {
-            prev += static_cast<uint64_t>(diff);
-            writeValueToPoint<Bytes, Store>(prev, output_base + out_index * point_step + field.offset);
-            ++out_index;
-          }
+          apply_run(diff, run_len);
         }
         input.trim_front(static_cast<size_t>(ptr - input.data()));
       }
@@ -1041,15 +1020,7 @@ void decodeV5AdaptiveIntValues(
         int64_t diff = 0;
         const auto consumed = decodeVarint(input.data(), input.size(), diff);
         input.trim_front(consumed);
-        const uint64_t run_len = readUVarint(input);
-        if (run_len > expected_points - out_index) {  // out_index <= expected_points: no wrap-around
-          throw std::runtime_error("V5 adaptive int: Delta-RLE run exceeds point count");
-        }
-        for (uint64_t k = 0; k < run_len; ++k) {
-          prev += static_cast<uint64_t>(diff);
-          writeValueToPoint<Bytes, Store>(prev, output_base + out_index * point_step + field.offset);
-          ++out_index;
-        }
+        apply_run(diff, readUVarint(input));
       }
       if (out_index != expected_points) {
         throw std::runtime_error("V5 adaptive int: Delta-RLE run count does not fill chunk");

@@ -43,3 +43,5 @@ else()
 endif()
 
 target_link_libraries(test_cloudini cloudini_lib)
+# the internal headers, for the switches that only tests use
+target_include_directories(test_cloudini PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)

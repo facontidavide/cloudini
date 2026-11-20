@@ -27,6 +27,8 @@
 
 namespace Cloudini::detail {
 
+bool g_block_decoders = true;
+
 namespace {
 
 // ZSTD_compress / ZSTD_decompress allocate and initialize a fresh context on every call, which

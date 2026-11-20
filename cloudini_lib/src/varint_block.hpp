@@ -21,6 +21,7 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <utility>
 
@@ -31,12 +32,6 @@ namespace Cloudini::detail {
 
 #if defined(__SSE4_1__)
 #define CLOUDINI_HAS_VARINT_BLOCKS 1
-
-#if defined(__GNUC__)
-#define CLOUDINI_VARINT_INLINE inline __attribute__((always_inline))
-#else
-#define CLOUDINI_VARINT_INLINE inline
-#endif
 
 //------------------------------------------------------------------------------------------
 // Block decoding of a stream of varints (encodeVarint64: zig-zag + 1, 7 bits per byte): up to 4 values per
@@ -89,7 +84,7 @@ inline constexpr std::array<VarintUnpack, 256> kVarintUnpacks = [] {
 
 // Unpacks the next varints of a stream (1 to 4) into values at `out`, which needs room for 4. Reads 16
 // bytes at `ptr`. False for a zero code and for a varint longer than 4 bytes.
-CLOUDINI_VARINT_INLINE bool unpackVarints(const uint8_t*& ptr, int32_t*& out) {
+CLOUDINI_FORCE_INLINE bool unpackVarints(const uint8_t*& ptr, int32_t*& out) {
   const __m128i bytes = _mm_loadu_si128(reinterpret_cast<const __m128i*>(ptr));
   const VarintUnpack& unpack = kVarintUnpacks[static_cast<size_t>(_mm_movemask_epi8(bytes) & 0xFF)];
   const __m128i lanes = _mm_and_si128(
@@ -293,17 +288,54 @@ inline bool readVarintStream(
 // section is decoded before the next one is read).
 inline int32_t* threadVarintColumn(size_t count) {
   thread_local ScratchArray<int32_t> column;
-  column.ensure(count);
-  return column.data();
+  return column.ensure(count);
+}
+
+// The `count` varints of the stream at the start of `input`, which may go on after the stream, into the column
+// of this thread, followed by 4 zeros (the last group of 4 values may be partial). Null when the stream must be
+// decoded value by value; otherwise `stream_end` is its end.
+inline int32_t* readVarintColumn(ConstBufferView input, size_t count, const uint8_t*& stream_end) {
+  int32_t* const column = threadVarintColumn(count + 4);
+  if (!readVarintStream(input.data(), input.data() + input.size(), count, column, stream_end)) {
+    return nullptr;
+  }
+  std::memset(column + count, 0, 4 * sizeof(int32_t));
+  return column;
 }
 
 // Running sums of the 4 values of `x`, added to lane 3 of `carry`, which then holds the last sum in every
 // lane. The arithmetic wraps around.
-CLOUDINI_VARINT_INLINE __m128i prefixSum4(__m128i x, __m128i& carry) {
+CLOUDINI_FORCE_INLINE __m128i prefixSum4(__m128i x, __m128i& carry) {
   x = _mm_add_epi32(x, _mm_slli_si128(x, 4));
   x = _mm_add_epi32(_mm_add_epi32(x, _mm_slli_si128(x, 8)), carry);
   carry = _mm_shuffle_epi32(x, _MM_SHUFFLE(3, 3, 3, 3));
   return x;
+}
+
+// The largest of the 4 lanes of `x`, unsigned.
+CLOUDINI_FORCE_INLINE uint32_t maxLaneU32(__m128i x) {
+  const __m128i m2 = _mm_max_epu32(x, _mm_shuffle_epi32(x, _MM_SHUFFLE(1, 0, 3, 2)));
+  return static_cast<uint32_t>(_mm_cvtsi128_si32(_mm_max_epu32(m2, _mm_shuffle_epi32(m2, _MM_SHUFFLE(2, 3, 0, 1)))));
+}
+
+// The low `Bytes` bytes of the first `lanes` lanes of `v` (1 to 4), at `point` and every `step` bytes after.
+template <size_t Bytes>
+CLOUDINI_FORCE_INLINE void storeLanes(uint8_t* point, size_t step, __m128i v, size_t lanes) {
+  static_assert(Bytes <= 4);
+  if (lanes == 4) {
+    const auto v0 = static_cast<uint32_t>(_mm_cvtsi128_si32(v)), v1 = static_cast<uint32_t>(_mm_extract_epi32(v, 1));
+    const auto v2 = static_cast<uint32_t>(_mm_extract_epi32(v, 2)), v3 = static_cast<uint32_t>(_mm_extract_epi32(v, 3));
+    std::memcpy(point, &v0, Bytes);
+    std::memcpy(point + step, &v1, Bytes);
+    std::memcpy(point + 2 * step, &v2, Bytes);
+    std::memcpy(point + 3 * step, &v3, Bytes);
+    return;
+  }
+  alignas(16) uint32_t lane[4];
+  _mm_store_si128(reinterpret_cast<__m128i*>(lane), v);
+  for (size_t k = 0; k < lanes; ++k) {
+    std::memcpy(point + k * step, &lane[k], Bytes);
+  }
 }
 
 #endif  // __SSE4_1__
