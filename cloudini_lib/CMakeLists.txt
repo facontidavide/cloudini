@@ -234,13 +234,14 @@ else()
     LINK_FLAGS "-s DISABLE_EXCEPTION_CATCHING -s ASSERTIONS -s EXPORTED_FUNCTIONS=[${CLD_EXPORTED_FUNCTIONS_STR}] -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8','HEAP8','UTF8ToString'] -s MODULARIZE=1 -s EXPORT_NAME='CloudiniModule' -s INITIAL_MEMORY=67108864 -s MAXIMUM_MEMORY=134217728 -s ALLOW_MEMORY_GROWTH=1 -s TOTAL_STACK=1048576"
   )
 
-  # WASM module target used for Foxglove Studio (single file)
+  # WASM module target used for Foxglove Studio (single file). Web and worker only: with Emscripten 7.0.0 the
+  # Node.js branch does require("node:fs"), which the webpack build of the extension cannot resolve.
   add_executable(cloudini_wasm_single src/wasm_functions.cpp)
   target_compile_features(cloudini_wasm_single PRIVATE cxx_std_20)
   target_include_directories(cloudini_wasm_single PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_link_libraries(cloudini_wasm_single PRIVATE cloudini_lib)
   set_target_properties(cloudini_wasm_single PROPERTIES
-    LINK_FLAGS "-s SINGLE_FILE=1 -s NO_DISABLE_EXCEPTION_CATCHING -s ASSERTIONS -s EXPORTED_FUNCTIONS=[${CLD_EXPORTED_FUNCTIONS_STR}] -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8','HEAP8','UTF8ToString'] -s MODULARIZE=1 -s EXPORT_NAME='CloudiniModule' -s INITIAL_MEMORY=67108864 -s MAXIMUM_MEMORY=134217728 -s ALLOW_MEMORY_GROWTH=1 -s TOTAL_STACK=1048576"
+    LINK_FLAGS "-s SINGLE_FILE=1 -s ENVIRONMENT=web,worker -s NO_DISABLE_EXCEPTION_CATCHING -s ASSERTIONS -s EXPORTED_FUNCTIONS=[${CLD_EXPORTED_FUNCTIONS_STR}] -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8','HEAP8','UTF8ToString'] -s MODULARIZE=1 -s EXPORT_NAME='CloudiniModule' -s INITIAL_MEMORY=67108864 -s MAXIMUM_MEMORY=134217728 -s ALLOW_MEMORY_GROWTH=1 -s TOTAL_STACK=1048576"
   )
 endif(NOT EMSCRIPTEN)
 
