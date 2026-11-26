@@ -211,6 +211,8 @@ else()
       "_cldn_GetHeaderAsYAMLFromDDS"
       "_cldn_ComputeCompressedSize"
       "_cldn_GetDecompressedSize"
+      "_cldn_GetDataInfo"
+      "_cldn_GetDecodedDataSize"
       "_cldn_DecodeCompressedMessage"
       "_cldn_DecodeCompressedData"
       "_cldn_ConvertCompressedMsgToPointCloud2Msg"

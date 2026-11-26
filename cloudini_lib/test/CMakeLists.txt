@@ -4,6 +4,7 @@ set(SRC_FILES
   test_header.cpp
   test_ros_msg.cpp
   test_v6.cpp
+  test_wasm_functions.cpp
 )
 
 if(PCL_FOUND)
@@ -43,6 +44,9 @@ else()
 endif()
 
 target_link_libraries(test_cloudini cloudini_lib)
+# The WebAssembly exports, built natively: test/wasm_shim stands in for emscripten.h
+target_sources(test_cloudini PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src/wasm_functions.cpp)
+target_include_directories(test_cloudini BEFORE PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/wasm_shim)
 # the internal headers, for the switches that only tests use
 target_include_directories(test_cloudini PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
