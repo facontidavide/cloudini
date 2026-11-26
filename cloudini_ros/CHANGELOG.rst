@@ -2,6 +2,10 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.5.1 (2026-11-26)
+------------------
+* No changes in cloudini_ros; released with cloudini_lib 1.5.1, whose changes are in the WebAssembly API only.
+
 1.5.0 (2026-11-20)
 ------------------
 * The topic converter and the point_cloud_transport plugin encode V6 faster on x86
