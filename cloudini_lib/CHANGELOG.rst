@@ -2,6 +2,15 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.5.1 (2026-11-26)
+------------------
+* feat(wasm): ``cldn_GetDataInfo`` and ``cldn_GetDecodedDataSize`` read the header of a bare Cloudini
+  buffer (the input of ``cldn_DecodeCompressedData``, e.g. a protobuf ``bytes`` field): width, height,
+  point_step and number of fields, and the size of the decoded buffer. Until now only
+  ``cldn_GetHeaderAsYAML`` did, without a length limit or terminating NUL on its output
+  (`#186 <https://github.com/facontidavide/cloudini/issues/186>`_).
+* The comment of ``cldn_GetDecompressedSize`` says it takes a DDS ``CompressedPointCloud2`` message.
+
 1.5.0 (2026-11-20)
 ------------------
 * perf: faster V6 encoder on x86 (`#170 <https://github.com/facontidavide/cloudini/issues/170>`_, `#172 <https://github.com/facontidavide/cloudini/issues/172>`_)

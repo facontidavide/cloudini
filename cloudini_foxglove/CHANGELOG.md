@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.1] - 2026-11-26
+
+Follows Cloudini 1.5.1. No changes to the extension.
+
 ## [1.5.0] - 2026-11-20
 
 Follows Cloudini 1.5.0.
