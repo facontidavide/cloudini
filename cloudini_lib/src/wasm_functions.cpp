@@ -103,6 +103,31 @@ uint32_t cldn_GetDecompressedSize(uintptr_t encoded_dds_ptr, uint32_t encoded_dd
   }
 }
 
+uint32_t cldn_GetDataInfo(uintptr_t encoded_data_ptr, uint32_t encoded_data_size, uintptr_t out_info) {
+  try {
+    Cloudini::ConstBufferView encoded_view(reinterpret_cast<const uint8_t*>(encoded_data_ptr), encoded_data_size);
+    const Cloudini::EncodingInfo info = Cloudini::DecodeHeader(encoded_view);
+    const uint32_t values[4] = {info.width, info.height, info.point_step, static_cast<uint32_t>(info.fields.size())};
+    std::memcpy(reinterpret_cast<void*>(out_info), values, sizeof(values));
+    return 1;
+  } catch (const std::exception& e) {
+    EM_ASM({ console.error('Exception in cldn_GetDataInfo:', UTF8ToString($0)); }, e.what());
+    return 0;
+  }
+}
+
+uint32_t cldn_GetDecodedDataSize(uintptr_t encoded_data_ptr, uint32_t encoded_data_size) {
+  try {
+    Cloudini::ConstBufferView encoded_view(reinterpret_cast<const uint8_t*>(encoded_data_ptr), encoded_data_size);
+    const Cloudini::EncodingInfo info = Cloudini::DecodeHeader(encoded_view);
+    const uint64_t size = uint64_t(info.width) * info.height * info.point_step;
+    return size <= UINT32_MAX ? static_cast<uint32_t>(size) : 0;
+  } catch (const std::exception& e) {
+    EM_ASM({ console.error('Exception in cldn_GetDecodedDataSize:', UTF8ToString($0)); }, e.what());
+    return 0;
+  }
+}
+
 uint32_t cldn_ConvertCompressedMsgToPointCloud2Msg(
     uintptr_t compressed_msg_ptr, uint32_t encoded_data_size, uintptr_t output_msg_ptr) {
   const uint8_t* compressed_data = reinterpret_cast<const uint8_t*>(compressed_msg_ptr);
@@ -226,7 +251,8 @@ uint32_t cldn_EncodePointcloudData(
     const uint64_t expected_size = uint64_t(encoding_info.width) * encoding_info.height * encoding_info.point_step;
 
     if (pc_data_size != expected_size) {
-      EM_ASM({ console.error('Data size mismatch: expected', $0, 'but got', $1); }, double(expected_size), pc_data_size);
+      EM_ASM(
+          { console.error('Data size mismatch: expected', $0, 'but got', $1); }, double(expected_size), pc_data_size);
       return 0;
     }
 

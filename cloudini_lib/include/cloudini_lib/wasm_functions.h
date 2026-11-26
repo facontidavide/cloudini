@@ -40,8 +40,29 @@ uint32_t cldn_GetHeaderAsYAMLFromDDS(uintptr_t raw_dds_msg, uint32_t dds_msg_siz
 WASM_EXPORT uint32_t cldn_ComputeCompressedSize(uintptr_t dds_msg_ptr, uint32_t dds_msg_size, float resolution);
 
 // Preview the size of the decompressed point cloud data, needed to allocate memory in advance.
-// No actual decompression is performed.
+// No actual decompression is performed. The input is a serialized DDS message containing
+// "point_cloud_interfaces/CompressedPointCloud2"; for a bare Cloudini buffer use cldn_GetDecodedDataSize.
 WASM_EXPORT uint32_t cldn_GetDecompressedSize(uintptr_t encoded_msg_ptr, uint32_t encoded_msg_size);
+
+/**
+ * @brief Reads the header of a bare Cloudini buffer (what cldn_DecodeCompressedData takes), without decoding the
+ * points.
+ *
+ * @param encoded_data_ptr pointer to the Cloudini buffer.
+ * @param encoded_data_size size of the Cloudini buffer.
+ * @param out_info pointer to 4 uint32_t, written with {width, height, point_step, number of fields}.
+ * @return 1 on success; 0 when the header does not parse, and then out_info is left untouched. (The wasmtime build,
+ * cloudini_wasm, disables exception catching: there a header that does not parse traps instead.)
+ */
+WASM_EXPORT uint32_t cldn_GetDataInfo(uintptr_t encoded_data_ptr, uint32_t encoded_data_size, uintptr_t out_info);
+
+/**
+ * @brief Size of the output buffer cldn_DecodeCompressedData needs for a bare Cloudini buffer: width * height *
+ * point_step. Reads only the header.
+ *
+ * @return The size in bytes, or 0 when the header does not parse or the size does not fit in 32 bits.
+ */
+WASM_EXPORT uint32_t cldn_GetDecodedDataSize(uintptr_t encoded_data_ptr, uint32_t encoded_data_size);
 
 /**
  * @brief Given the a serialized DDS message containing "point_cloud_interfaces/CompressedPointCloud2",
