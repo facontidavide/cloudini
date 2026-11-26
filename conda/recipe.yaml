@@ -17,7 +17,7 @@ package:
 
 source:
   - url: https://github.com/facontidavide/cloudini/archive/refs/tags/${{ version }}.tar.gz
-    sha256: 1bb5031e863ac331224321e92aea0fa4a389539f2e6445ed9cc881464dd2717f
+    sha256: 87b61b4f563b730fe868cc1c5c9a781cd32f4f87999616070b79b46426cbf949
   # mcap is a header-only dependency of the CLI and is not packaged for C++ on
   # conda-forge; fetch it here (network is available during the source stage but
   # NOT during the build script) and feed it in via -DMCAP_INCLUDE_DIR below.
